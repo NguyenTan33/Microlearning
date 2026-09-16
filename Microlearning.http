@@ -1,0 +1,6 @@
+@Microlearning_HostAddress = http://localhost:5124
+
+GET {{Microlearning_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
