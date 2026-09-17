@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Frontend build outputs and typescript cache
+dist/
+**/dist/
+*.tsbuildinfo
