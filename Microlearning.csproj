@@ -10,4 +10,12 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Areas\Auth\DTOs\" />
+    <Folder Include="Areas\Auth\Services\" />
+    <Folder Include="Areas\Auth\Interfaces\" />
+    <Folder Include="Controllers\" />
+    <Folder Include="Model\Entity\" />
+  </ItemGroup>
+
 </Project>
