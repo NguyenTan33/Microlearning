@@ -17,11 +17,11 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   isFacebookLoading = false,
 }) => {
   return (
-    <div className="space-y-4 pt-2">
-      {/* Subtle Divider */}
-      <div className="relative flex items-center justify-center">
-        <div className="w-full border-t border-white/10" />
-        <span className="absolute bg-[#0c101d] px-3 text-xs uppercase tracking-wider text-slate-400 font-medium">
+    <div className="space-y-3 pt-1">
+      {/* Subtle Divider matching image: "HOẶC TIẾP TỤC VỚI" */}
+      <div className="relative flex items-center justify-center my-2">
+        <div className="w-full border-t border-[#C5A059]/30" />
+        <span className="absolute bg-[#0b140e] px-3 text-[11px] uppercase tracking-widest text-[#E6C687] font-serif font-bold">
           Hoặc tiếp tục với
         </span>
       </div>
@@ -33,10 +33,10 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
           type="button"
           onClick={onGoogleClick}
           disabled={disabled || isGoogleLoading}
-          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#09110B]/90 hover:bg-[#121E15] border border-[#C5A059]/40 hover:border-[#E6C687] text-white text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
         >
           {isGoogleLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+            <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
           ) : (
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
@@ -65,7 +65,7 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
           type="button"
           onClick={onFacebookClick}
           disabled={disabled || isFacebookLoading}
-          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#09110B]/90 hover:bg-[#121E15] border border-[#C5A059]/40 hover:border-[#E6C687] text-white text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
         >
           {isFacebookLoading ? (
             <Loader2 className="w-4 h-4 animate-spin text-[#1877F2]" />
