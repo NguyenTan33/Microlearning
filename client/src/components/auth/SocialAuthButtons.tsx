@@ -17,28 +17,28 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   isFacebookLoading = false,
 }) => {
   return (
-    <div className="space-y-3 pt-1">
-      {/* Subtle Divider matching image: "HOẶC TIẾP TỤC VỚI" */}
-      <div className="relative flex items-center justify-center my-2">
-        <div className="w-full border-t border-[#C5A059]/30" />
-        <span className="absolute bg-[#0b140e] px-3 text-[11px] uppercase tracking-widest text-[#E6C687] font-serif font-bold">
+    <div className="space-y-3.5 pt-3">
+      {/* Subtle Divider */}
+      <div className="relative flex items-center justify-center">
+        <div className="w-full border-t border-white/10" />
+        <span className="absolute bg-[#0c1222] px-3 text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
           Hoặc tiếp tục với
         </span>
       </div>
 
-      {/* Social Button Grid */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Social Button Grid (50/50 Desktop) */}
+      <div className="grid grid-cols-2 gap-3 pt-1">
         {/* Google Button */}
         <button
           type="button"
           onClick={onGoogleClick}
           disabled={disabled || isGoogleLoading}
-          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#09110B]/90 hover:bg-[#121E15] border border-[#C5A059]/40 hover:border-[#E6C687] text-white text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+          className="h-11 flex items-center justify-center gap-2.5 px-3 rounded-xl bg-[#0F172A]/80 hover:bg-[#1E293B] border border-white/10 hover:border-white/20 text-slate-100 text-xs font-semibold transition-all duration-200 shadow-md active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer group"
         >
           {isGoogleLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
           ) : (
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 shrink-0 group-hover:scale-105 transition-transform" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -65,12 +65,12 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
           type="button"
           onClick={onFacebookClick}
           disabled={disabled || isFacebookLoading}
-          className="flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#09110B]/90 hover:bg-[#121E15] border border-[#C5A059]/40 hover:border-[#E6C687] text-white text-xs font-semibold transition-all duration-200 shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+          className="h-11 flex items-center justify-center gap-2.5 px-3 rounded-xl bg-[#0F172A]/80 hover:bg-[#1E293B] border border-white/10 hover:border-white/20 text-slate-100 text-xs font-semibold transition-all duration-200 shadow-md active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer group"
         >
           {isFacebookLoading ? (
             <Loader2 className="w-4 h-4 animate-spin text-[#1877F2]" />
           ) : (
-            <svg className="w-4 h-4 shrink-0 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 shrink-0 text-[#1877F2] group-hover:scale-105 transition-transform" fill="currentColor" viewBox="0 0 24 24">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
             </svg>
           )}
