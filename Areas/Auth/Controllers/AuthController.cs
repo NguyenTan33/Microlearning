@@ -3,7 +3,7 @@
 //using Microsoft.AspNetCore.Mvc;
 //using Microsoft.AspNetCore.RateLimiting;
 
-//namespace Microlearning.Auth.Controllers
+//namespace Microlearning.Areas.Auth.Controllers
 //{
 //    [Route("api/[controller]")]
 //    [ApiController]
@@ -206,7 +206,7 @@
 //            }
 
 //            // 3. Change password for the authenticated account
-//            await _passwordService.ChangePasswordAsync(accountId,request);
+//            await _passwordService.ChangePasswordAsync(accountId, request);
 
 //            // 4. Return success
 //            return Ok(new
