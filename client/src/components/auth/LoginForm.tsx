@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PhoneInput } from '../ui/PhoneInput';
 import { PasswordInput } from '../ui/PasswordInput';
-import { LogIn, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import type { LoginRequest } from '../../types/auth.types';
 
 interface LoginFormProps {
@@ -21,7 +21,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errors, setErrors] = useState<{ phoneNumber?: string; password?: string }>({});
 
   const validate = (): boolean => {
@@ -57,8 +57,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {serverError && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-medium">
-          {serverError}
+        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-center gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span>{serverError}</span>
         </div>
       )}
 
@@ -73,7 +74,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       />
 
       <PasswordInput
-        label="Mật khẩu"
+        label="MẬT KHẨU"
         value={password}
         onChange={(val) => {
           setPassword(val);
@@ -85,7 +86,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           <button
             type="button"
             onClick={onNavigateToForgotPassword}
-            className="text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors focus:outline-none cursor-pointer"
+            className="text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors focus:outline-none cursor-pointer"
           >
             Quên mật khẩu?
           </button>
@@ -99,16 +100,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
             disabled={isLoading}
-            className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500/20 focus:ring-offset-0"
+            className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500/20 focus:ring-offset-0 cursor-pointer"
           />
-          <span className="text-xs text-slate-300">Ghi nhớ đăng nhập</span>
+          <span className="text-xs text-slate-300 font-medium">Ghi nhớ đăng nhập</span>
         </label>
       </div>
 
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 transition-all duration-200 active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/30 transition-all duration-200 active:scale-[0.99] disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
       >
         {isLoading ? (
           <>
@@ -118,7 +119,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         ) : (
           <>
             <span>Đăng nhập</span>
-            <LogIn className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
           </>
         )}
       </button>
@@ -128,7 +129,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         <button
           type="button"
           onClick={onNavigateToRegister}
-          className="font-semibold text-indigo-400 hover:text-indigo-300 transition-colors focus:outline-none cursor-pointer"
+          className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors focus:outline-none cursor-pointer underline-offset-2 hover:underline"
         >
           Đăng ký ngay
         </button>

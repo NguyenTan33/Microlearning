@@ -175,10 +175,10 @@ export const AuthActionCard: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto relative z-10">
-      <div className="rounded-3xl bg-[#0d121f]/90 border border-white/10 p-8 sm:p-10 shadow-2xl shadow-black/80 backdrop-blur-2xl">
-        <div className="mb-6 space-y-1.5">
-          <h2 className="text-2xl font-bold tracking-tight text-white">
+    <div className="w-full max-w-[450px] mx-auto relative z-10">
+      <div className="rounded-3xl bg-[#0B1020]/90 border border-white/10 p-7 sm:p-9 shadow-2xl shadow-indigo-950/40 backdrop-blur-2xl">
+        <div className="mb-6 space-y-1">
+          <h2 className="text-2xl sm:text-[26px] font-extrabold tracking-tight text-white">
             {mode === 'LOGIN' && 'Đăng nhập'}
             {mode === 'REGISTER' && 'Đăng ký tài khoản'}
             {mode === 'FORGOT_PASSWORD' && 'Khôi phục mật khẩu'}
@@ -186,8 +186,8 @@ export const AuthActionCard: React.FC = () => {
             {mode === 'RESET_PASSWORD' && 'Đặt lại mật khẩu'}
           </h2>
           <p className="text-xs text-slate-400">
-            {mode === 'LOGIN' && 'Chào mừng bạn quay trở lại với lộ trình học tập'}
-            {mode === 'REGISTER' && 'Bắt đầu hành trình học tập vi mô ngay hôm nay'}
+            {mode === 'LOGIN' && 'Chào mừng bạn quay trở lại MicroLearn!'}
+            {mode === 'REGISTER' && 'Bắt đầu hành trình học tập đa môn ngay hôm nay'}
             {mode === 'FORGOT_PASSWORD' && 'Nhập số điện thoại để nhận mã xác thực'}
             {mode === 'VERIFY_OTP' && 'Bảo mật tài khoản thông qua mã xác nhận'}
             {mode === 'RESET_PASSWORD' && 'Tạo mật khẩu mới cho tài khoản của bạn'}
@@ -195,7 +195,7 @@ export const AuthActionCard: React.FC = () => {
         </div>
 
         {successNotice && (
-          <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium flex items-center gap-2">
+          <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successNotice}</span>
           </div>
