@@ -12,9 +12,7 @@
 
   <ItemGroup>
     <Folder Include="Areas\Auth\Services\" />
-    <Folder Include="Areas\Auth\Interfaces\" />
     <Folder Include="Controllers\" />
-    <Folder Include="Model\Entity\" />
   </ItemGroup>
 
 </Project>
