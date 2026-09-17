@@ -1,7 +1,7 @@
 using Microlearning.Areas.Auth.DTOs;
 using Microlearning.Model.Entities;
 
-namespace fnb_pos_inventory_system.Areas.Auth.Services.Interfaces;
+namespace Microlearning.Areas.Auth.Interfaces;
 
 public interface ITokenService
 {

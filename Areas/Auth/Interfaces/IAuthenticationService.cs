@@ -1,15 +1,17 @@
 using Microlearning.Areas.Auth.DTOs;
 
-namespace fnb_pos_inventory_system.Areas.Auth.Interfaces;
-
-public interface IAuthenticationService
+namespace Microlearning.Areas.Auth.Interfaces
 {
-    // Register new account and send OTP
-    Task<RegisterResponse> RegisterAsync(RegisterRequest request);
 
-    // Login with phone number and password
-    Task<LoginResponse> LoginAsync(LoginRequest request);
+    public interface IAuthenticationService
+    {
+        // Register new account and send OTP
+        Task<RegisterResponse> RegisterAsync(RegisterRequest request);
 
-    // Logout and revoke Refresh Token
-    Task LogoutAsync(LogoutRequest request);
+        // Login with phone number and password
+        Task<LoginResponse> LoginAsync(LoginRequest request);
+
+        // Logout and revoke Refresh Token
+        Task LogoutAsync(LogoutRequest request);
+    }
 }
