@@ -1,8 +1,8 @@
-﻿using fnb_pos_inventory_system.Infrastructure.Validation;
+﻿using Microlearning.Infrastructure.Validation;
 using Microsoft.Extensions.DependencyInjection;
-using fnb_pos_inventory_system.Infrastructure.Factory;
+using Microlearning.Infrastructure.Factory;
 
-namespace fnb_pos_inventory_system.Infrastructure.Factory
+namespace Microlearning.Infrastructure.Factory
 {
 
     public class ValidationFactory : IValidationFactory

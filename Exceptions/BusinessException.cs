@@ -1,4 +1,4 @@
-﻿namespace fnb_pos_inventory_system.Exceptions
+﻿namespace Microlearning.Exceptions
 {
     public class BusinessException : Exception
     {

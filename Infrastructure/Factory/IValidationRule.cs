@@ -1,4 +1,4 @@
-﻿namespace fnb_pos_inventory_system.Infrastructure.Factory
+﻿namespace Microlearning.Infrastructure.Factory
 {
     public interface IValidationRule<in TRequest>
     {
