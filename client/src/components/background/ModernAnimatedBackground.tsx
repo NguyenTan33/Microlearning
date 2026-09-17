@@ -1,75 +1,41 @@
 import React from 'react';
+import { SilkFlagLightSheen } from './SilkFlagLightSheen';
+import { FighterJetsGlint } from './FighterJetsGlint';
+import { MountainSunsetGlow } from './MountainSunsetGlow';
+import { SunsetEmbersCanvas } from './SunsetEmbersCanvas';
 
-export const ModernAnimatedBackground: React.FC = () => {
+interface ModernAnimatedBackgroundProps {
+  windIntensity?: 'gentle' | 'breeze' | 'gust';
+}
+
+export const ModernAnimatedBackground: React.FC<ModernAnimatedBackgroundProps> = ({
+  windIntensity = 'gust',
+}) => {
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 bg-[#070B17]">
-      {/* Ambient Gradient Mesh Orbs */}
-      <div 
-        className="absolute -top-[15%] -left-[10%] w-[680px] h-[680px] rounded-full blur-[140px] opacity-45 animate-float-slow"
+    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#08100C] select-none">
+      {/* 1. Duy nhất một ảnh nền sắc nét toàn màn hình (Không bị lồng ảnh, không viền mờ) */}
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
-          background: 'radial-gradient(circle, rgba(79,70,229,0.8) 0%, rgba(124,58,237,0.3) 50%, transparent 80%)',
-        }}
-      />
-      
-      <div 
-        className="absolute top-[35%] -left-[10%] w-[600px] h-[600px] rounded-full blur-[150px] opacity-30 animate-float-reverse"
-        style={{
-          background: 'radial-gradient(circle, rgba(6,182,212,0.6) 0%, rgba(99,102,241,0.2) 60%, transparent 80%)',
+          backgroundImage: `url('/assets/vietnam-patriotic-bg.jpg')`,
+          filter: 'contrast(1.03) brightness(1.01) saturate(1.04)',
         }}
       />
 
-      <div 
-        className="absolute -bottom-[20%] left-[25%] w-[750px] h-[750px] rounded-full blur-[160px] opacity-30 animate-pulse-glow"
-        style={{
-          background: 'radial-gradient(circle, rgba(147,51,234,0.7) 0%, rgba(67,56,202,0.35) 60%, transparent 80%)',
-        }}
-      />
+      {/* 2. Ánh sáng lụa cờ lướt nhẹ nhàng */}
+      <SilkFlagLightSheen />
 
-      <div 
-        className="absolute top-[20%] -right-[15%] w-[500px] h-[500px] rounded-full blur-[140px] opacity-25"
-        style={{
-          background: 'radial-gradient(circle, rgba(59,130,246,0.6) 0%, rgba(139,92,246,0.2) 60%, transparent 80%)',
-        }}
-      />
+      {/* 3. Tia sáng động cơ tiêm kích Su-30 */}
+      <FighterJetsGlint />
 
-      {/* Subtle modern academic dot/grid matrix */}
-      <div 
-        className="absolute inset-0 opacity-[0.08]"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-          maskImage: 'radial-gradient(ellipse 90% 80% at 50% 50%, #000 35%, transparent 85%)',
-          WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 50% 50%, #000 35%, transparent 85%)',
-        }}
-      />
+      {/* 4. Quầng sáng hoàng hôn đỉnh núi */}
+      <MountainSunsetGlow />
 
-      {/* Subtle Academic Chalk Quotes in Corners */}
-      {/* Top Right Quote */}
-      <div className="hidden xl:block absolute top-6 right-10 text-right select-none opacity-40 hover:opacity-70 transition-opacity">
-        <p className="font-handwriting text-lg text-slate-300 tracking-wide">
-          “ Tri thức không có giới hạn và bạn có thể bắt đầu ngay hôm nay.” _
-        </p>
-      </div>
+      {/* 5. Tàn lửa và bụi nắng bay trong gió */}
+      <SunsetEmbersCanvas intensity={windIntensity} />
 
-      {/* Bottom Left Quote */}
-      <div className="hidden lg:block absolute bottom-5 left-8 select-none -rotate-2 opacity-50 hover:opacity-80 transition-opacity">
-        <p className="font-handwriting text-xl text-cyan-300/80 tracking-wide drop-shadow-sm">
-          Tri thức hôm nay, Tương lai tươi sáng hơn!
-        </p>
-      </div>
-
-      {/* Bottom Right Quote */}
-      <div className="hidden lg:block absolute bottom-5 right-8 select-none rotate-2 opacity-45 hover:opacity-80 transition-opacity">
-        <p className="font-handwriting text-lg text-purple-300/80 tracking-wide drop-shadow-sm">
-          Học hôm nay, cho một ngày mai rạng rỡ ♡
-        </p>
-      </div>
-
-      {/* Vignette Overlay for Depth */}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#070B17] via-transparent to-[#070B17]/70" />
+      {/* 6. Lớp bóng mờ điện ảnh nhẹ */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/25 pointer-events-none" />
     </div>
   );
 };

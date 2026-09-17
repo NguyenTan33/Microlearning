@@ -106,17 +106,17 @@ export const OtpVerifyForm: React.FC<OtpVerifyFormProps> = ({
       <button
         type="submit"
         disabled={isLoading || otp.length !== 6}
-        className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 transition-all duration-200 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#7A1518] via-[#9E1B1E] to-[#7A1518] hover:from-[#8C181B] hover:via-[#B31E22] hover:to-[#8C181B] border border-[#FFDD55]/80 text-[#FFF9E6] font-bold text-sm shadow-[0_4px_20px_rgba(158,27,30,0.6)] hover:shadow-[0_4px_25px_rgba(255,221,85,0.4)] transition-all duration-300 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer font-serif tracking-wide"
       >
         {isLoading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
             <span>Đang kiểm tra mã...</span>
           </>
         ) : (
           <>
             <span>Xác nhận</span>
-            <CheckCircle2 className="w-4 h-4" />
+            <CheckCircle2 className="w-4 h-4 text-[#FFDD55]" />
           </>
         )}
       </button>
@@ -125,7 +125,7 @@ export const OtpVerifyForm: React.FC<OtpVerifyFormProps> = ({
         type="button"
         onClick={onBack}
         disabled={isLoading}
-        className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors focus:outline-none cursor-pointer"
+        className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-stone-300 hover:text-[#FFDD55] transition-colors focus:outline-none cursor-pointer"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         <span>Quay lại</span>
