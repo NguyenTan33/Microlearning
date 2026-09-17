@@ -68,7 +68,7 @@ function openOAuthPopup(
 export async function requestGoogleIdToken(): Promise<string> {
   const clientId =
     import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-    'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+    '532282322649-t1ebm2vi2m43eal35f35e6mar9nll4o5.apps.googleusercontent.com';
 
   const redirectUri = `${window.location.origin}/oauth-callback.html`;
   const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
