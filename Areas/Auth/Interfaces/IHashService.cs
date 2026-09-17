@@ -1,4 +1,4 @@
-﻿namespace Microlearning.Areas.Auth.Services.Interfaces
+﻿namespace Microlearning.Areas.Auth.Interfaces
 {
     public interface IHashService
     {
