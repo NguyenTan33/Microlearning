@@ -1,8 +1,8 @@
-using fnb_pos_inventory_system.Areas.Auth.DTOs;
-using fnb_pos_inventory_system.Exceptions;
-using fnb_pos_inventory_system.Infrastructure.Factory;
+using Microlearning.Areas.Auth.DTOs;
+using Microlearning.Exceptions;
+using Microlearning.Infrastructure.Factory;
 
-namespace fnb_pos_inventory_system.Infrastructure.Validation.Auth
+namespace Microlearning.Infrastructure.Validation.Auth
 {
     public class RefreshTokenValidationRule : IValidationRule<RefreshTokenRequest>
     {

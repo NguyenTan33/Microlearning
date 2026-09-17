@@ -1,5 +1,5 @@
-﻿namespace fnb_pos_inventory_system.Infrastructure.Factory
-{
+﻿namespace Microlearning.Infrastructure.Factory
+{ 
     // Giao diện của Nhà máy lọc dữ liệu
     public interface IValidationFactory
     {

@@ -1,12 +1,12 @@
-using fnb_pos_inventory_system.Areas.Auth.DTOs;
-using fnb_pos_inventory_system.Areas.Auth.Services.Interfaces;
-using fnb_pos_inventory_system.Entities;
-using fnb_pos_inventory_system.Exceptions;
-using fnb_pos_inventory_system.Infrastructure.Factory;
+using Microlearning.Areas.Auth.Interfaces;
+using Microlearning.Model.Entities;
+using Microlearning.Exceptions;
+using Microlearning.Infrastructure.Factory;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microlearning.Areas.Auth.DTOs;
 
-namespace fnb_pos_inventory_system.Infrastructure.Validation.Auth
+namespace Microlearning.Infrastructure.Validation.Auth
 {
     public class RegisterValidationRule : IValidationRule<RegisterRequest>
     {
