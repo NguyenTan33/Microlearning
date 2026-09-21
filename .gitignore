@@ -484,7 +484,14 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+<<<<<<< Updated upstream
 # Frontend build outputs and typescript cache
 dist/
 **/dist/
 *.tsbuildinfo
+=======
+# Planning & Progress Reports (Local only)
+Plan/
+Report/
+
+>>>>>>> Stashed changes
