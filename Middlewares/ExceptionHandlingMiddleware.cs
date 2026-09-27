@@ -1,0 +1,80 @@
+using Microlearning.Exceptions;
+using System.Net;
+using System.Text.Json;
+
+namespace Microlearning.Middlewares
+{
+    public class ExceptionHandlingMiddleware
+    {
+        private readonly RequestDelegate _next;
+        private readonly ILogger<ExceptionHandlingMiddleware> _logger;
+        private readonly IWebHostEnvironment _env;
+
+        public ExceptionHandlingMiddleware(
+            RequestDelegate next,
+            ILogger<ExceptionHandlingMiddleware> logger,
+            IWebHostEnvironment env)
+        {
+            _next = next;
+            _logger = logger;
+            _env = env;
+        }
+
+        public async Task InvokeAsync(HttpContext context)
+        {
+            try
+            {
+                // Cho request đi tiếp xuống middleware / controller phía sau
+                await _next(context);
+            }
+            catch (BusinessException ex)
+            {
+                // Lỗi nghiệp vụ do mình chủ động throw
+                await HandleBusinessExceptionAsync(context, ex);
+            }
+            catch (Exception ex)
+            {
+                // Lỗi không dự đoán trước
+                await HandleUnexpectedExceptionAsync(context, ex);
+            }
+        }
+
+        private async Task HandleBusinessExceptionAsync(
+            HttpContext context,
+            BusinessException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
+
+            var response = new
+            {
+                message = ex.Message
+            };
+
+            var json = JsonSerializer.Serialize(response);
+            await context.Response.WriteAsync(json);
+        }
+
+        private async Task HandleUnexpectedExceptionAsync(
+            HttpContext context,
+            Exception ex)
+        {
+            // Log lỗi thật để developer kiểm tra
+            _logger.LogError(ex, "Unhandled exception occurred: {Message}", ex.Message);
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+
+            // Nếu ở môi trường Development, trả về chi tiết lỗi thật để dễ debug
+            var response = new
+            {
+                message = _env.IsDevelopment() 
+                    ? $"Đã xảy ra lỗi hệ thống: {ex.Message} {(ex.InnerException != null ? $" -> {ex.InnerException.Message}" : "")}"
+                    : "Đã xảy ra lỗi hệ thống."
+            };
+
+            var json = JsonSerializer.Serialize(response);
+            await context.Response.WriteAsync(json);
+        }
+    }
+}
