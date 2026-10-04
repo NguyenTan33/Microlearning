@@ -1,0 +1,17 @@
+{
+  "deviceId": "DEVICE_ANDROID_SAMSUNG_S23_001",
+  "operations": [
+    {
+      "clientOperationId": "c3b9f3e4-8f6a-4b9e-9d2a-1b2c3d4e5f60",
+      "operationType": "LESSON_PROGRESS",
+      "payloadJson": "{\"lessonId\": 1, \"watchedSeconds\": 110, \"percent\": 91.6}",
+      "createdAt": "2026-10-04T09:30:00Z"
+    },
+    {
+      "clientOperationId": "d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51",
+      "operationType": "QUIZ_ATTEMPT",
+      "payloadJson": "{\"clientAttemptId\": \"d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51\", \"lessonId\": 1, \"answers\": [{\"questionId\": 1, \"selectedOptionId\": 2}]}",
+      "createdAt": "2026-10-04T09:35:00Z"
+    }
+  ]
+}
