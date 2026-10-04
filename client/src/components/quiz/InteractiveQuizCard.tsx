@@ -11,6 +11,8 @@ import {
   XCircle,
   RotateCcw,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import type { QuizDetail, QuizAttemptResult, QuizHistoryItem } from '../../types/catalog.types';
 import { quizApi } from '../../services/quizApi';
@@ -37,6 +39,8 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [startTime] = useState<string>(() => new Date().toISOString());
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const QUESTIONS_PER_PAGE = 5;
 
   // Tải đề thi từ máy chủ (hoặc lấy từ gói ngoại tuyến khi mất mạng)
   const loadQuiz = useCallback(async () => {
@@ -44,6 +48,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     setAttemptResult(null);
     setSelectedAnswers({});
     setNoticeMessage(null);
+    setCurrentPage(1);
 
     try {
       if (isOnline) {
@@ -176,6 +181,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     setAttemptResult(null);
     setSelectedAnswers({});
     setNoticeMessage(null);
+    setCurrentPage(1);
   };
 
   if (loading) {
@@ -289,68 +295,122 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
 
       {/* Form danh sách câu hỏi */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {quiz.questions.map((question, qIndex) => {
-          const selected = selectedAnswers[question.id] || [];
-          const isMultiChoice = question.questionType === 2;
+        {(() => {
+          const totalPages = Math.ceil(quiz.questions.length / QUESTIONS_PER_PAGE);
+          const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
+          const currentQuestions = quiz.questions.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
 
           return (
-            <div key={question.id} className="space-y-3">
-              <div className="flex items-start gap-2.5">
-                <span className="w-6 h-6 rounded-lg bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                  {qIndex + 1}
-                </span>
-                <div className="space-y-1">
-                  <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
-                    {question.content}
-                  </p>
-                  <span className="text-[11px] text-slate-400 block">
-                    {isMultiChoice ? 'Chọn nhiều đáp án' : 'Chọn 1 đáp án duy nhất'} • {question.points} điểm
-                  </span>
-                </div>
-              </div>
+            <>
+              {currentQuestions.map((question, index) => {
+                const questionNumber = startIndex + index + 1;
+                const selected = selectedAnswers[question.id] || [];
+                const isMultiChoice = question.questionType === 2;
 
-              {/* Danh sách lựa chọn đáp án */}
-              <div className="space-y-2 pl-8">
-                {question.options.map((option) => {
-                  const isChecked = selected.includes(option.id);
+                return (
+                  <div key={question.id} className="space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-6 h-6 rounded-lg bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        {questionNumber}
+                      </span>
+                      <div className="space-y-1">
+                        <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
+                          {question.content}
+                        </p>
+                        <span className="text-[11px] text-slate-400 block">
+                          {isMultiChoice ? 'Chọn nhiều đáp án' : 'Chọn 1 đáp án duy nhất'} • {question.points} điểm
+                        </span>
+                      </div>
+                    </div>
 
-                  return (
-                    <label
-                      key={option.id}
-                      onClick={() => handleSelectOption(question.id, option.id, isMultiChoice)}
-                      className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none text-xs leading-relaxed ${
-                        isChecked
-                          ? 'bg-indigo-950/60 border-indigo-500/60 text-white shadow-sm'
-                          : 'bg-slate-900/50 border-white/5 hover:border-white/15 text-slate-300'
-                      } ${attemptResult ? 'cursor-not-allowed opacity-80' : ''}`}
+                    {/* Danh sách lựa chọn đáp án */}
+                    <div className="space-y-2 pl-8">
+                      {question.options.map((option) => {
+                        const isChecked = selected.includes(option.id);
+
+                        return (
+                          <label
+                            key={option.id}
+                            onClick={() => handleSelectOption(question.id, option.id, isMultiChoice)}
+                            className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none text-xs leading-relaxed ${
+                              isChecked
+                                ? 'bg-indigo-950/60 border-indigo-500/60 text-white shadow-sm'
+                                : 'bg-slate-900/50 border-white/5 hover:border-white/15 text-slate-300'
+                            } ${attemptResult ? 'cursor-not-allowed opacity-80' : ''}`}
+                          >
+                            <div
+                              className={`w-4 h-4 ${
+                                isMultiChoice ? 'rounded-md' : 'rounded-full'
+                              } border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                                isChecked
+                                  ? 'border-indigo-400 bg-indigo-600 text-white'
+                                  : 'border-slate-600 bg-slate-800'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                            <span className="font-normal">{option.optionText}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* Giải thích đáp án (chỉ hiển thị sau khi đã nộp bài nếu có) */}
+                    {attemptResult && question.explanation && (
+                      <div className="ml-8 p-3 rounded-xl bg-slate-900/80 border border-white/10 text-xs text-slate-300">
+                        <span className="font-semibold text-indigo-400 block mb-0.5">Giải thích:</span>
+                        <p>{question.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Phân trang khi số lượng câu hỏi > 5 */}
+              {totalPages > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/10 pl-8">
+                  <div className="text-xs text-slate-400">
+                    Trang <span className="font-bold text-white">{currentPage}</span> / {totalPages} (Tổng {quiz.questions.length} câu hỏi)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className="p-1.5 rounded-lg border border-white/10 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                      title="Trang trước"
                     >
-                      <div
-                        className={`w-4 h-4 ${
-                          isMultiChoice ? 'rounded-md' : 'rounded-full'
-                        } border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                          isChecked
-                            ? 'border-indigo-400 bg-indigo-600 text-white'
-                            : 'border-slate-600 bg-slate-800'
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all ${
+                          pageNum === currentPage
+                            ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                            : 'bg-slate-900/80 border border-white/5 text-slate-400 hover:text-white hover:bg-slate-800'
                         }`}
                       >
-                        {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                      </div>
-                      <span className="font-normal">{option.optionText}</span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {/* Giải thích đáp án (chỉ hiển thị sau khi đã nộp bài nếu có) */}
-              {attemptResult && question.explanation && (
-                <div className="ml-8 p-3 rounded-xl bg-slate-900/80 border border-white/10 text-xs text-slate-300">
-                  <span className="font-semibold text-indigo-400 block mb-0.5">Giải thích:</span>
-                  <p>{question.explanation}</p>
+                        {pageNum}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      className="p-1.5 rounded-lg border border-white/10 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                      title="Trang tiếp"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
-            </div>
+            </>
           );
-        })}
+        })()}
 
         {/* Nút thao tác */}
         <div className="pt-2 flex flex-wrap items-center gap-3 pl-8">
