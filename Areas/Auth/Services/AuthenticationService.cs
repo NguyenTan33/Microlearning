@@ -48,13 +48,21 @@ namespace Microlearning.Areas.Auth.Services
 
             var phoneNumber = _phoneService.Normalize(request.PhoneNumber);
 
+            // Xóa tài khoản cũ chưa kích hoạt OTP nếu có (đảm bảo đăng ký lại thành công sạch sẽ)
+            var unconfirmedUser = await _userManager.Users.FirstOrDefaultAsync(x => x.PhoneNumber == phoneNumber && !x.PhoneNumberConfirmed);
+            if (unconfirmedUser != null)
+            {
+                await _userManager.DeleteAsync(unconfirmedUser);
+            }
+
             // 2. Create account entity
             var account = new Account
             {
                 FullName = request.FullName,
                 PhoneNumber = phoneNumber,
                 UserName = phoneNumber,
-                PhoneNumberConfirmed = false
+                PhoneNumberConfirmed = false,
+                LockoutEnabled = true
             };
 
             // 3. Create account using ASP.NET Core Identity
@@ -66,24 +74,33 @@ namespace Microlearning.Areas.Auth.Services
                 throw new BusinessException(errors);
             }
 
-            // 4. Assign default "User" role
-            var roleResult = await _userManager.AddToRoleAsync(account, "User");
-
-            if (!roleResult.Succeeded)
+            try
             {
-                var errors = string.Join(", ", roleResult.Errors.Select(e => e.Description));
-                throw new BusinessException(errors);
+                // 4. Assign default "Student" & "User" roles
+                var roleResult = await _userManager.AddToRolesAsync(account, new[] { "Student", "User" });
+
+                if (!roleResult.Succeeded)
+                {
+                    var errors = string.Join(", ", roleResult.Errors.Select(e => e.Description));
+                    throw new BusinessException(errors);
+                }
+
+                // 5. Generate and send Register OTP via OtpService
+                var otp = await _otpService.SendRegisterOtpAsync(phoneNumber);
+
+                // 6. Return registration response (including plain OTP for testing)
+                return new RegisterResponse
+                {
+                    Message = $"Đăng ký thành công. Mã OTP là: {otp}",
+                    UserId = account.Id
+                };
             }
-
-            // 5. Generate and send Register OTP via OtpService
-            var otp = await _otpService.SendRegisterOtpAsync(phoneNumber);
-
-            // 6. Return registration response (including plain OTP for testing)
-            return new RegisterResponse
+            catch
             {
-                Message = $"Đăng ký thành công. Mã OTP là: {otp}",
-                UserId = account.Id
-            };
+                // Rollback: Xóa account vừa tạo nếu bước gán role hoặc gửi OTP gặp sự cố
+                await _userManager.DeleteAsync(account);
+                throw;
+            }
         }
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -99,6 +116,12 @@ namespace Microlearning.Areas.Auth.Services
             if (account == null)
             {
                 throw new BusinessException("Số điện thoại hoặc mật khẩu không chính xác.");
+            }
+
+            // Kiểm tra trạng thái tạm khóa của tài khoản
+            if (await _userManager.IsLockedOutAsync(account))
+            {
+                throw new BusinessException("Tài khoản của bạn đã bị tạm khóa. Vui lòng liên hệ Quản trị viên.");
             }
 
             // 3. Check phone number confirmation status

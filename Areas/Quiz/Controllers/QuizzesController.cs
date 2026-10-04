@@ -64,10 +64,10 @@ namespace Microlearning.Areas.Quiz.Controllers
         }
 
         /// <summary>
-        /// Tạo đề thi cho bài học kèm các câu hỏi và đáp án
+        /// Tạo đề thi cho bài học kèm các câu hỏi và đáp án (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPost("lesson/{lessonId}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateQuiz(int lessonId, [FromBody] CreateQuizRequest request)
         {
             var result = await _quizService.CreateQuizAsync(lessonId, request);

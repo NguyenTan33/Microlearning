@@ -51,10 +51,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Tạo mới một bài học (Yêu cầu đăng nhập)
+        /// Tạo mới một bài học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateLesson([FromBody] CreateLessonRequest request)
         {
             var result = await _lessonService.CreateLessonAsync(request);
@@ -62,10 +62,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Cập nhật thông tin bài học (Tự động tăng Version)
+        /// Cập nhật thông tin bài học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> UpdateLesson(int id, [FromBody] UpdateLessonRequest request)
         {
             var result = await _lessonService.UpdateLessonAsync(id, request);
@@ -73,10 +73,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Thay đổi trạng thái xuất bản bài học (Ẩn / Hiện)
+        /// Thay đổi trạng thái xuất bản bài học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPatch("{id}/toggle-publish")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> TogglePublishLesson(int id)
         {
             var isPublished = await _lessonService.TogglePublishLessonAsync(id);
@@ -89,10 +89,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Xóa bài học
+        /// Xóa bài học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> DeleteLesson(int id)
         {
             await _lessonService.DeleteLessonAsync(id);

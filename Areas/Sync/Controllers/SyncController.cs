@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microlearning.Areas.Sync.DTOs;
 using Microlearning.Areas.Sync.Interfaces;
 using Microlearning.Exceptions;
@@ -89,10 +89,10 @@ namespace Microlearning.Areas.Sync.Controllers
 
 
         /// <summary>
-        /// API Gỡ bỏ nội dung và kích hoạt cơ chế Tombstone cho Offline Sync (Dành cho Admin).
+        /// API Gỡ bỏ nội dung và kích hoạt cơ chế Tombstone cho Offline Sync (Dành cho Admin & Teacher).
         /// </summary>
         [HttpPost("tombstone")]
-        [Authorize] // Bắt buộc đăng nhập
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateTombstone(
             [FromBody] TombstoneRequest request,
             [FromServices] ITombstoneService tombstoneService)

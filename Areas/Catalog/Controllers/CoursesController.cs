@@ -39,10 +39,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Tạo mới một khóa học (Yêu cầu đăng nhập)
+        /// Tạo mới một khóa học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateCourse([FromBody] CreateCourseRequest request)
         {
             var result = await _courseService.CreateCourseAsync(request);
@@ -50,10 +50,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Cập nhật thông tin khóa học (Tự động tăng Version)
+        /// Cập nhật thông tin khóa học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> UpdateCourse(int id, [FromBody] UpdateCourseRequest request)
         {
             var result = await _courseService.UpdateCourseAsync(id, request);
@@ -61,10 +61,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Thay đổi trạng thái xuất bản (Ẩn / Hiện khóa học)
+        /// Thay đổi trạng thái xuất bản (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPatch("{id}/toggle-publish")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> TogglePublish(int id)
         {
             var isPublished = await _courseService.TogglePublishAsync(id);
@@ -77,10 +77,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Xóa khóa học
+        /// Xóa khóa học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> DeleteCourse(int id)
         {
             await _courseService.DeleteCourseAsync(id);
