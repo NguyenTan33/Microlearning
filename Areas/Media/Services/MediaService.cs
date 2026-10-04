@@ -105,16 +105,22 @@ namespace Microlearning.Areas.Media.Services
         private string GetPhysicalFilePath(string fileName)
         {
             var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-            var target = Path.Combine(rootPath, "videos", fileName);
-            if (!File.Exists(target))
+            var testMp4 = Path.Combine(rootPath, "Videos", "test.mp4");
+            if (File.Exists(testMp4))
             {
-                var fallback = Path.Combine(rootPath, "videos", "test.mp4");
-                if (File.Exists(fallback))
-                {
-                    return fallback;
-                }
+                return testMp4;
             }
-            return target;
+            var testMp4Lower = Path.Combine(rootPath, "videos", "test.mp4");
+            if (File.Exists(testMp4Lower))
+            {
+                return testMp4Lower;
+            }
+            var target = Path.Combine(rootPath, "Videos", fileName);
+            if (File.Exists(target))
+            {
+                return target;
+            }
+            return Path.Combine(rootPath, "videos", fileName);
         }
 
         private static async Task<string> CalculateSha256Async(string filePath)
