@@ -103,6 +103,7 @@ builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<ISyncOperationHandler, LessonProgressSyncHandler>();
 builder.Services.AddScoped<ISyncOperationHandler, QuizAttemptSyncHandler>();
+builder.Services.AddScoped<ITombstoneService, TombstoneService>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
