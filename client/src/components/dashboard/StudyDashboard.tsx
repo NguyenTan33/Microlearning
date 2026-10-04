@@ -12,6 +12,9 @@ import {
   HelpCircle,
   Clock,
   Compass,
+  FolderKanban,
+  Users,
+  Shield,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
 import { VideoLessonPlayer } from '../player/VideoLessonPlayer';
@@ -22,8 +25,11 @@ import { SyncCenterModal } from '../sync/SyncCenterModal';
 import { CourseCatalogView } from '../catalog/CourseCatalogView';
 import { OfflineLibraryView } from '../offline/OfflineLibraryView';
 import { LessonSidebar } from './LessonSidebar';
+import { CourseManagementModal } from '../management/CourseManagementModal';
+import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { registerCurrentDevice } from '../../services/deviceService';
+import { getCurrentUser } from '../../utils/tokenHelper';
 import {
   getOutboxCount,
   getAllOfflineVideos,
@@ -39,6 +45,9 @@ interface StudyDashboardProps {
 
 export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const { isOnline, isServerHealthy } = useNetworkStatus();
+  const [currentUser] = useState(() => getCurrentUser());
+  const [isCourseMgmtOpen, setIsCourseMgmtOpen] = useState<boolean>(false);
+  const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'OFFLINE_LIBRARY'>('WORKSPACE');
   const [outboxCount, setOutboxCount] = useState<number>(0);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
@@ -251,6 +260,47 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
           {/* Cụm công cụ trạng thái & Đồng bộ */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Vai trò người dùng */}
+            {currentUser && (
+              <div
+                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold border ${
+                  currentUser.isAdmin
+                    ? 'bg-purple-950/70 border-purple-500/40 text-purple-300'
+                    : currentUser.isTeacher
+                    ? 'bg-blue-950/70 border-blue-500/40 text-blue-300'
+                    : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                }`}
+                title={`Tài khoản: ${currentUser.displayName}`}
+              >
+                <Shield className="w-3 h-3" />
+                <span>{currentUser.isAdmin ? 'Admin' : currentUser.isTeacher ? 'Giáo viên' : 'Học viên'}</span>
+              </div>
+            )}
+
+            {/* Nút Studio Quản lý khóa học & bài giảng (Admin & Giáo viên) */}
+            {(currentUser?.isAdmin || currentUser?.isTeacher) && (
+              <button
+                onClick={() => setIsCourseMgmtOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white transition-all cursor-pointer shadow-sm"
+                title="Mở Studio Quản Lý Khóa Học & Bài Giảng"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Studio</span>
+              </button>
+            )}
+
+            {/* Nút Quản trị tài khoản người dùng (Chỉ Admin) */}
+            {currentUser?.isAdmin && (
+              <button
+                onClick={() => setIsAdminUsersOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-xs font-semibold text-purple-300 hover:text-white transition-all cursor-pointer shadow-sm"
+                title="Quản Lý Tài Khoản Người Dùng"
+              >
+                <Users className="w-3.5 h-3.5 text-purple-400" />
+                <span className="hidden sm:inline">Tài khoản</span>
+              </button>
+            )}
+
             {/* Badge Mạng */}
             <div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md transition-colors ${
@@ -395,6 +445,25 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         isOnline={isOnline && isServerHealthy}
         onSyncCompleted={refreshStorageAndOutbox}
       />
+
+      {/* Modal Studio Quản lý khóa học & bài giảng (Admin & Giáo viên) */}
+      {(currentUser?.isAdmin || currentUser?.isTeacher) && (
+        <CourseManagementModal
+          isOpen={isCourseMgmtOpen}
+          onClose={() => setIsCourseMgmtOpen(false)}
+          onDataChanged={() => {
+            loadInitialCourse(currentCourse?.id);
+          }}
+        />
+      )}
+
+      {/* Modal Quản trị người dùng & phân quyền (Chỉ Admin) */}
+      {currentUser?.isAdmin && (
+        <AdminUserManagementModal
+          isOpen={isAdminUsersOpen}
+          onClose={() => setIsAdminUsersOpen(false)}
+        />
+      )}
     </div>
   );
 };

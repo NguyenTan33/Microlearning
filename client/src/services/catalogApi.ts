@@ -184,4 +184,169 @@ export const catalogApi = {
       };
     }
   },
+
+  /**
+   * Tạo khóa học mới (Teacher & Admin)
+   */
+  async createCourse(request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+    const res = await fetch('/api/courses', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Course>(res);
+  },
+
+  /**
+   * Cập nhật thông tin khóa học (Teacher & Admin)
+   */
+  async updateCourse(id: number, request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+    const res = await fetch(`/api/courses/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Course>(res);
+  },
+
+  /**
+   * Bật/Tắt trạng thái xuất bản khóa học (Teacher & Admin)
+   */
+  async togglePublishCourse(id: number): Promise<{ isPublished: boolean; message: string }> {
+    const res = await fetch(`/api/courses/${id}/toggle-publish`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<{ isPublished: boolean; message: string }>(res);
+  },
+
+  /**
+   * Xóa khóa học (Teacher & Admin)
+   */
+  async deleteCourse(id: number): Promise<{ message: string }> {
+    const res = await fetch(`/api/courses/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<{ message: string }>(res);
+  },
+
+  /**
+   * Tạo môn học mới (Teacher & Admin)
+   */
+  async createSubject(request: { courseId: number; title: string; description: string; sortOrder: number }): Promise<Subject> {
+    const res = await fetch('/api/subjects', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Subject>(res);
+  },
+
+  /**
+   * Cập nhật môn học (Teacher & Admin)
+   */
+  async updateSubject(id: number, request: { title: string; description: string; sortOrder: number }): Promise<Subject> {
+    const res = await fetch(`/api/subjects/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Subject>(res);
+  },
+
+  /**
+   * Xóa môn học (Teacher & Admin)
+   */
+  async deleteSubject(id: number): Promise<{ message: string }> {
+    const res = await fetch(`/api/subjects/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<{ message: string }>(res);
+  },
+
+  /**
+   * Tạo bài học mới (Teacher & Admin)
+   */
+  async createLesson(request: {
+    subjectId: number;
+    title: string;
+    description: string;
+    durationSeconds: number;
+    sortOrder: number;
+  }): Promise<Lesson> {
+    const res = await fetch('/api/lessons', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Lesson>(res);
+  },
+
+  /**
+   * Cập nhật bài học (Teacher & Admin)
+   */
+  async updateLesson(id: number, request: {
+    title: string;
+    description: string;
+    durationSeconds: number;
+    sortOrder: number;
+  }): Promise<Lesson> {
+    const res = await fetch(`/api/lessons/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<Lesson>(res);
+  },
+
+  /**
+   * Bật/Tắt xuất bản bài học (Teacher & Admin)
+   */
+  async togglePublishLesson(id: number): Promise<{ isPublished: boolean; message: string }> {
+    const res = await fetch(`/api/lessons/${id}/toggle-publish`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<{ isPublished: boolean; message: string }>(res);
+  },
+
+  /**
+   * Xóa bài học (Teacher & Admin)
+   */
+  async deleteLesson(id: number): Promise<{ message: string }> {
+    const res = await fetch(`/api/lessons/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<{ message: string }>(res);
+  },
+
+  /**
+   * Tạo đề thi trắc nghiệm cho bài học (Teacher & Admin)
+   */
+  async createQuiz(lessonId: number, request: {
+    title: string;
+    passScore: number;
+    questions: Array<{
+      content: string;
+      explanation?: string;
+      points: number;
+      sortOrder: number;
+      questionType: number;
+      options: Array<{
+        optionText: string;
+        isCorrect: boolean;
+        sortOrder: number;
+      }>;
+    }>;
+  }): Promise<{ id: number; title: string }> {
+    const res = await fetch(`/api/quizzes/lesson/${lessonId}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<{ id: number; title: string }>(res);
+  },
 };
