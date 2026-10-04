@@ -1,10 +1,12 @@
-﻿using Microlearning.DTOs;
+using Microlearning.DTOs;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microlearning.Service.Interfaces;
+
 namespace Microlearning.Service.Implement
 {
-    public class SubjectiveService
+    public class SubjectiveService : ISubjectService
     {
         public readonly ApplicationDbContext dbContext;
         public SubjectiveService(ApplicationDbContext dbContext)

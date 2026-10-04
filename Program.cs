@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using Microlearning.Service.Interfaces;
+using Microlearning.Service.Implement;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -91,6 +94,14 @@ builder.Services.AddScoped<IPhoneService, PhoneService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
 
+// Đăng ký các Service cốt lõi (Tuần 1)
+builder.Services.AddScoped<ICourseService, CourseService>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<ISubjectService, SubjectiveService>();
+builder.Services.AddScoped<ILessonService, LessonService>();
+builder.Services.AddScoped<IProgressService, ProgressService>();
+builder.Services.AddScoped<IQuizService, QuizService>();
+
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
 
@@ -107,7 +118,40 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Microlearning API",
+        Version = "v1",
+        Description = "Microlearning Video App - Backend API & Offline Engine"
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Nhập Token theo cú pháp: Bearer {token}"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 var app = builder.Build();
 

@@ -1,13 +1,15 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microlearning.Model;          // 👈 1. Thêm using này
 using Microlearning.Model.Entities;
 using Microlearning.DTOs;
 using Microsoft.Win32;
 using Microsoft.Identity.Client;
 
+using Microlearning.Service.Interfaces;
+
 namespace Microlearning.Service.Implement
 {
-    public class DeviceService
+    public class DeviceService : IDeviceService
     { 
         private readonly ApplicationDbContext dbContext;
         public DeviceService(ApplicationDbContext dbContext) { this.dbContext = dbContext ; }

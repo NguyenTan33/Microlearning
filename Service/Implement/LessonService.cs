@@ -1,11 +1,13 @@
-﻿using Microlearning.DTOs;
+using Microlearning.DTOs;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microsoft.EntityFrameworkCore;
 
+using Microlearning.Service.Interfaces;
+
 namespace Microlearning.Service.Implement
 {
-    public class LessonService
+    public class LessonService : ILessonService
     {
         public readonly ApplicationDbContext dbContext;
         public LessonService(ApplicationDbContext dbContext)

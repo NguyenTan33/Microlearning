@@ -101,6 +101,54 @@ namespace Microlearning.DTOs
         string VoiceName = "vi-VN-HoaiMyNeural",
         string Language = "vi-VN"
     );
-
+    public record CreateQuizDTO(
+        int LessonId,
+        string Title,
+        int PassScore = 80,
+        int Version = 1
+    );
+    // ================= DTO NỘP BÀI THI =================
+    public record SubmitAnswerItemDTO(
+        int QuestionId,
+        List<int> SelectedOptionIds // Danh sách các ID đáp án đã tích
+    );
+    public record SubmitQuizAttemptDTO(
+        Guid ClientAttemptId,             // Mã GUID do điện thoại tự sinh (chống nộp trùng)
+        int QuizId,                       // Thuộc đề thi nào
+        DateTime StartedAt,               // Bắt đầu làm bài lúc mấy giờ
+        List<SubmitAnswerItemDTO> Answers // Danh sách các câu học viên đã trả lời
+    );
+    public record QuizAttemptResultDTO(
+        int AttemptId,
+        Guid ClientAttemptId,
+        int QuizId,
+        decimal Score,
+        bool IsPassed,
+        bool IsDuplicate, // Báo cho client biết đây là bài nộp mới hay kết quả cũ đã có
+        DateTime SubmittedAt
+    );
+    // ================= DTO LẤY ĐỀ THI (ẨN IsCorrect ĐỂ BẢO MẬT) =================
+    public record QuizOptionResponseDTO(
+        int Id,
+        string OptionText,
+        int SortOrder
+    );
+    public record QuestionResponseDTO(
+        int Id,
+        string Content,
+        int Points,
+        int SortOrder,
+        QuestionType QuestionType,
+        List<QuizOptionResponseDTO> Options
+    );
+    public record QuizDetailDTO(
+        int Id,
+        int LessonId,
+        string Title,
+        int PassScore,
+        int Version,
+        List<QuestionResponseDTO> Questions
+    );
+    
 
 }
