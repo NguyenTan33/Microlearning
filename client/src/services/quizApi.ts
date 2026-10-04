@@ -4,7 +4,7 @@ import type {
   QuizAttemptResult,
   QuizHistoryItem,
 } from '../types/catalog.types';
-import { SAMPLE_QUIZZES } from './sampleCatalogData';
+import { SAMPLE_QUIZZES, getSampleQuizByLesson } from './sampleCatalogData';
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('accessToken');
@@ -36,15 +36,15 @@ export const quizApi = {
         headers: getAuthHeaders(),
       });
       if (res.status === 404) {
-        return SAMPLE_QUIZZES[lessonId] || null;
+        return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
       }
       const data = await handleResponse<QuizDetail>(res);
       if (data && data.questions && data.questions.length > 0) {
         return data;
       }
-      return SAMPLE_QUIZZES[lessonId] || null;
+      return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
     } catch {
-      return SAMPLE_QUIZZES[lessonId] || null;
+      return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
     }
   },
 
