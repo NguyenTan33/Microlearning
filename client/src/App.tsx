@@ -1,10 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ModernAnimatedBackground } from './components/background/ModernAnimatedBackground';
 import { MicrolearningHeroShowcase } from './components/showcase/MicrolearningHeroShowcase';
 import { AuthActionCard } from './components/auth/AuthActionCard';
+import { StudyDashboard } from './components/dashboard/StudyDashboard';
 import { GraduationCap } from 'lucide-react';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('accessToken'));
+  });
+
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    setIsAuthenticated(false);
+  };
+
+  // 1. Nếu đã đăng nhập: Hiển thị ngay màn hình học tập và đồng bộ Offline-First (StudyDashboard)
+  if (isAuthenticated) {
+    return <StudyDashboard onLogout={handleLogout} />;
+  }
+
+  // 2. Nếu chưa đăng nhập: Hiển thị trang giới thiệu và khung Đăng nhập / Đăng ký
   return (
     <div className="relative min-h-screen w-full bg-[#070B17] text-slate-100 flex flex-col justify-center selection:bg-indigo-500 selection:text-white">
       {/* Dynamic Academic Night Background */}
