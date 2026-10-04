@@ -2,6 +2,7 @@
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Infrastructure.Factory;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Microlearning.Areas.Media.Controllers
 {
@@ -74,6 +75,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Kích hoạt tổng hợp giọng đọc AI cho một kịch bản NarrationScript đã có trong CSDL.
         /// </summary>
         [HttpPost("tts/narration/{scriptId}")]
+        [Authorize]
         public async Task<IActionResult> SynthesizeNarrationScript(
             int scriptId,
             CancellationToken cancellationToken)
@@ -95,6 +97,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Xếp hàng một tác vụ xử lý media chạy ngầm (HTTP 202 Accepted).
         /// </summary>
         [HttpPost("jobs/enqueue")]
+        [Authorize]
         public async Task<IActionResult> EnqueueJob(
             [FromBody] EnqueueMediaJobRequest request,
             CancellationToken cancellationToken)

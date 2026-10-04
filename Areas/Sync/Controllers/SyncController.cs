@@ -5,11 +5,13 @@ using Microlearning.Exceptions;
 using Microlearning.Model.Entities.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Microlearning.Areas.Sync.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [EnableRateLimiting("SyncPolicy")]
     public class SyncController : ControllerBase
     {
         private readonly IContentChangeTracker _changeTracker;

@@ -1,5 +1,18 @@
-﻿using Microlearning.Areas.Auth.Interfaces;
+using Microlearning.Areas.Auth.Interfaces;
 using Microlearning.Areas.Auth.Services;
+using Microlearning.Areas.Catalog.Interfaces;
+using Microlearning.Areas.Catalog.Seeders;
+using Microlearning.Areas.Catalog.Services;
+using Microlearning.Areas.Device.Interfaces;
+using Microlearning.Areas.Device.Services;
+using Microlearning.Areas.Enrollment.Interfaces;
+using Microlearning.Areas.Enrollment.Services;
+using Microlearning.Areas.Media.Interfaces;
+using Microlearning.Areas.Media.Services;
+using Microlearning.Areas.Progress.Interfaces;
+using Microlearning.Areas.Progress.Services;
+using Microlearning.Areas.Quiz.Interfaces;
+using Microlearning.Areas.Quiz.Services;
 using Microlearning.Areas.Sync.Interfaces;
 using Microlearning.Areas.Sync.Services;
 using Microlearning.Infrastructure.Factory;
@@ -13,10 +26,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using Microlearning.Areas.Device.Interfaces;
-using Microlearning.Areas.Device.Services;
-using Microlearning.Areas.Media.Interfaces;
-using Microlearning.Areas.Media.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -84,10 +93,19 @@ builder.Services.AddRateLimiter(options =>
         opt.Window = TimeSpan.FromMinutes(1);
         opt.QueueLimit = 0;
     });
+
+    options.AddFixedWindowLimiter("SyncPolicy", opt =>
+    {
+        opt.PermitLimit = 60;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 5;
+    });
 });
 
 // 5. Dependency Injections
 builder.Services.AddHttpClient();
+
+// Auth Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
@@ -97,6 +115,22 @@ builder.Services.AddScoped<IFacebookAuthService, FacebookAuthService>();
 builder.Services.AddScoped<IPhoneService, PhoneService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
+
+// Catalog Services (Thắng)
+builder.Services.AddScoped<ICourseService, CourseService>();
+builder.Services.AddScoped<ISubjectService, SubjectService>();
+builder.Services.AddScoped<ILessonService, LessonService>();
+
+// Quiz Services (Thắng)
+builder.Services.AddScoped<IQuizService, QuizService>();
+
+// Enrollment Services (Thắng)
+builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
+
+// Progress Services Online (Thắng)
+builder.Services.AddScoped<IProgressService, ProgressService>();
+
+// Sync, Device & Media Services (Tân)
 builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
@@ -184,5 +218,15 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
+try
+{
+    await CatalogDbSeeder.SeedAsync(app.Services);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Không thể tự động nạp dữ liệu mẫu khi khởi động: {Message}", ex.Message);
+}
 
 app.Run();
