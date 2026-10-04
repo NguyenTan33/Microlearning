@@ -8,12 +8,12 @@ using Microlearning.Infrastructure.Factory;
 
 namespace Microlearning.Areas.Device.Services
 {
-    public class DeviceServices : IDeviceService
+    public class DeviceService : IDeviceService
     {
         private readonly ApplicationDbContext _dbContext;
         private readonly IValidationFactory _validationFactory;
 
-        public DeviceServices(ApplicationDbContext dbContext, IValidationFactory validationFactory)
+        public DeviceService(ApplicationDbContext dbContext, IValidationFactory validationFactory)
         {
             _dbContext = dbContext;
             _validationFactory = validationFactory;
