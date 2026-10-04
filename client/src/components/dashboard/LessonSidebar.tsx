@@ -5,16 +5,14 @@ import {
   PlayCircle,
   CheckCircle,
   HelpCircle,
-  HardDrive,
   Clock,
-  Layers,
+  Award,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
 
 interface LessonSidebarProps {
   course: CourseDetail;
   activeLessonId: number;
-  downloadedMediaIds: number[];
   completedLessonIds: number[];
   onSelectLesson: (lesson: Lesson) => void;
   onBackToCatalog: () => void;
@@ -23,11 +21,20 @@ interface LessonSidebarProps {
 export const LessonSidebar: React.FC<LessonSidebarProps> = ({
   course,
   activeLessonId,
-  downloadedMediaIds,
   completedLessonIds,
   onSelectLesson,
   onBackToCatalog,
 }) => {
+  // Tính tổng số bài học và số bài đã hoàn thành
+  const allLessons: Lesson[] = [];
+  course.subjects?.forEach((s) => {
+    s.lessons?.forEach((l) => allLessons.push(l));
+  });
+
+  const totalLessons = allLessons.length;
+  const completedCount = allLessons.filter((l) => completedLessonIds.includes(l.id)).length;
+  const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+
   return (
     <div className="p-4 sm:p-5 rounded-2xl bg-[#090D1A] border border-white/10 space-y-4 shadow-xl">
       {/* Nút quay lại danh mục khóa học */}
@@ -36,27 +43,41 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
         className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer group"
       >
         <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-        <span>Danh mục khóa học</span>
+        <span>Tất cả khóa học</span>
       </button>
 
       {/* Thông tin khóa học hiện tại */}
-      <div className="space-y-1.5 pb-2 border-b border-white/5">
-        <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>Khóa học đang học</span>
+      <div className="space-y-2 pb-3 border-b border-white/5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-xs uppercase tracking-wider">
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Chương trình học</span>
+          </div>
+          <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+            {progressPercent}% hoàn thành
+          </span>
         </div>
-        <h2 className="text-sm sm:text-base font-extrabold text-white leading-snug">
+
+        <h2 className="text-sm sm:text-base font-extrabold text-white leading-snug line-clamp-2">
           {course.title}
         </h2>
-        {course.description && (
-          <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-            {course.description}
-          </p>
-        )}
+
+        {/* Thanh tiến độ khóa học */}
+        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-500"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+          <span>{completedCount}/{totalLessons} bài hoàn tất</span>
+          <span>{course.subjects?.length || 0} học phần</span>
+        </div>
       </div>
 
       {/* Danh sách các học phần & bài học */}
-      <div className="space-y-4 max-h-[calc(100vh-260px)] overflow-y-auto pr-1">
+      <div className="space-y-4 max-h-[calc(100vh-320px)] sm:max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
         {course.subjects && course.subjects.length > 0 ? (
           course.subjects.map((subject, sIdx) => (
             <div key={subject.id} className="space-y-2">
@@ -73,7 +94,6 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
                   subject.lessons.map((lesson) => {
                     const isActive = lesson.id === activeLessonId;
                     const isCompleted = completedLessonIds.includes(lesson.id);
-                    const isDownloaded = downloadedMediaIds.includes(lesson.id);
                     const durationMinutes = Math.ceil(lesson.durationSeconds / 60);
 
                     return (
@@ -82,8 +102,8 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
                         onClick={() => onSelectLesson(lesson)}
                         className={`p-3 rounded-xl border transition-all cursor-pointer select-none ${
                           isActive
-                            ? 'bg-indigo-950/50 border-indigo-500/50 shadow-md text-white'
-                            : 'bg-slate-900/40 border-white/5 hover:border-white/10 text-slate-300 hover:text-white'
+                            ? 'bg-indigo-950/60 border-indigo-500 shadow-lg shadow-indigo-950/50 text-white ring-1 ring-indigo-500/30'
+                            : 'bg-slate-900/40 border-white/5 hover:border-white/15 text-slate-300 hover:text-white'
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
@@ -96,7 +116,11 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
                           )}
 
                           <div className="space-y-1 flex-1 min-w-0">
-                            <span className="text-xs font-bold block truncate">
+                            <span
+                              className={`text-xs font-bold block leading-snug line-clamp-2 ${
+                                isActive ? 'text-white' : 'text-slate-300'
+                              }`}
+                            >
                               {lesson.title}
                             </span>
 
@@ -107,16 +131,9 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
                               </span>
 
                               {lesson.hasQuiz && (
-                                <span className="flex items-center gap-1 text-purple-400">
-                                  <HelpCircle className="w-3 h-3" />
+                                <span className="flex items-center gap-1 text-purple-400 font-medium">
+                                  <Award className="w-3 h-3" />
                                   <span>Trắc nghiệm</span>
-                                </span>
-                              )}
-
-                              {isDownloaded && (
-                                <span className="flex items-center gap-1 text-emerald-400">
-                                  <HardDrive className="w-3 h-3" />
-                                  <span>Đã tải</span>
                                 </span>
                               )}
                             </div>
