@@ -10,8 +10,19 @@ export default defineConfig({
   ],
   server: {
     port: 5174,
+    allowedHosts: true,
     proxy: {
       '/api': {
+        target: 'https://localhost:7184',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/Audios': {
+        target: 'https://localhost:7184',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/Videos': {
         target: 'https://localhost:7184',
         changeOrigin: true,
         secure: false,

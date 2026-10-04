@@ -31,6 +31,7 @@ import {
 } from '../../services/indexedDbService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
+import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
 
 interface StudyDashboardProps {
   onLogout: () => void;
@@ -66,92 +67,63 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const loadInitialCourse = useCallback(async (courseId?: number) => {
     setLoadingWorkspace(true);
     try {
-      if (isOnline) {
-        let targetId = courseId;
-        if (!targetId) {
+      let targetCourse: CourseDetail | null = null;
+      let targetLesson: Lesson | null = null;
+
+      // 1. Thử lấy danh sách khóa học
+      let targetId = courseId;
+      if (!targetId) {
+        try {
           const courses = await catalogApi.getAllCourses();
           if (courses.length > 0) {
             targetId = courses[0].id;
           }
-        }
-
-        if (targetId) {
-          const detail = await catalogApi.getCourseById(targetId);
-          setCurrentCourse(detail);
-
-          // Tìm bài học đầu tiên có trong khóa học
-          let firstLesson: Lesson | null = null;
-          if (detail.subjects && detail.subjects.length > 0) {
-            for (const subj of detail.subjects) {
-              if (subj.lessons && subj.lessons.length > 0) {
-                firstLesson = subj.lessons[0];
-                break;
-              }
-            }
-          }
-          setActiveLesson(firstLesson);
-
-          // Kiểm tra tiến độ các bài đã hoàn thành
-          if (firstLesson) {
-            progressApi.getLessonProgress(firstLesson.id).then((p) => {
-              if (p && p.isCompleted) {
-                setCompletedLessonIds((prev) => Array.from(new Set([...prev, firstLesson!.id])));
-              }
-            }).catch(() => {});
-          }
-        }
-      } else {
-        // Chế độ Ngoại tuyến: Kiểm tra xem có bài học nào được lưu trong IndexedDB không
-        const videos = await getAllOfflineVideos();
-        if (videos.length > 0) {
-          const firstMediaId = videos[0].mediaId;
-          const offlinePkg = (await getOfflineLessonPackage(firstMediaId)) as {
-            lessonId?: number;
-            title?: string;
-            description?: string;
-            durationSeconds?: number;
-          } | null;
-
-          const fallbackLesson: Lesson = {
-            id: offlinePkg?.lessonId || firstMediaId,
-            subjectId: 1,
-            title: offlinePkg?.title || videos[0].fileName,
-            description: offlinePkg?.description || 'Bài học lưu trữ ngoại tuyến.',
-            durationSeconds: offlinePkg?.durationSeconds || 120,
-            sortOrder: 1,
-            version: 1,
-            isPublished: true,
-            createdAt: new Date().toISOString(),
-            hasQuiz: true,
-            mediaAssetCount: 1,
-          };
-
-          setCurrentCourse({
-            id: 1,
-            title: 'Khóa học Ngoại Tuyến Đã Tải Về',
-            description: 'Các bài giảng đã tải về thiết bị và sẵn sàng học tập mà không cần Internet.',
-            thumbnailUrl: '',
-            version: 1,
-            isPublished: true,
-            createdAt: new Date().toISOString(),
-            totalSubjects: 1,
-            subjects: [
-              {
-                id: 1,
-                courseId: 1,
-                title: 'Học phần Ngoại tuyến',
-                sortOrder: 1,
-                createdAt: new Date().toISOString(),
-                totalLessons: 1,
-                lessons: [fallbackLesson],
-              },
-            ],
-          });
-          setActiveLesson(fallbackLesson);
+        } catch {
+          // ignore
         }
       }
+
+      if (targetId) {
+        try {
+          targetCourse = await catalogApi.getCourseById(targetId);
+        } catch {
+          targetCourse = null;
+        }
+      }
+
+      // 2. Nếu targetCourse chưa có hoặc không có học phần, dùng ngay SAMPLE_COURSES (Excel)
+      if (!targetCourse || !targetCourse.subjects || targetCourse.subjects.length === 0) {
+        targetCourse = SAMPLE_COURSES[0];
+      }
+
+      // 3. Tìm bài học đầu tiên trong targetCourse
+      for (const subj of targetCourse.subjects) {
+        if (subj.lessons && subj.lessons.length > 0) {
+          targetLesson = subj.lessons[0];
+          break;
+        }
+      }
+
+      // 4. Nếu targetLesson vẫn null, gán bài học đầu tiên của SAMPLE_COURSES
+      if (!targetLesson) {
+        targetCourse = SAMPLE_COURSES[0];
+        targetLesson = SAMPLE_COURSES[0].subjects[0].lessons![0];
+      }
+
+      setCurrentCourse(targetCourse);
+      setActiveLesson(targetLesson);
+
+      // Kiểm tra tiến độ các bài đã hoàn thành
+      if (targetLesson && isOnline) {
+        progressApi.getLessonProgress(targetLesson.id).then((p) => {
+          if (p && p.isCompleted) {
+            setCompletedLessonIds((prev) => Array.from(new Set([...prev, targetLesson!.id])));
+          }
+        }).catch(() => {});
+      }
     } catch {
-      // ignore
+      setCurrentCourse(SAMPLE_COURSES[0]);
+      setActiveLesson(SAMPLE_COURSES[0].subjects[0].lessons![0]);
     } finally {
       setLoadingWorkspace(false);
     }
@@ -347,94 +319,73 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         )}
 
         {/* VIEW 3: PHÒNG HỌC BÀI GIẢNG HIỆN TẠI (WORKSPACE) */}
-        {currentView === 'WORKSPACE' && (
-          <>
-            {loadingWorkspace ? (
-              <div className="py-20 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
-                <span>Đang tải chương trình học...</span>
-              </div>
-            ) : !activeLesson ? (
-              <div className="py-16 text-center space-y-3">
-                <p className="text-slate-400 text-xs">Chưa có bài học nào được chọn.</p>
-                <button
-                  onClick={() => setCurrentView('CATALOG')}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold"
-                >
-                  Khám phá khóa học ngay
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Cột trái: Cây cấu trúc học phần và bài học */}
-                <aside className="lg:col-span-4">
-                  {currentCourse ? (
-                    <LessonSidebar
-                      course={currentCourse}
-                      activeLessonId={activeLesson.id}
-                      downloadedMediaIds={downloadedMediaIds}
-                      completedLessonIds={completedLessonIds}
-                      onSelectLesson={handleSelectLesson}
-                      onBackToCatalog={() => setCurrentView('CATALOG')}
-                    />
-                  ) : (
-                    <div className="p-4 rounded-xl bg-slate-900 border border-white/5 text-xs text-slate-400">
-                      Không có thông tin khóa học.
-                    </div>
-                  )}
-                </aside>
+        {currentView === 'WORKSPACE' && (() => {
+          const effectiveLesson = activeLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
+          const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
 
-                {/* Cột phải: Video Player + Tải ngoại tuyến + Trợ lý giọng đọc AI + Trắc nghiệm */}
-                <section className="lg:col-span-8 space-y-6">
-                  {/* 1. Trình phát Video thông minh */}
-                  <div className="space-y-3">
-                    <VideoLessonPlayer
-                      mediaId={activeLesson.id}
-                      lessonId={activeLesson.id}
-                      lessonTitle={activeLesson.title}
-                      isOnline={isOnline && isServerHealthy}
-                      onProgressSaved={handleLessonCompleted}
-                    />
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Cột trái: Cây cấu trúc học phần và bài học */}
+              <aside className="lg:col-span-4">
+                <LessonSidebar
+                  course={effectiveCourse}
+                  activeLessonId={effectiveLesson.id}
+                  downloadedMediaIds={downloadedMediaIds}
+                  completedLessonIds={completedLessonIds}
+                  onSelectLesson={handleSelectLesson}
+                  onBackToCatalog={() => setCurrentView('CATALOG')}
+                />
+              </aside>
 
-                    {/* Action Bar dưới Player: Download & Thông tin bài */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#090D1A] border border-white/10">
-                      <div className="space-y-0.5">
-                        <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>Lưu trữ học tập ngoại tuyến</span>
-                          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        </h3>
-                        <p className="text-xs text-slate-400">
-                          Tải bài giảng về IndexedDB và đối chiếu mã SHA-256 chống hỏng tệp
-                        </p>
-                      </div>
-
-                      <DownloadManagerButton
-                        mediaId={activeLesson.id}
-                        lessonId={activeLesson.id}
-                        onDownloadStatusChanged={refreshStorageAndOutbox}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 2. Trợ lý âm thanh giọng đọc AI (Edge-TTS) */}
-                  <AudioTtsPlayer
-                    lessonTitle={activeLesson.title}
-                    lessonDescription={activeLesson.description}
+              {/* Cột phải: Video Player + Tải ngoại tuyến + Trợ lý giọng đọc AI + Trắc nghiệm */}
+              <section className="lg:col-span-8 space-y-6">
+                {/* 1. Trình phát Video thông minh */}
+                <div className="space-y-3">
+                  <VideoLessonPlayer
+                    mediaId={effectiveLesson.id}
+                    lessonId={effectiveLesson.id}
+                    lessonTitle={effectiveLesson.title}
                     isOnline={isOnline && isServerHealthy}
+                    onProgressSaved={handleLessonCompleted}
                   />
 
-                  {/* 3. Đề kiểm tra tương tác bài học */}
-                  {activeLesson.hasQuiz && (
-                    <InteractiveQuizCard
-                      lessonId={activeLesson.id}
-                      isOnline={isOnline && isServerHealthy}
-                      onAttemptSubmitted={refreshStorageAndOutbox}
+                  {/* Action Bar dưới Player: Download & Thông tin bài */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#090D1A] border border-white/10">
+                    <div className="space-y-0.5">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <span>Lưu trữ học tập ngoại tuyến</span>
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Tải bài giảng về IndexedDB và đối chiếu mã SHA-256 chống hỏng tệp
+                      </p>
+                    </div>
+
+                    <DownloadManagerButton
+                      mediaId={effectiveLesson.id}
+                      lessonId={effectiveLesson.id}
+                      onDownloadStatusChanged={refreshStorageAndOutbox}
                     />
-                  )}
-                </section>
-              </div>
-            )}
-          </>
-        )}
+                  </div>
+                </div>
+
+                {/* 2. Trợ lý âm thanh giọng đọc AI (Edge-TTS) */}
+                <AudioTtsPlayer
+                  lessonTitle={effectiveLesson.title}
+                  lessonDescription={effectiveLesson.description}
+                  isOnline={isOnline && isServerHealthy}
+                />
+
+                {/* 3. Đề kiểm tra tương tác bài học */}
+                <InteractiveQuizCard
+                  lessonId={effectiveLesson.id}
+                  isOnline={isOnline && isServerHealthy}
+                  onAttemptSubmitted={refreshStorageAndOutbox}
+                />
+              </section>
+            </div>
+          );
+        })()}
       </main>
 
       {/* Modal Trung Tâm Đồng Bộ Sync Engine */}
