@@ -47,6 +47,7 @@ namespace Microlearning.Areas.Auth.Services
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+                claims.Add(new Claim("role", role));
             }
 
             // 3. Add account ID claim

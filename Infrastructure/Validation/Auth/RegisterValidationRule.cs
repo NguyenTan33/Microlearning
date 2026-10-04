@@ -37,11 +37,11 @@ namespace Microlearning.Infrastructure.Validation.Auth
             if (!_phoneService.IsValid(normalizedPhone))
                 throw new BusinessException("Số điện thoại không hợp lệ.");
 
-            var phoneExists = await _userManager.Users
+            var existingUser = await _userManager.Users
                 .AsNoTracking()
-                .AnyAsync(x => x.PhoneNumber == normalizedPhone, ct);
+                .FirstOrDefaultAsync(x => x.PhoneNumber == normalizedPhone, ct);
 
-            if (phoneExists)
+            if (existingUser != null && existingUser.PhoneNumberConfirmed)
                 throw new BusinessException("Số điện thoại đã được đăng ký.");
         }
     }
