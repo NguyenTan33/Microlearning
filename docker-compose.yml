@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # Cụm CSDL SQL Server 2022
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: microlearning-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Microlearning@2026!
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql/data
+    networks:
+      - microlearning-network
+
+  # Cụm Backend ASP.NET Core API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: microlearning-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=Microlearning;User Id=sa;Password=Microlearning@2026!;TrustServerCertificate=True;MultipleActiveResultSets=true
+    ports:
+      - "5124:8080"
+    depends_on:
+      - sqlserver
+    volumes:
+      - ./wwwroot/Videos:/app/wwwroot/Videos
+      - ./wwwroot/Audios:/app/wwwroot/Audios
+    networks:
+      - microlearning-network
+
+volumes:
+  sqlserver_data:
+
+networks:
+  microlearning-network:
+    driver: bridge
