@@ -21,6 +21,33 @@ namespace Microlearning.Areas.Catalog.DTOs
         int SortOrder,
         DateTime CreatedAt,
         DateTime? UpdatedAt,
-        int TotalLessons = 0
-    );
+        int TotalLessons = 0,
+        List<LessonResponse>? Lessons = null
+    )
+    {
+        public SubjectResponse(
+            int id,
+            int courseId,
+            string title,
+            string? description,
+            int sortOrder,
+            DateTime createdAt,
+            DateTime? updatedAt,
+            int totalLessons
+        ) : this(id, courseId, title, description, sortOrder, createdAt, updatedAt, totalLessons, null)
+        {
+        }
+
+        public SubjectResponse(
+            int id,
+            int courseId,
+            string title,
+            string? description,
+            int sortOrder,
+            DateTime createdAt,
+            DateTime? updatedAt
+        ) : this(id, courseId, title, description, sortOrder, createdAt, updatedAt, 0, null)
+        {
+        }
+    }
 }
