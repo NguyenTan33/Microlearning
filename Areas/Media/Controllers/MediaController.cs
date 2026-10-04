@@ -1,4 +1,4 @@
-﻿using Microlearning.Areas.Media.DTOs;
+using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Infrastructure.Factory;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +27,36 @@ namespace Microlearning.Areas.Media.Controllers
             _env = env;
         }
 
-        // ... [Giữ nguyên 3 endpoint StreamVideo, GetDownloadInfo, DownloadVideo cũ] ...
+        /// <summary>
+        /// API Stream Video bài giảng hỗ trợ tua video (HTTP 206 Partial Content).
+        /// </summary>
+        [HttpGet("{id}/stream")]
+        public async Task<IActionResult> StreamVideo(int id)
+        {
+            var (stream, contentType, _, _) = await _mediaService.GetVideoStreamAsync(id);
+            return File(stream, contentType, enableRangeProcessing: true);
+        }
+
+        /// <summary>
+        /// API Lấy thông tin tệp tải về và mã Checksum SHA256 phục vụ kiểm tra toàn vẹn khi tải Offline.
+        /// </summary>
+        [HttpGet("{id}/download-info")]
+        public async Task<IActionResult> GetDownloadInfo(int id)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var response = await _mediaService.GetDownloadInfoAsync(id, baseUrl);
+            return Ok(response);
+        }
+
+        /// <summary>
+        /// API Tải tệp tin video bài giảng về máy (Download file đính kèm).
+        /// </summary>
+        [HttpGet("{id}/download")]
+        public async Task<IActionResult> DownloadVideo(int id)
+        {
+            var (stream, contentType, _, fileName) = await _mediaService.GetVideoStreamAsync(id);
+            return File(stream, contentType, fileDownloadName: fileName);
+        }
 
         /// <summary>
         /// API Thử nghiệm sinh giọng đọc AI (Text-To-Speech) từ văn bản tiếng Việt.

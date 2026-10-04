@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Exceptions;
@@ -105,6 +105,21 @@ namespace Microlearning.Areas.Media.Services
         private string GetPhysicalFilePath(string fileName)
         {
             var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var testMp4 = Path.Combine(rootPath, "Videos", "test.mp4");
+            if (File.Exists(testMp4))
+            {
+                return testMp4;
+            }
+            var testMp4Lower = Path.Combine(rootPath, "videos", "test.mp4");
+            if (File.Exists(testMp4Lower))
+            {
+                return testMp4Lower;
+            }
+            var target = Path.Combine(rootPath, "Videos", fileName);
+            if (File.Exists(target))
+            {
+                return target;
+            }
             return Path.Combine(rootPath, "videos", fileName);
         }
 
