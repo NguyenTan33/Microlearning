@@ -15,6 +15,8 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using Microlearning.Areas.Device.Interfaces;
 using Microlearning.Areas.Device.Services;
+using Microlearning.Areas.Media.Interfaces;
+using Microlearning.Areas.Media.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -97,6 +99,7 @@ builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
 builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<IMediaService, MediaService>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();

@@ -32,10 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Areas\Media\Controllers\" />
-    <Folder Include="Areas\Media\Data\" />
-    <Folder Include="Areas\Media\Models\" />
-    <Folder Include="Areas\Media\Views\" />
+    <Folder Include="Areas\Media\DTOs\" />
   </ItemGroup>
 
 </Project>
