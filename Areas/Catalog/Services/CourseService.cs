@@ -44,6 +44,7 @@ namespace Microlearning.Areas.Catalog.Services
                 .AsNoTracking()
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
                     .ThenInclude(s => s.Lessons.Where(l => l.IsPublished).OrderBy(l => l.SortOrder))
+                        .ThenInclude(l => l.Quiz)
                 .FirstOrDefaultAsync(c => c.Id == courseId);
 
             if (course == null)
@@ -59,7 +60,21 @@ namespace Microlearning.Areas.Catalog.Services
                 s.SortOrder,
                 s.CreatedAt,
                 s.UpdatedAt,
-                s.Lessons.Count
+                s.Lessons.Count,
+                s.Lessons.Select(l => new LessonResponse(
+                    l.Id,
+                    l.SubjectId,
+                    l.Title,
+                    l.Description,
+                    l.DurationSeconds,
+                    l.SortOrder,
+                    l.Version,
+                    l.IsPublished,
+                    l.CreatedAt,
+                    l.UpdatedAt,
+                    l.Quiz != null,
+                    l.MediaAssets.Count
+                )).ToList()
             )).ToList();
 
             return new CourseDetailResponse(
