@@ -5,6 +5,9 @@ using Microlearning.Exceptions;
 using Microlearning.Infrastructure.Factory;
 using Microlearning.Model;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using Microlearning.Model.Entities;
+using Microlearning.Model.Entities.Enums;
 
 namespace Microlearning.Areas.Media.Services
 {
@@ -105,6 +108,20 @@ namespace Microlearning.Areas.Media.Services
         private string GetPhysicalFilePath(string fileName)
         {
             var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+
+            // 1. Kiểm tra chính xác tệp fileName trên đĩa
+            var target = Path.Combine(rootPath, "Videos", fileName);
+            if (File.Exists(target))
+            {
+                return target;
+            }
+            var targetLower = Path.Combine(rootPath, "videos", fileName);
+            if (File.Exists(targetLower))
+            {
+                return targetLower;
+            }
+
+            // 2. Dự phòng dùng video demo test.mp4 nếu tệp chưa có
             var testMp4 = Path.Combine(rootPath, "Videos", "test.mp4");
             if (File.Exists(testMp4))
             {
@@ -115,12 +132,75 @@ namespace Microlearning.Areas.Media.Services
             {
                 return testMp4Lower;
             }
-            var target = Path.Combine(rootPath, "Videos", fileName);
-            if (File.Exists(target))
+
+            return target;
+        }
+
+        public async Task<UploadMediaResponse> UploadVideoAsync(IFormFile file, int? lessonId, string baseUrl, CancellationToken cancellationToken = default)
+        {
+            if (file == null || file.Length == 0)
             {
-                return target;
+                throw new BusinessException("Vui lòng chọn tệp video hợp lệ.");
             }
-            return Path.Combine(rootPath, "videos", fileName);
+
+            var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var videosDir = Path.Combine(rootPath, "Videos");
+            if (!Directory.Exists(videosDir))
+            {
+                Directory.CreateDirectory(videosDir);
+            }
+
+            var fileExt = Path.GetExtension(file.FileName);
+            if (string.IsNullOrWhiteSpace(fileExt)) fileExt = ".mp4";
+            var uniqueFileName = $"video_{Guid.NewGuid():N}{fileExt}";
+            var physicalPath = Path.Combine(videosDir, uniqueFileName);
+
+            using (var stream = new FileStream(physicalPath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream, cancellationToken);
+            }
+
+            // Tính mã băm SHA-256
+            var checksum = await CalculateSha256Async(physicalPath);
+
+            var mediaAsset = new MediaAsset
+            {
+                LessonId = lessonId ?? 0,
+                MediaType = MediaType.Video,
+                FileName = uniqueFileName,
+                BlobKey = $"videos/{uniqueFileName}",
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType,
+                SizeBytes = file.Length,
+                Checksum = checksum,
+                Status = MediaAssetStatus.Ready,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (lessonId.HasValue && lessonId.Value > 0)
+            {
+                var lesson = await _dbContext.Lessons.FindAsync(new object[] { lessonId.Value }, cancellationToken);
+                if (lesson != null)
+                {
+                    mediaAsset.LessonId = lesson.Id;
+                }
+            }
+
+            _dbContext.MediaAssets.Add(mediaAsset);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var streamUrl = $"/api/media/{mediaAsset.Id}/stream";
+            var downloadUrl = $"{baseUrl.TrimEnd('/')}/api/media/{mediaAsset.Id}/download";
+
+            return new UploadMediaResponse(
+                mediaAsset.Id,
+                mediaAsset.LessonId,
+                mediaAsset.FileName,
+                mediaAsset.SizeBytes,
+                mediaAsset.ContentType,
+                mediaAsset.Checksum,
+                streamUrl,
+                downloadUrl
+            );
         }
 
         private static async Task<string> CalculateSha256Async(string filePath)
