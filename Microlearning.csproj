@@ -31,11 +31,4 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Areas\Device\Controllers\" />
-    <Folder Include="Areas\Device\Data\" />
-    <Folder Include="Areas\Device\Models\" />
-    <Folder Include="Areas\Device\Views\" />
-  </ItemGroup>
-
 </Project>

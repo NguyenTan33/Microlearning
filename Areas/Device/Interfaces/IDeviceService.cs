@@ -1,6 +1,9 @@
-﻿namespace Microlearning.Areas.Device.Interfaces
+﻿using Microlearning.Areas.Device.DTOs;
+
+namespace Microlearning.Areas.Device.Interfaces
 {
-    public class IDeviceService
+    public interface IDeviceService
     {
+        Task<DeviceResponse> RegisterDeviceAsync(string accountId, RegisterDeviceRequest request);
     }
 }
