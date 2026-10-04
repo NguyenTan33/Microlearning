@@ -25,13 +25,13 @@ async function safeFetch(url: string, options: RequestInit): Promise<Response> {
     return response;
   } catch (err) {
     console.error('Fetch error:', err);
-    throw new Error('Không thể kết nối đến máy chủ Backend (.NET API). Bạn hãy khởi chạy backend trong Visual Studio (F5) nhé!');
+    throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau.');
   }
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (response.status === 504 || response.status === 502) {
-    throw new Error('Máy chủ Backend (.NET API) chưa được khởi chạy hoặc cổng bị chặn.');
+    throw new Error('Máy chủ đang bảo trì hoặc phản hồi quá lâu. Vui lòng thử lại sau.');
   }
 
   const data = await response.json().catch(() => null);
