@@ -494,4 +494,7 @@ GEMINI.md
 
 # Media
 wwwroot/Videos/*.mp4
+client/public/**/*.mp4
+client/public/*.mp4
 *.mp3
+
