@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Threading.RateLimiting;
 using Microlearning.Areas.Auth.Interfaces;
 using Microlearning.Areas.Auth.Services;
@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microlearning.Middlewares;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -104,12 +106,50 @@ builder.Services.AddCors(options =>
               .AllowCredentials();
     });
 });
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Microlearning API",
+        Version = "v1",
+        Description = "Hệ thống Backend Microlearning Video App - Hỗ trợ Offline-First Sync"
+    });
 
+    // Định nghĩa chuẩn Bearer Authentication
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Nhập token JWT theo định dạng: Bearer {token} hoặc chỉ cần paste chuỗi token vào ô bên dưới."
+    });
+
+    // Yêu cầu Swagger áp dụng Bearer token cho các endpoint có [Authorize]
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Đăng ký Middleware bắt lỗi tập trung ở đầu Pipeline
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
