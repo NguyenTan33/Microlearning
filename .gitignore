@@ -483,3 +483,18 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Frontend build outputs and typescript cache
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Planning & Progress Reports (Local only)
+Plan/
+Report/
+
+# Rule
+GEMINI.md
+
+# Media
+wwwroot/Videos/*.mp4
