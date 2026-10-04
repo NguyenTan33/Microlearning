@@ -193,6 +193,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -218,6 +219,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 // Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
 try
