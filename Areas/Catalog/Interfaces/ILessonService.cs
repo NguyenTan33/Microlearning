@@ -4,7 +4,7 @@ namespace Microlearning.Areas.Catalog.Interfaces
 {
     public interface ILessonService
     {
-        Task<List<LessonResponse>> GetLessonsBySubjectIdAsync(int subjectId);
+        Task<List<LessonResponse>> GetLessonsBySubjectIdAsync(int subjectId, bool includeUnpublished = false);
         Task<LessonResponse> GetLessonByIdAsync(int lessonId);
         Task<LessonPackageResponse> GetLessonPackageAsync(int lessonId);
         Task<LessonResponse> CreateLessonAsync(CreateLessonRequest request);

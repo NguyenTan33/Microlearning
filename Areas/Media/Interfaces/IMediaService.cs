@@ -1,4 +1,4 @@
-﻿using Microlearning.Areas.Media.DTOs;
+using Microlearning.Areas.Media.DTOs;
 
 namespace Microlearning.Areas.Media.Interfaces
 {
@@ -27,5 +27,10 @@ namespace Microlearning.Areas.Media.Interfaces
         /// Lấy trạng thái hiện tại của một MediaJob để Client/Frontend theo dõi tiến độ.
         /// </summary>
         Task<MediaJobResponse> GetJobStatusAsync(int jobId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Đăng tải tệp video bài giảng mới và lưu trữ vào wwwroot/Videos
+        /// </summary>
+        Task<UploadMediaResponse> UploadVideoAsync(Microsoft.AspNetCore.Http.IFormFile file, int? lessonId, string baseUrl, CancellationToken cancellationToken = default);
     }
 }

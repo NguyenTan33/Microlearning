@@ -59,6 +59,21 @@ namespace Microlearning.Areas.Media.Controllers
         }
 
         /// <summary>
+        /// API Đăng tải tệp video bài giảng mới (MP4, WebM, MOV) và liên kết bài học
+        /// </summary>
+        [HttpPost("upload")]
+        [RequestSizeLimit(500 * 1024 * 1024)] // 500 MB
+        public async Task<IActionResult> UploadVideo(
+            [FromForm] IFormFile file,
+            [FromForm] int? lessonId,
+            CancellationToken cancellationToken)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var result = await _mediaService.UploadVideoAsync(file, lessonId, baseUrl, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// API Thử nghiệm sinh giọng đọc AI (Text-To-Speech) từ văn bản tiếng Việt.
         /// </summary>
         [HttpPost("tts/test")]
