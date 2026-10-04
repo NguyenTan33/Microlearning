@@ -5,11 +5,13 @@ using Microlearning.Exceptions;
 using Microlearning.Model.Entities.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Microlearning.Areas.Sync.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [EnableRateLimiting("SyncPolicy")]
     public class SyncController : ControllerBase
     {
         private readonly IContentChangeTracker _changeTracker;
@@ -82,6 +84,20 @@ namespace Microlearning.Areas.Sync.Controllers
             };
 
             var response = await _syncService.PullSyncChangesAsync(request);
+            return Ok(response);
+        }
+
+
+        /// <summary>
+        /// API Gỡ bỏ nội dung và kích hoạt cơ chế Tombstone cho Offline Sync (Dành cho Admin).
+        /// </summary>
+        [HttpPost("tombstone")]
+        [Authorize] // Bắt buộc đăng nhập
+        public async Task<IActionResult> CreateTombstone(
+            [FromBody] TombstoneRequest request,
+            [FromServices] ITombstoneService tombstoneService)
+        {
+            var response = await tombstoneService.CreateTombstoneAsync(request);
             return Ok(response);
         }
     }
