@@ -55,6 +55,57 @@ namespace Microlearning.Areas.Catalog.Seeders
             }
 
             await dbContext.SaveChangesAsync();
+
+            // 7. Tự động kiểm tra và bổ sung Đề thi trắc nghiệm (Quiz) cho tất cả các bài học còn thiếu
+            var lessonsWithoutQuiz = await dbContext.Lessons
+                .Include(l => l.Quiz)
+                .Where(l => l.Quiz == null)
+                .ToListAsync();
+
+            foreach (var lesson in lessonsWithoutQuiz)
+            {
+                var quiz = new Model.Entities.Quiz
+                {
+                    LessonId = lesson.Id,
+                    Title = $"Đánh giá: {lesson.Title}",
+                    PassScore = 80,
+                    Version = 1,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var q1 = new Question
+                {
+                    Content = $"Nội dung trọng tâm thực hành của bài học '{lesson.Title}' là gì?",
+                    Explanation = $"Nắm vững bản chất kỹ thuật và thao tác thực hành chuẩn xác theo bài giảng '{lesson.Title}'.",
+                    Points = 50,
+                    SortOrder = 1,
+                    QuestionType = QuestionType.SingleChoice
+                };
+                q1.QuizOptions.Add(new QuizOption { OptionText = "Thao tác đúng quy trình chuẩn hóa và kiểm tra kết quả thực tế.", IsCorrect = true, SortOrder = 1 });
+                q1.QuizOptions.Add(new QuizOption { OptionText = "Bỏ qua các bước kiểm tra dữ liệu và chạy thử nghiệm ngẫu nhiên.", IsCorrect = false, SortOrder = 2 });
+                q1.QuizOptions.Add(new QuizOption { OptionText = "Chỉ áp dụng trên môi trường lý thuyết không có kiểm tra.", IsCorrect = false, SortOrder = 3 });
+
+                var q2 = new Question
+                {
+                    Content = $"Thực hành tối ưu hóa phương pháp giải quyết trong bài học này mang lại lợi ích gì?",
+                    Explanation = "Tối ưu hóa hiệu năng, giảm thiểu lỗi sai sót và tự động hóa quy trình xử lý dữ liệu/mã nguồn.",
+                    Points = 50,
+                    SortOrder = 2,
+                    QuestionType = QuestionType.SingleChoice
+                };
+                q2.QuizOptions.Add(new QuizOption { OptionText = "Nâng cao độ chính xác, hiệu năng và chuẩn hóa quy trình chuyên nghiệp.", IsCorrect = true, SortOrder = 1 });
+                q2.QuizOptions.Add(new QuizOption { OptionText = "Không tạo ra khác biệt nào so với thao tác thủ công thông thường.", IsCorrect = false, SortOrder = 2 });
+                q2.QuizOptions.Add(new QuizOption { OptionText = "Làm chậm tiến độ công việc và tăng nguy cơ phát sinh lỗi.", IsCorrect = false, SortOrder = 3 });
+
+                quiz.Questions.Add(q1);
+                quiz.Questions.Add(q2);
+                dbContext.Quizzes.Add(quiz);
+            }
+
+            if (lessonsWithoutQuiz.Any())
+            {
+                await dbContext.SaveChangesAsync();
+            }
         }
 
         private static MediaAsset CreateStandardVideoAsset(string title)
