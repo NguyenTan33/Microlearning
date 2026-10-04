@@ -1,0 +1,118 @@
+================================================================================
+BÁO CÁO TIẾN ĐỘ THỰC HIỆN BACKEND - NHÁNH ThangBranch (CẬP NHẬT MỚI NHẤT)
+Dự án: Microlearning Video App (Kiến trúc Offline-First)
+Kỹ sư thực hiện: Thắng (Catalog, Quiz & Progress Lead)
+Người đánh giá (Mentor): Nguyễn Minh Tân & Senior Backend Mentor
+Nhánh Git kiểm tra: origin/ThangBranch (Commit mới nhất: 6a4ca84)
+Thời gian rà soát: 04/10/2026
+================================================================================
+
+I. 📊 TỔNG KẾT TỶ LỆ HOÀN THÀNH THEO KẾ HOẠCH 14 NGÀY (84 GIỜ/NGƯỜI)
+
+1. Xét riêng phần công việc của Thắng (Định mức 84 giờ công):
+   - ĐÃ HOÀN THÀNH: ~52 / 84 giờ (~61.9% - Khoảng 62%).
+   - CÒN THIẾU: ~32 / 84 giờ (~38.1% - Khoảng 38%).
+   - Nhận xét: Tiến bộ vượt bậc so với commit cũ! Thắng đã viết xong khung logic cho toàn bộ 5 module chính (Catalog, Quiz, Progress, Device, Swagger Bearer).
+
+2. Xét trên tổng thể toàn bộ Backend của cả đội (Tân + Thắng = 168 giờ công):
+   - ĐÃ HOÀN THÀNH: ~130 / 168 giờ (~77.4% - Gần 80%).
+   - CÒN THIẾU: ~38 / 168 giờ (~22.6%).
+   - Nhận xét: Toàn bộ Backend đang đi đúng tiến độ và ở vị thế rất tốt để chuẩn bị về đích và bàn giao cho đội Frontend & QA!
+
+--------------------------------------------------------------------------------
+II. ✅ NHỮNG PHẦN THẮNG ĐÃ LÀM ĐƯỢC VÀ ĐẠT CHUẨN KỸ THUẬT (~62%)
+
+1. Phân hệ Đánh giá & Quiz (QuizService.cs & QuizzesController.cs):
+   - Bảo mật đề thi: API GET /api/quizzes/lesson/{lessonId} đã map sang DTO và ẨN HOÀN TOÀN trường IsCorrect để chống lộ đề thi trắc nghiệm xuống client.
+   - Chấm điểm Idempotency: API POST /api/quizzes/attempts nhận ClientAttemptId (GUID) và kiểm tra bảng QuizAttempts. Nếu request nộp bài bị gửi trùng do mạng lag, hệ thống trả ngay kết quả cũ với cờ IsDuplicate = true, KHÔNG chấm lại hay tạo bản ghi rác.
+   - Logic chấm điểm so khớp đáp án SequenceEqual chính xác, lưu vết đầy đủ vào QuizAttempt và QuizAnswer.
+
+2. Phân hệ Tiến độ học tập (ProgressService.cs & ProgressController.cs):
+   - API POST /api/progress/events đã cài đặt chuẩn xác thuật toán Monotonic Merge Math.Max cho cả WatchedSeconds và Percent:
+     Percent_new = Math.Max(Percent_server, Percent_client)
+     giúp chống tụt lùi tiến độ khi học sinh học trên nhiều thiết bị khác nhau.
+   - Tự động đánh dấu hoàn thành bài học khi Percent >= 90%.
+   - API GET /api/progress/course/{courseId} tính tổng % hoàn thành của cả khóa học dựa trên số bài đã xong.
+
+3. Phân hệ Danh mục (CourseService.cs, LessonService.cs, SubjectiveService.cs):
+   - Đã có đầy đủ các hàm CRUD cơ bản cho Course, Subject, Lesson.
+   - Có hàm TogglePublish (ẩn/hiện bài học và khóa học) và tự động tăng Version += 1 khi cập nhật.
+
+4. Làm vượt phần phân công:
+   - Thắng đã cấu hình xong Swagger Bearer Token Authorize trong Program.cs.
+   - Thắng đã viết thêm cả DeviceService và DevicesController (POST /api/devices/register) có kiểm tra Token đăng nhập.
+
+--------------------------------------------------------------------------------
+III. ❌ CHI TIẾT NHỮNG PHẦN THẮNG CÒN THIẾU THEO KẾ HOẠCH 14 NGÀY (~38%)
+
+1. THIẾU API QUAN TRỌNG NHẤT CỦA BÀI HỌC: GET /api/lessons/{id}/package (Kế hoạch Ngày 3):
+   - Ý nghĩa: Đây là API cốt lõi phục vụ Offline-First. Khi người học bấm "Tải bài học" trên App, Client không thể gọi 3 API lẻ tẻ mà cần gọi 1 API duy nhất để kéo trọn gói:
+     + Thông tin bài học (Title, Duration, Description).
+     + Thông tin file video tải về (DownloadUrl, Checksum SHA256, SizeBytes).
+     + Bộ đề thi trắc nghiệm đi kèm bài học đó.
+   - Hiện trạng: Trong LessonService và LessonsController của Thắng HOÀN TOÀN CHƯA CÓ API NÀY.
+
+2. THIẾU API LỊCH SỬ LÀM QUIZ: GET /api/quizzes/{id}/history (Kế hoạch Ngày 7):
+   - Đã có chức năng nộp bài thi, nhưng học viên chưa có API để xem lại danh sách các lần làm bài trước đó (ngày nộp, điểm số, trạng thái Đạt/Không đạt).
+
+3. THIẾU PHÂN HỆ GHI DANH KHÓA HỌC: Enrollment API (Kế hoạch Ngày 11):
+   - Bảng Enrollment đã có sẵn trong Database nhưng chưa có Controller/Service:
+     + POST /api/courses/{id}/enroll: Học viên đăng ký tham gia khóa học.
+     + GET /api/my-courses: Lấy danh sách các khóa học tài khoản hiện tại đang theo học.
+
+4. THIẾU NẠP DỮ LIỆU MẪU (SEED DATA): CatalogDbSeeder.cs (Kế hoạch Ngày 1):
+   - Chưa có code nạp sẵn 2 khóa học mẫu hoàn chỉnh (Khóa học -> Môn học -> Bài học -> Câu hỏi Quiz) vào SQL Server để đội Frontend và QA có dữ liệu test ngay sau khi chạy app.
+
+5. THIẾU UNIT TESTS & INTEGRATION TESTS (Kế hoạch Ngày 11 & 12):
+   - Chưa có project Microlearning.UnitTests viết test tự động bằng xUnit cho thuật toán Monotonic Merge và Quiz Idempotency.
+
+6. CHƯA CÓ POSTMAN COLLECTION & TÀI LIỆU BÀN GIAO (Kế hoạch Ngày 14).
+
+--------------------------------------------------------------------------------
+IV. ⚠️ CÁC LỖI VI PHẠM NGUYÊN TẮC OOP, SOLID & QUY CHUẨN GEMINI.md CẦN SỬA
+
+1. Lỗi 1: Trả trực tiếp Entity ra ngoài Controller (Vi phạm Điều 2 & Điều 5 GEMINI.md):
+   - Trong CourseService, LessonService, SubjectiveService: Các hàm GetAllCourse(), GetCourseByID(), GetLessonsBySubjectId() đều đang trả thẳng Entity của Database (Course, Lesson, Subject).
+   - Hậu quả: Khi Controller chuyển sang JSON sẽ bị văng lỗi JSON Cycle (vòng lặp vô tận) do quan hệ Course -> Subjects -> Course. Đồng thời làm lộ cấu trúc bảng SQL.
+   - Khắc phục: Bắt buộc ánh xạ (map) sang CourseResponseDTO, LessonResponseDTO.
+
+2. Lỗi 2: Dùng throw new Exception và try-catch thủ công ở Controller (Vi phạm Điều 2 & 5 GEMINI.md):
+   - Thắng đang dùng: throw new Exception("Course not found") chung chung.
+   - Trong Controller lại bọc try { ... } catch (Exception ex) { return NotFound(...); } ở từng hàm, làm Controller bị dày code (Fat Controller).
+   - Khắc phục: Dùng throw new BusinessException("Khóa học không tồn tại"). Controller chỉ cần gọi service và trả về Ok(result), để ExceptionHandlingMiddleware tự động bắt lỗi và trả về HTTP 400 JSON thống nhất.
+
+3. Lỗi 3: Xóa cứng (Hard Delete) thay vì Soft-delete / Tombstone:
+   - Trong DeleteCourse, DeleteSubject, DeleteLesson: Đang dùng dbContext.Remove(...) xóa vĩnh viễn khỏi Database.
+   - Hậu quả: Làm gãy tính năng Đồng bộ Offline (Client offline sẽ không bao giờ biết bài học đó đã bị xóa trên server để xóa file trong máy). Nên chuyển sang đổi cờ IsPublished = false hoặc ghi log xóa vào ContentChanges.
+
+4. Lỗi 4: Trùng lặp tính năng giữa Tân và Thắng (Feature Overlap):
+   - Cả Tân (trên Offline-Frist) và Thắng (trên ThangBranch) đều viết DeviceService và DevicesController.
+   - Khi merge 2 nhánh, team NÊN ƯU TIÊN GIỮ BẢN DEVICE CỦA TÂN vì bản của Tân được đặt trong Areas/Device/ và có tích hợp đầy đủ Validation Factory trong thư mục Infrastructure/Validation/Device/.
+
+5. Lỗi 5: Gom toàn bộ DTO vào 1 file duy nhất DTOs/dto.cs:
+   - File dto.cs chứa hơn 15 record DTO các loại và có một class rỗng "public class dto {}". Cần tách ra các file riêng: CourseDTOs.cs, LessonDTOs.cs, QuizDTOs.cs, ProgressDTOs.cs.
+
+6. Lỗi 6: Đặt tên sai chính tả C#:
+   - Đặt tên file là SubjectiveService.cs (nghĩa là "chủ quan") thay vì SubjectService.cs.
+
+--------------------------------------------------------------------------------
+V. 💡 HÀNH ĐỘNG CỤ THỂ ĐỂ THẮNG SỬA NHANH (KHOẢNG 1 BUỔI):
+
+1. Sửa các hàm trong CourseService, LessonService, SubjectiveService: Thay List<Course> bằng List<CourseResponseDTO>.
+2. Thay toàn bộ: throw new Exception(...) bằng: throw new BusinessException(...).
+3. Bỏ toàn bộ khối try-catch trong các Controller (CoursesController, LessonsController...), chỉ để code gọi service sạch sẽ.
+4. Bổ sung hàm GetLessonPackage(int lessonId) trong LessonService và API GET /api/lessons/{id}/package trong LessonsController.
+5. Đổi tên SubjectiveService.cs thành SubjectService.cs.
+
+--------------------------------------------------------------------------------
+VI. 🚀 LỘ TRÌNH ĐỒNG BỘ 2 NHÁNH (TÂN & THẮNG) ĐỂ VỀ ĐÍCH:
+
+1. Bước 1: Thắng chỉnh sửa nhanh các lỗi kiến trúc nêu trên (khoảng 3-4 tiếng).
+2. Bước 2: Tạo Pull Request merge nhánh ThangBranch vào Offline-Frist (hoặc main):
+   - Chuyển code của Thắng vào cấu trúc thư mục Areas/Catalog và Areas/Quiz để đồng bộ toàn dự án.
+   - Giữ nguyên bản DeviceService của Tân (đã có Validation).
+   - Nối ProgressService và QuizService của Thắng vào cỗ máy SyncController của Tân.
+3. Bước 3: Hoàn thiện 20% còn lại:
+   - Thắng viết thêm EnrollmentService (/enroll, /my-courses) và CatalogDbSeeder.cs.
+   - Tân và Thắng cùng viết Unit Test và xuất Postman Collection bàn giao cho đội Frontend & QA!
+================================================================================

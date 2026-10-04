@@ -2,7 +2,19 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Microlearning.Areas.Auth.Interfaces;
 using Microlearning.Areas.Auth.Services;
+using Microlearning.Areas.Catalog.Interfaces;
+using Microlearning.Areas.Catalog.Seeders;
+using Microlearning.Areas.Catalog.Services;
+using Microlearning.Areas.Device.Interfaces;
+using Microlearning.Areas.Device.Services;
+using Microlearning.Areas.Enrollment.Interfaces;
+using Microlearning.Areas.Enrollment.Services;
+using Microlearning.Areas.Progress.Interfaces;
+using Microlearning.Areas.Progress.Services;
+using Microlearning.Areas.Quiz.Interfaces;
+using Microlearning.Areas.Quiz.Services;
 using Microlearning.Infrastructure.Factory;
+using Microlearning.Middlewares;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,8 +23,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Microlearning.Service.Interfaces;
-using Microlearning.Service.Implement;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -84,6 +94,8 @@ builder.Services.AddRateLimiter(options =>
 
 // 5. Dependency Injections
 builder.Services.AddHttpClient();
+
+// Auth Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
@@ -94,13 +106,22 @@ builder.Services.AddScoped<IPhoneService, PhoneService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
 
-// Đăng ký các Service cốt lõi (Tuần 1)
+// Catalog Services
 builder.Services.AddScoped<ICourseService, CourseService>();
-builder.Services.AddScoped<IDeviceService, DeviceService>();
-builder.Services.AddScoped<ISubjectService, SubjectiveService>();
+builder.Services.AddScoped<ISubjectService, SubjectService>();
 builder.Services.AddScoped<ILessonService, LessonService>();
-builder.Services.AddScoped<IProgressService, ProgressService>();
+
+// Quiz Services
 builder.Services.AddScoped<IQuizService, QuizService>();
+
+// Progress Services
+builder.Services.AddScoped<IProgressService, ProgressService>();
+
+// Enrollment Services
+builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
+
+// Device Services
+builder.Services.AddScoped<IDeviceService, DeviceService>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
@@ -124,7 +145,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Microlearning API",
         Version = "v1",
-        Description = "Microlearning Video App - Backend API & Offline Engine"
+        Description = "Microlearning Video App - Backend API & Offline Engine (ThangBranch Refactored Clean Architecture)"
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -155,6 +176,9 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Đăng ký Middleware bắt lỗi tập trung (bắt BusinessException trả về HTTP 400 Bad Request JSON)
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -172,5 +196,15 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
+try
+{
+    await CatalogDbSeeder.SeedAsync(app.Services);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Không thể tự động nạp dữ liệu mẫu khi khởi động: {Message}", ex.Message);
+}
 
 app.Run();

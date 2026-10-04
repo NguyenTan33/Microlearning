@@ -1,0 +1,335 @@
+================================================================================
+           TAI LIEU BAN GIAO API BACKEND MICROLEARNING (OFFLINE-FIRST)
+================================================================================
+Phien ban: v2.0 (Cap nhat hoan tat 13 Ngay)
+Ngay ban giao: 04/10/2026
+Ky su phu trach Backend: Nguyen Minh Tan (Backend Lead & Sync Architect)
+Nhanh Git: Offline-Frist
+Trang thai Build: Succeeded - 0 Warning, 0 Error
+
+================================================================================
+1. QUY CHUAN KET NOI CHUNG (GENERAL SPECIFICATION)
+================================================================================
+- Base URL Backend: https://localhost:7184 (hoac http://localhost:5124)
+- Swagger UI truc quan: https://localhost:7184/swagger
+  (Tren Swagger co san nut "Authorize" o goc tren: dang nhap lay Bearer token dan vao).
+- Dinh dang du lieu: application/json (UTF-8).
+- Header bat buoc cho toan bo endpoint noi bo:
+  Authorization: Bearer <ACCESS_TOKEN>
+- Rate Limiting: Module Sync duoc bao ve voi chinh sach 60 requests/phut/client.
+  Neu vuot qua, he thong tra ve HTTP 429 Too Many Requests.
+- Co che xu ly loi tap trung: Toan bo loi nghiep vu deu tra ve HTTP 400 Bad Request
+  co cau truc JSON ro rang:
+  {
+    "statusCode": 400,
+    "message": "Noi dung loi nghiep vu chi tiet...",
+    "timestamp": "2026-10-04T14:30:00Z"
+  }
+
+
+================================================================================
+2. CHI TIET CAC ENDPOINT DA SAN SANG DE FRONTEND / MOBILE TRIEN KHAI 100%
+================================================================================
+
+--------------------------------------------------------------------------------
+[API 1] DANG KY THIET BI HOC VIEN (DEVICE REGISTRATION)
+--------------------------------------------------------------------------------
+* Mo ta: Goi ngay khi nguoi dung dang nhap thanh cong hoac vua mo App Mobile.
+  Backend se tu dong boc AccountId tu JWT de lien ket voi thiet bi theo co che
+  Idempotent Upsert (neu da co thi cap nhat thong tin os/model, khong crash).
+* Method: POST
+* URL: /api/devices/register
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "deviceId": "samsung_s23_uuid_123456",
+  "platform": 1,
+  "deviceModel": "Samsung Galaxy S23 Ultra",
+  "osVersion": "Android 14"
+}
+(Ghi chu Platform: 1 = Android, 2 = iOS)
+
+* Response (HTTP 200 OK):
+{
+  "id": 1,
+  "deviceId": "samsung_s23_uuid_123456",
+  "platform": "Android",
+  "deviceModel": "Samsung Galaxy S23 Ultra",
+  "osVersion": "Android 14",
+  "lastSyncAt": null,
+  "createdAt": "2026-10-04T10:00:00Z"
+}
+
+
+--------------------------------------------------------------------------------
+[API 2] PHAT VA TUA VIDEO TRUC TUYEN (HTTP 206 RANGE STREAMING)
+--------------------------------------------------------------------------------
+* Mo ta: Trinh phat video (React Native Video / Flutter Video Player / HTML5 Video)
+  truyen truc tiep URL nay vao. Backend ho tro chuan Byte-Range (HTTP 206), cho phep
+  tua video toi/lui ngay lap tuc ma khong can cho tai het toan bo tep.
+* Method: GET
+* URL: /api/media/{id}/stream
+* Vi du goi thuc te: https://localhost:7184/api/media/1/stream
+* Headers: Trinh duyet/Player tu gui kem header:
+  Range: bytes=0-1048576
+* Response: HTTP 206 Partial Content (Luong du lieu video dang binary stream).
+
+
+--------------------------------------------------------------------------------
+[API 3] LAY THONG TIN TAI VE & MA CHECKSUM SHA-256 CHO OFFLINE
+--------------------------------------------------------------------------------
+* Mo ta: Goi TRUOC KHI tai video ve luu offline tren dien thoai. Backend se tra ve
+  URL tai kem ma bam SHA-256 goc. Sau khi tai xong, Mobile dung thu vien crypto
+  bam file vua tai de so sanh checksum; neu khop 100% moi danh dau la tai hop le.
+* Method: GET
+* URL: /api/media/{id}/download-info
+* Response (HTTP 200 OK):
+{
+  "mediaId": 1,
+  "fileName": "test.mp4",
+  "contentType": "video/mp4",
+  "fileSizeBytes": 52428800,
+  "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "downloadUrl": "https://localhost:7184/api/media/1/download"
+}
+
+
+--------------------------------------------------------------------------------
+[API 4] TAI TEP VIDEO VE BO NHO MAY (OFFLINE DOWNLOAD)
+--------------------------------------------------------------------------------
+* Mo ta: URL thuc hien viec tai tep tin media xuong may.
+* Method: GET
+* URL: /api/media/{id}/download
+* Response: HTTP 200 OK (Binary stream, Content-Disposition: attachment).
+
+
+--------------------------------------------------------------------------------
+[API 5] KEO BIEN DONG VI SAI (DELTA SYNC PULL)
+--------------------------------------------------------------------------------
+* Mo ta: Mobile dinh ky (hoac khi co mang lai) goi API nay de keo toan bo noi dung
+  thay doi moi nhat ve may. Chi keo nhung thay doi co Sequence lon hon moc
+  `afterSequence` ma dien thoai dang luu o local.
+* Method: GET
+* URL: /api/sync/pull?afterSequence={seq}&limit={limit}
+* Vi du: /api/sync/pull?afterSequence=0&limit=50
+* Headers: Authorization: Bearer <token>
+* Response (HTTP 200 OK):
+{
+  "changes": [
+    {
+      "sequence": 1,
+      "entityType": "Lesson",
+      "entityId": 10,
+      "changeType": "Created",
+      "version": 1,
+      "changedAt": "2026-10-04T12:00:00Z"
+    },
+    {
+      "sequence": 2,
+      "entityType": "Lesson",
+      "entityId": 5,
+      "changeType": "Deleted",
+      "version": 2,
+      "changedAt": "2026-10-04T12:30:00Z"
+    }
+  ],
+  "lastSequence": 2,
+  "hasMoreChanges": false
+}
+
+* QUY TAC XU LY PHIA MOBILE:
+  1. Luu `lastSequence` nhan duoc vao local storage (vi du Preferences / SQLite).
+  2. Lan goi ke tiep truyen `afterSequence = 2`.
+  3. Neu `changeType == "Deleted"`: Day la co che TOMBSTONE. Mobile phai lap tuc
+     xoa file video cache cua bai hoc do va xoa khoi DB offline de giai phong dung luong!
+
+
+--------------------------------------------------------------------------------
+[API 6] DAY HANG DOI THAO TAC OFFLINE LEN SERVER (OUTBOX BATCH SYNC PUSH)
+--------------------------------------------------------------------------------
+* Mo ta: Khi dien thoai hoc offline (xem video, lam quiz), Mobile ghi vao bang
+  Outbox o SQLite. Khi co mang tro lai, Mobile gom toan bo thanh 1 mang batch va
+  gui len endpoint nay. Server xu ly trong 1 Transaction ACID duy nhat.
+* Method: POST
+* URL: /api/sync/push
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "operations": [
+    {
+      "clientOperationId": "c3a9f0e1-7b2a-4a1d-8e4f-5c2d1b0a9e8f",
+      "operationType": "LESSON_PROGRESS",
+      "deviceTimestamp": "2026-10-04T14:00:00Z",
+      "payload": "{\"lessonId\": 1, \"progressPercent\": 85, \"isCompleted\": true}"
+    },
+    {
+      "clientOperationId": "d4b1a2e3-8c3b-5b2e-9f5a-6d3e2c1b0f9a",
+      "operationType": "QUIZ_ATTEMPT",
+      "deviceTimestamp": "2026-10-04T14:15:00Z",
+      "payload": "{\"quizId\": 1, \"clientAttemptId\": \"f5c2b3d4-9d4c-6c3f-0a6b-7e4f3d2c1a0b\", \"answers\": [{\"questionId\": 1, \"selectedOptionId\": 2}]}"
+    }
+  ]
+}
+
+* Response (HTTP 200 OK):
+{
+  "syncedCount": 2,
+  "serverTimestamp": "2026-10-04T14:20:00Z",
+  "results": [
+    {
+      "clientOperationId": "c3a9f0e1-7b2a-4a1d-8e4f-5c2d1b0a9e8f",
+      "success": true,
+      "message": "Dong bo tien do bai hoc thanh cong."
+    },
+    {
+      "clientOperationId": "d4b1a2e3-8c3b-5b2e-9f5a-6d3e2c1b0f9a",
+      "success": true,
+      "message": "Cham diem va ghi nhan ket qua quiz thanh cong."
+    }
+  ]
+}
+
+* DAC DIEM QUAN TRONG CHO MOBILE:
+  - Thuat toan Monotonic Merge: Backend tu dong ap dung Math.Max(). Neu hoc vien
+    da dat 90% tren may tinh, roi sang dien thoai offline gui 50% len, Backend van
+    giu nguyen 90% de tien do khong bao gio bi thut lui!
+  - Co che Chuyen sau Idempotency: Neu Mobile bi chap chon mang gui lai dung mang
+    tren, Backend se tu dong bo qua ma khong gay loi va khong nhan doi diem so!
+
+
+--------------------------------------------------------------------------------
+[API 7] XOA MEM BAI HOC & KICH HOAT TOMBSTONE (ADMIN / TEACHER)
+--------------------------------------------------------------------------------
+* Mo ta: Su dung khi giang vien/admin go mot bai giang. Backend khong xoa cung
+  (hard-delete) ma danh dau IsPublished = false va ghi 1 dong ChangeType = "Deleted"
+  vao ContentChanges de toan bo thiet bi Mobile tu dong don sach file local khi Pull.
+* Method: POST
+* URL: /api/sync/tombstone
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "entityType": "Lesson",
+  "entityId": 5,
+  "reason": "Bai giang het han ban quyen hoac bi go bo noi dung"
+}
+* Response (HTTP 200 OK):
+{
+  "sequence": 15,
+  "entityType": "Lesson",
+  "entityId": 5,
+  "changeType": "Deleted",
+  "status": "TombstoneCreated"
+}
+
+
+--------------------------------------------------------------------------------
+[API 8] THU NGHIEM GIONG DOC AI TEXT-TO-SPEECH (TTS)
+--------------------------------------------------------------------------------
+* Mo ta: Chuyen van ban kịch ban tieng Viet thanh tep am thanh MP3 phat truc tiep.
+  Giup giang vien nghe thu truoc chat luong giong doc AI.
+* Method: POST
+* URL: /api/media/tts/test
+* Body JSON:
+{
+  "text": "Chao mung ban den voi ung dung Microlearning. Chuc ban hoc tap tot!",
+  "voiceName": "vi-VN-HoaiMyNeural"
+}
+(Giong doc ho tro: 'vi-VN-HoaiMyNeural' - Nu, 'vi-VN-NamMinhNeural' - Nam)
+
+* Response (HTTP 200 OK):
+{
+  "audioUrl": "https://localhost:7184/Audios/test_tts_bae2584057454a6d89a4c5005a2b2044.mp3",
+  "fileName": "test_tts_bae2584057454a6d89a4c5005a2b2044.mp3",
+  "fileSizeBytes": 16416,
+  "voiceUsed": "vi-VN-HoaiMyNeural",
+  "status": "Completed"
+}
+
+
+--------------------------------------------------------------------------------
+[API 9] XEP HANG TAC VU XU LY VIDEO CHAY NGAM (BACKGROUND MEDIA JOBS)
+--------------------------------------------------------------------------------
+* Mo ta: Khi giang vien xuat ban bai giang gom video va thuyet minh AI, he thong
+  khong bat nguoi dung cho doi ma day vao hang doi ngam de Background Worker xu ly.
+* Method: POST
+* URL: /api/media/jobs/enqueue
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "mediaAssetId": 1,
+  "jobType": 1
+}
+(Ghi chu JobType: 1 = TtsSynthesize, 2 = VideoMux, 3 = Transcode)
+
+* Response (HTTP 202 Accepted):
+{
+  "jobId": 1,
+  "mediaAssetId": 1,
+  "jobType": "TtsSynthesize",
+  "status": "Queued",
+  "createdAt": "2026-10-04T14:30:00Z"
+}
+
+
+--------------------------------------------------------------------------------
+[API 10] TRA CUU TIEN DO TAC VU MEDIA JOB (POLLING STATUS)
+--------------------------------------------------------------------------------
+* Mo ta: Client goi dinh ky (moi 3-5 giay) de xem Background Worker da lam xong chua.
+* Method: GET
+* URL: /api/media/jobs/{id}
+* Headers: Authorization: Bearer <token>
+* Response (HTTP 200 OK):
+{
+  "jobId": 1,
+  "mediaAssetId": 1,
+  "jobType": "TtsSynthesize",
+  "status": "Completed",
+  "errorMessage": null,
+  "createdAt": "2026-10-04T14:30:00Z",
+  "startedAt": "2026-10-04T14:30:05Z",
+  "completedAt": "2026-10-04T14:30:10Z"
+}
+(Cac trang thai: Queued -> Processing -> Completed hoac Failed)
+
+
+--------------------------------------------------------------------------------
+[API 11] KIEM TRA TRANG THAI HE THONG (HEALTH CHECK)
+--------------------------------------------------------------------------------
+* Mo ta: Kiem tra ket noi Database va thu muc luu tru Video.
+* Method: GET
+* URL: /api/health
+* Response (HTTP 200 OK):
+{
+  "status": "Healthy",
+  "database": "Connected",
+  "storage": "Accessible",
+  "checkedAt": "2026-10-04T14:35:00Z"
+}
+
+
+================================================================================
+3. HUONG DAN TICH HOP CHO DOI FRONTEND & MOBILE DEV
+================================================================================
+
+1. KHOI TAO PHIA MOBILE:
+   - Moi thiet bi khi cai app phai sinh 1 `deviceId` duy nhat (UUID).
+   - Luu bien `last_pulled_sequence` (khoi tao = 0) trong SQLite / SharedPreferences.
+
+2. KICH BAN KEO DU LIEU (PULL):
+   - Khi mo app hoac co mang: Goi `GET /api/sync/pull?afterSequence={last_pulled_sequence}`.
+   - Luu tat ca ban ghi nhan duoc vao local DB.
+   - Neu ban ghi co `changeType == "Deleted"`: Xoa bai hoc va xoa file video tuong ung
+     trong bo nho may dien thoai.
+   - Cap nhat `last_pulled_sequence = response.lastSequence`.
+
+3. KICH BAN DAY DU LIEU (PUSH):
+   - Khi hoc vien xem video hoac lam bai: Luon luu thao tac vao bang SQLite `Outbox`
+     kem 1 ma UUID `clientOperationId` sinh ngau nhien cho moi thao tac.
+   - Khi co mang: Lay toi da 50 thao tac tu Outbox -> Goi `POST /api/sync/push`.
+   - Neu nhan ve HTTP 200 OK: Xoa cac ban ghi tuong ung khoi bang `Outbox` o dien thoai.
+   - Neu that bai (khong co mang): Giu nguyen trong Outbox de gui lai lan sau.
+
+4. AN TOAN DU LIEU:
+   - Backend da hoan tat 100% logic Monotonic Merge, Deduplication, Server-side Quiz
+     Grading, Rate Limiting va HTTP 206 Streaming. Doi FE co the tich hop ngay lap tuc!
+================================================================================
