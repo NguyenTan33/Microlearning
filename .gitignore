@@ -489,9 +489,6 @@ dist/
 **/dist/
 *.tsbuildinfo
 
-# Planning (Local only)
-Plan/
-
 # Rule
 GEMINI.md
 
