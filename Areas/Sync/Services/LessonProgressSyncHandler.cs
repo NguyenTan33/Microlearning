@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microlearning.Areas.Sync.DTOs;
 using Microlearning.Areas.Sync.Interfaces;
 using Microlearning.Exceptions;
@@ -37,6 +37,19 @@ namespace Microlearning.Areas.Sync.Services
             if (payload == null || payload.LessonId <= 0)
             {
                 throw new BusinessException("Dữ liệu tiến độ học (LESSON_PROGRESS) không hợp lệ.");
+            }
+
+            // 0. Kiểm tra bài học có tồn tại trong CSDL không
+            var lessonExists = await _context.Lessons.AnyAsync(l => l.Id == payload.LessonId, cancellationToken);
+            if (!lessonExists)
+            {
+                _logger.LogWarning("Bỏ qua đồng bộ tiến độ vì bài học LessonId={LessonId} không tồn tại trên Server.", payload.LessonId);
+                return JsonSerializer.Serialize(new
+                {
+                    lessonId = payload.LessonId,
+                    skipped = true,
+                    message = $"Bài học ID {payload.LessonId} không tồn tại trên máy chủ."
+                });
             }
 
             // 1. Tìm tiến độ hiện tại của học viên đối với bài học này

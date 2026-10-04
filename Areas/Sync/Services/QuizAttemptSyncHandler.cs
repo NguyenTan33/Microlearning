@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microlearning.Areas.Sync.DTOs;
 using Microlearning.Areas.Sync.Interfaces;
 using Microlearning.Exceptions;
@@ -63,7 +63,13 @@ namespace Microlearning.Areas.Sync.Services
 
             if (quiz == null)
             {
-                throw new BusinessException($"Không tìm thấy bài Quiz với ID = {payload.QuizId}.");
+                _logger.LogWarning("Bỏ qua đồng bộ Quiz vì bài Quiz ID={QuizId} không tồn tại trên Server.", payload.QuizId);
+                return JsonSerializer.Serialize(new
+                {
+                    clientAttemptId = payload.ClientAttemptId,
+                    skipped = true,
+                    message = $"Bài Quiz ID {payload.QuizId} không tồn tại trên máy chủ."
+                });
             }
 
             // 3. Tiến hành chấm điểm an toàn trên Server (Server-side Grading)
