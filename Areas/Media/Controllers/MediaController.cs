@@ -90,5 +90,27 @@ namespace Microlearning.Areas.Media.Controllers
                 AudioUrl = $"{baseUrl}/Audios/{fileName}"
             });
         }
+
+        /// <summary>
+        /// API Xếp hàng một tác vụ xử lý media chạy ngầm (HTTP 202 Accepted).
+        /// </summary>
+        [HttpPost("jobs/enqueue")]
+        public async Task<IActionResult> EnqueueJob(
+            [FromBody] EnqueueMediaJobRequest request,
+            CancellationToken cancellationToken)
+        {
+            var response = await _mediaService.EnqueueJobAsync(request, cancellationToken);
+            return AcceptedAtAction(nameof(GetJobStatus), new { id = response.JobId }, response);
+        }
+
+        /// <summary>
+        /// API Tra cứu trạng thái tiến độ của MediaJob (Queued, Processing, Completed, Failed).
+        /// </summary>
+        [HttpGet("jobs/{id}")]
+        public async Task<IActionResult> GetJobStatus(int id, CancellationToken cancellationToken)
+        {
+            var response = await _mediaService.GetJobStatusAsync(id, cancellationToken);
+            return Ok(response);
+        }
     }
 }

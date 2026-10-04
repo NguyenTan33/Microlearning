@@ -105,9 +105,11 @@ builder.Services.AddScoped<ISyncOperationHandler, LessonProgressSyncHandler>();
 builder.Services.AddScoped<ISyncOperationHandler, QuizAttemptSyncHandler>();
 builder.Services.AddScoped<ITombstoneService, TombstoneService>();
 builder.Services.AddScoped<ITtsService, TtsService>();
+builder.Services.AddScoped<IMediaProcessingService, MediaProcessingService>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
+builder.Services.AddHostedService<MediaJobBackgroundWorker>();
 
 builder.Services.AddCors(options =>
 {

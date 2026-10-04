@@ -115,5 +115,61 @@ namespace Microlearning.Areas.Media.Services
             var hashBytes = await sha256.ComputeHashAsync(stream);
             return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
+
+
+
+        public async Task<MediaJobResponse> EnqueueJobAsync(EnqueueMediaJobRequest request, CancellationToken cancellationToken = default)
+        {
+            var asset = await _dbContext.MediaAssets
+                .FirstOrDefaultAsync(m => m.Id == request.MediaAssetId, cancellationToken);
+
+            if (asset == null)
+            {
+                throw new BusinessException($"Không tìm thấy tệp tài nguyên MediaAsset với ID {request.MediaAssetId}.");
+            }
+
+            var job = new Microlearning.Model.Entities.MediaJob
+            {
+                MediaAssetId = request.MediaAssetId,
+                JobType = request.JobType,
+                Status = Microlearning.Model.Entities.Enums.MediaJobStatus.Queued,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.MediaJobs.Add(job);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return new MediaJobResponse
+            {
+                JobId = job.Id,
+                MediaAssetId = job.MediaAssetId,
+                JobType = job.JobType.ToString(),
+                Status = job.Status.ToString(),
+                CreatedAt = job.CreatedAt
+            };
+        }
+
+        public async Task<MediaJobResponse> GetJobStatusAsync(int jobId, CancellationToken cancellationToken = default)
+        {
+            var job = await _dbContext.MediaJobs
+                .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+
+            if (job == null)
+            {
+                throw new BusinessException($"Không tìm thấy tác vụ MediaJob với ID {jobId}.");
+            }
+
+            return new MediaJobResponse
+            {
+                JobId = job.Id,
+                MediaAssetId = job.MediaAssetId,
+                JobType = job.JobType.ToString(),
+                Status = job.Status.ToString(),
+                ErrorMessage = job.ErrorMessage,
+                CreatedAt = job.CreatedAt,
+                StartedAt = job.StartedAt,
+                CompletedAt = job.CompletedAt
+            };
+        }
     }
 }

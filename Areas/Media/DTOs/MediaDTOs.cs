@@ -32,4 +32,23 @@
         public string VoiceUsed { get; init; } = string.Empty;
         public string Status { get; init; } = string.Empty;
     }
+
+    // DTO yêu cầu xếp hàng tác vụ xử lý media (Background Job)
+    public record EnqueueMediaJobRequest(
+        int MediaAssetId,
+        Microlearning.Model.Entities.Enums.MediaJobType JobType
+    );
+
+    // DTO phản hồi thông tin trạng thái tác vụ media
+    public record MediaJobResponse
+    {
+        public int JobId { get; init; }
+        public int MediaAssetId { get; init; }
+        public string JobType { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public string? ErrorMessage { get; init; }
+        public DateTime CreatedAt { get; init; }
+        public DateTime? StartedAt { get; init; }
+        public DateTime? CompletedAt { get; init; }
+    }
 }

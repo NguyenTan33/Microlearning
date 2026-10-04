@@ -16,5 +16,16 @@ namespace Microlearning.Areas.Media.Interfaces
         /// Lấy thông tin tệp tải về kèm mã băm SHA-256 để Client xác thực toàn vẹn dữ liệu khi tải offline.
         /// </summary>
         Task<MediaDownloadInfoResponse> GetDownloadInfoAsync(int mediaId, string baseUrl);
+
+
+        /// <summary>
+        /// Đẩy một tác vụ xử lý media vào hàng đợi (Queue) để Background Worker xử lý ngầm.
+        /// </summary>
+        Task<MediaJobResponse> EnqueueJobAsync(EnqueueMediaJobRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Lấy trạng thái hiện tại của một MediaJob để Client/Frontend theo dõi tiến độ.
+        /// </summary>
+        Task<MediaJobResponse> GetJobStatusAsync(int jobId, CancellationToken cancellationToken = default);
     }
 }
