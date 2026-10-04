@@ -20,11 +20,11 @@ namespace Microlearning.Areas.Catalog.Services
             _changeTracker = changeTracker;
         }
 
-        public async Task<List<LessonResponse>> GetLessonsBySubjectIdAsync(int subjectId)
+        public async Task<List<LessonResponse>> GetLessonsBySubjectIdAsync(int subjectId, bool includeUnpublished = false)
         {
             var lessons = await _dbContext.Lessons
                 .AsNoTracking()
-                .Where(l => l.SubjectId == subjectId && l.IsPublished)
+                .Where(l => l.SubjectId == subjectId && (includeUnpublished || l.IsPublished))
                 .OrderBy(l => l.SortOrder)
                 .Select(l => new LessonResponse(
                     l.Id,
