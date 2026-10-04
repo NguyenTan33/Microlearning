@@ -104,6 +104,7 @@ builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<ISyncOperationHandler, LessonProgressSyncHandler>();
 builder.Services.AddScoped<ISyncOperationHandler, QuizAttemptSyncHandler>();
 builder.Services.AddScoped<ITombstoneService, TombstoneService>();
+builder.Services.AddScoped<ITtsService, TtsService>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
@@ -170,6 +171,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseStaticFiles();
 
 app.UseCors("AllowFrontend");
 

@@ -16,4 +16,20 @@
         public string Checksum { get; init; } = string.Empty;
         public string DownloadUrl { get; init; } = string.Empty;
     }
+
+    // DTO yêu cầu thử nghiệm sinh giọng đọc TTS
+    public record TtsSynthesizeTestRequest(
+        string Text,
+        string? VoiceName = "vi-VN-HoaiMyNeural"
+    );
+
+    // DTO phản hồi kết quả sinh giọng đọc TTS
+    public record TtsSynthesizeResponse
+    {
+        public string AudioUrl { get; init; } = string.Empty;
+        public string FileName { get; init; } = string.Empty;
+        public long FileSizeBytes { get; init; }
+        public string VoiceUsed { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+    }
 }
