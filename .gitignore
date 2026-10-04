@@ -488,3 +488,4 @@ $RECYCLE.BIN/
 dist/
 **/dist/
 *.tsbuildinfo
+*.mp4
