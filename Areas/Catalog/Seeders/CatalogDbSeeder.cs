@@ -12,9 +12,54 @@ namespace Microlearning.Areas.Catalog.Seeders
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            // Nếu đã có khóa học thì bỏ qua không nạp lại
+            // Nếu đã có đề thi thì kiểm tra xem cần nạp khóa học hay không
             if (await dbContext.Courses.AnyAsync())
             {
+                if (!await dbContext.Quizzes.AnyAsync())
+                {
+                    var firstLesson = await dbContext.Lessons.FirstOrDefaultAsync();
+                    if (firstLesson != null)
+                    {
+                        var quizSample = new Model.Entities.Quiz
+                        {
+                            LessonId = firstLesson.Id,
+                            Title = "Trắc nghiệm: Dependency Injection trong .NET 8",
+                            PassScore = 80,
+                            Version = 1,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        var qSample1 = new Question
+                        {
+                            Content = "Vòng đời 'Scoped' trong .NET Core có ý nghĩa gì?",
+                            Explanation = "Scoped service được tạo một lần duy nhất cho mỗi HTTP Request và được giải phóng khi request kết thúc.",
+                            Points = 50,
+                            SortOrder = 1,
+                            QuestionType = QuestionType.SingleChoice
+                        };
+                        qSample1.QuizOptions.Add(new QuizOption { OptionText = "Được tạo mới mỗi khi được inject vào constructor.", IsCorrect = false, SortOrder = 1 });
+                        qSample1.QuizOptions.Add(new QuizOption { OptionText = "Được tạo một lần duy nhất cho mỗi HTTP Request.", IsCorrect = true, SortOrder = 2 });
+                        qSample1.QuizOptions.Add(new QuizOption { OptionText = "Được tạo một lần duy nhất cho toàn bộ vòng đời của ứng dụng.", IsCorrect = false, SortOrder = 3 });
+
+                        var qSample2 = new Question
+                        {
+                            Content = "Lợi ích lớn nhất của việc dùng Interface cho Service là gì?",
+                            Explanation = "Giúp lỏng liên kết (Loose Coupling), dễ bảo trì và dễ viết Unit Test giả lập (Mocking).",
+                            Points = 50,
+                            SortOrder = 2,
+                            QuestionType = QuestionType.SingleChoice
+                        };
+                        qSample2.QuizOptions.Add(new QuizOption { OptionText = "Giảm liên kết phụ thuộc, dễ dàng thay thế và viết Unit Test.", IsCorrect = true, SortOrder = 1 });
+                        qSample2.QuizOptions.Add(new QuizOption { OptionText = "Giúp ứng dụng chạy nhanh hơn gấp 2 lần.", IsCorrect = false, SortOrder = 2 });
+                        qSample2.QuizOptions.Add(new QuizOption { OptionText = "Bắt buộc trong cú pháp của C#.", IsCorrect = false, SortOrder = 3 });
+
+                        quizSample.Questions.Add(qSample1);
+                        quizSample.Questions.Add(qSample2);
+
+                        dbContext.Quizzes.Add(quizSample);
+                        await dbContext.SaveChangesAsync();
+                    }
+                }
                 return;
             }
 

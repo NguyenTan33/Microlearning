@@ -1,0 +1,205 @@
+================================================================================
+           TAI LIEU BAN GIAO API BACKEND MICROLEARNING (OFFLINE-FIRST)
+================================================================================
+Phien ban: v1.0
+Ngay ban giao: 04/10/2026
+Nguoi phu trach Backend: Nguyen Minh Tan
+Nhanh Git Backend: Offline-Frist
+
+--------------------------------------------------------------------------------
+1. QUY CHUAN KET NOI CHUNG (GENERAL SPECIFICATION)
+--------------------------------------------------------------------------------
+- Base URL: https://localhost:<port>  (Xem chi tiet tren Swagger UI tai /swagger)
+- Swagger UI da tich hop nut "Authorize": Dang nhap lay JWT token roi dan vao de test.
+- Header bat buoc cho cac API noi bo:
+  Authorization: Bearer <ACCESS_TOKEN>
+- Dinh dang du lieu: application/json
+
+
+--------------------------------------------------------------------------------
+2. DANH SACH CAC API DA SAN SANG DE FRONTEND / MOBILE TRIEN KHAI 100%
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+[API 1] DANG KY THIET BI HOC VIEN (DEVICE REGISTRATION)
+--------------------------------------------------------------------------------
+* Mo ta: Goi khi nguoi dung dang nhap thanh cong hoac moi mo App len. Backend se luu
+  thong tin thiet bi vao DB va gan voi AccountId (Server tu boc AccountId tu JWT token).
+* Method: POST
+* URL: /api/devices/register
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "deviceId": "samsung_s23_uuid_123456",
+  "platform": 1,
+  "deviceModel": "Samsung Galaxy S23 Ultra",
+  "osVersion": "Android 14"
+}
+(Ghi chu Platform: 1 = Android, 2 = iOS)
+
+* Response (HTTP 200 OK):
+{
+  "id": 1,
+  "deviceId": "samsung_s23_uuid_123456",
+  "platform": "Android",
+  "deviceModel": "Samsung Galaxy S23 Ultra",
+  "osVersion": "Android 14",
+  "lastSyncAt": null,
+  "createdAt": "2026-10-04T10:00:00Z"
+}
+
+
+--------------------------------------------------------------------------------
+[API 2] PHAT VA TUA VIDEO TRUC TUYEN (HTTP 206 RANGE STREAMING)
+--------------------------------------------------------------------------------
+* Mo ta: Trinh phat video (React Native Video Player / HTML5 Video) truyen URL nay vao.
+  Backend tu dong ho tro doc theo Byte-Range (HTTP 206 Partial Content), cho phep
+  hoc vien tua video toi/lui ngay lap tuc ma khong can doi tai het file.
+* Method: GET
+* URL: /api/media/{id}/stream
+* Vi du goi thuc te: https://localhost:<port>/api/media/1/stream
+* Trinh phat video se tu dong gui Header: Range: bytes=0-1048576...
+
+
+--------------------------------------------------------------------------------
+[API 3] TAI VIDEO DE HOC OFFLINE (DOWNLOAD MANAGER & CHECKSUM SHA-256)
+--------------------------------------------------------------------------------
+* Mo ta: Phuc vu tinh nang "Tai bai hoc ve may de xem khi khong co mang".
+
+* Buoc 1: Lay thong tin kich thuoc va ma bam SHA-256
+  - Method: GET
+  - URL: /api/media/{id}/download-info
+  - Response (HTTP 200 OK):
+  {
+    "mediaId": 1,
+    "fileName": "test.mp4",
+    "contentType": "video/mp4",
+    "fileSizeBytes": 17979812,
+    "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "downloadUrl": "https://localhost:<port>/api/media/1/download"
+  }
+
+* Buoc 2: FE thuc hien tai file
+  - FE kiem tra dung luong bo nho dien thoai co con du cho "fileSizeBytes" khong.
+  - Tai file video truc tiep tu "downloadUrl" (GET /api/media/{id}/download).
+  - Sau khi tai xong, FE tu bam ma SHA-256 cua file tren may:
+    + Neu trung khop voi "checksum": File nguyen ven 100% -> Luu vao may va danh dau Da tai.
+    + Neu lech ma: Mang bi chap chon lam dut file giua chung -> Tu dong xoa va tai lai.
+
+
+--------------------------------------------------------------------------------
+[API 4] DONG BO 2 CHIEU OFFLINE-FIRST (SYNC ENGINE)
+--------------------------------------------------------------------------------
+
+>>> CHIEU A: DONG BO DAY LEN (SYNC PUSH - KHI DIEN THOAI VUA CO MANG LAI)
+* Mo ta: Khi hoc vien bat che do may bay / mat mang:
+  - Xem video: Luu tien do vao bang Outbox trong SQLite local.
+  - Lam quiz: Luu ket qua lam bai vao bang Outbox trong SQLite local.
+  Khi co mang lai, FE gom toan bo cac thao tac thanh 1 mang Batch va gui len Server.
+  Backend da tich hop san:
+  + Chong trung lap (Deduplication): Gui lai nhieu lan khong bi cong don diem/tien do.
+  + Thuat toan Monotonic Math.Max: Tien do hoc chi tang len hoac giu nguyen, khong bi tut lui.
+  + Cham diem tu dong tren Server.
+
+* Method: POST
+* URL: /api/sync/push
+* Headers: Authorization: Bearer <token>
+* Body JSON:
+{
+  "deviceId": "samsung_s23_uuid_123456",
+  "operations": [
+    {
+      "clientOperationId": "c3b9f3e4-8f6a-4b9e-9d2a-1b2c3d4e5f60",
+      "operationType": "LESSON_PROGRESS",
+      "payloadJson": "{\"lessonId\": 1, \"watchedSeconds\": 110, \"percent\": 91.6}",
+      "createdAt": "2026-10-04T09:30:00Z"
+    },
+    {
+      "clientOperationId": "d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51",
+      "operationType": "QUIZ_ATTEMPT",
+      "payloadJson": "{\"clientAttemptId\": \"d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51\", \"quizId\": 1, \"answers\": [{\"questionId\": 1, \"selectedOptionId\": 2}]}",
+      "createdAt": "2026-10-04T09:35:00Z"
+    }
+  ]
+}
+
+* Response (HTTP 200 OK):
+{
+  "acceptedOperationIds": [
+    "c3b9f3e4-8f6a-4b9e-9d2a-1b2c3d4e5f60",
+    "d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51"
+  ],
+  "results": [
+    {
+      "clientOperationId": "c3b9f3e4-8f6a-4b9e-9d2a-1b2c3d4e5f60",
+      "success": true,
+      "message": "Đồng bộ thành công."
+    },
+    {
+      "clientOperationId": "d4a8e2f1-7c5b-4e8d-8a1f-0e9d8c7b6a51",
+      "success": true,
+      "message": "Đồng bộ thành công."
+    }
+  ],
+  "processedAt": "2026-10-04T10:05:00Z"
+}
+* Luu y FE: Khi nhan duoc mang "acceptedOperationIds", FE hay xoa cac ban ghi nay
+  khoi bang Outbox tren dien thoai de giai phong bo nho!
+
+
+>>> CHIEU B: DONG BO KEO VE (DELTA SYNC PULL - LAY NOI DUNG MOI NHAT TU SERVER)
+* Mo ta: FE chi can truyen moc Sequence dang luu tren may (afterSequence). Server chi
+  tra ve dung nhung bai hoc / khoa hoc nao da thay doi tu sau moc do.
+* Method: GET
+* URL: /api/sync/pull?afterSequence=0&limit=50
+* Headers: Authorization: Bearer <token>
+* Response (HTTP 200 OK):
+{
+  "currentCheckpointSequence": 0,
+  "newCheckpointSequence": 2,
+  "hasMoreChanges": false,
+  "changes": [
+    {
+      "sequence": 1,
+      "entityType": "Lesson",
+      "entityId": 1,
+      "changeType": "Updated",
+      "version": 2,
+      "changedAt": "2026-10-04T09:00:00Z",
+      "payload": {
+        "lessonId": 1,
+        "title": "Bài 1: Kiến trúc RESTful và HTTP 206",
+        "durationSeconds": 120,
+        "isPublished": true,
+        "version": 2
+      }
+    }
+  ]
+}
+* Luu y FE: FE cap nhat du lieu vao SQLite roi luu lai moc "newCheckpointSequence = 2".
+  Lan tiep theo goi chi can truyen ?afterSequence=2. Neu server khong co gi moi thi
+  mang "changes" se tra ve rong [], cuc ky nhe va tiet kiem data 4G!
+
+
+--------------------------------------------------------------------------------
+[API 5] KIEM TRA SUC KHOE HE THONG (HEALTH CHECK)
+--------------------------------------------------------------------------------
+* Mo ta: Kiem tra xem Server va Database SQL Server co dang hoat dong tot khong.
+* Method: GET
+* URL: /api/health
+* Khong can Token (AllowAnonymous)
+* Response: Trạng thái Healthy cua Database va MediaStorage.
+
+
+--------------------------------------------------------------------------------
+3. HUONG DAN CHO FRONTEND TRONG LUC CHO CATALOG API
+--------------------------------------------------------------------------------
+- Hien tai API danh sach khoa hoc (GET /api/courses) dang duoc hoan thien Controller.
+- FE hoan toan co the dung ID mau:
+  + CourseId = 1
+  + LessonId = 1
+  + MediaId = 1
+  + QuizId = 1
+  de dung toan bo giao dien Video Player, Download Offline Manager va SQLite Sync Engine
+  ngay tu bay gio!
+================================================================================
