@@ -4,13 +4,16 @@ namespace Microlearning.Areas.Sync.Interfaces
 {
     public interface ISyncService
     {
-        /// <summary>
-        /// Tiếp nhận và xử lý hàng loạt thao tác đồng bộ từ Mobile (Batch Sync Push).
-        /// Hỗ trợ Deduplication chống trùng lặp và Transaction Rollback khi có sự cố.
-        /// </summary>
         Task<SyncPushResponse> PushSyncOperationsAsync(
             string accountId,
             SyncPushRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Kéo danh sách thay đổi vi sai từ máy chủ về thiết bị dựa trên mốc Sequence (Delta Sync Pull).
+        /// </summary>
+        Task<SyncPullResponse> PullSyncChangesAsync(
+            SyncPullRequest request,
             CancellationToken cancellationToken = default);
     }
 }
