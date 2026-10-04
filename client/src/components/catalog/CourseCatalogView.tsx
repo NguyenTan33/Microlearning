@@ -28,7 +28,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'ENROLLED'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'OFFICE' | 'IT' | 'ENROLLED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [enrollingId, setEnrollingId] = useState<number | null>(null);
   const [offlineVideoCount, setOfflineVideoCount] = useState<number>(0);
@@ -36,14 +36,11 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      if (isOnline) {
-        const [courseList, enrollmentList] = await Promise.all([
-          catalogApi.getAllCourses().catch(() => []),
-          enrollmentApi.getMyEnrollments().catch(() => []),
-        ]);
-        setCourses(courseList);
-        setEnrollments(enrollmentList);
-      }
+      const courseList = await catalogApi.getAllCourses();
+      const enrollmentList = await enrollmentApi.getMyEnrollments();
+      setCourses(courseList);
+      setEnrollments(enrollmentList);
+
       const offlineVideos = await getAllOfflineVideos().catch(() => []);
       setOfflineVideoCount(offlineVideos.length);
     } catch {
@@ -51,7 +48,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [isOnline]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -90,6 +87,22 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
       return isEnrolled(c.id);
     }
 
+    if (activeTab === 'OFFICE') {
+      return (
+        c.title.toLowerCase().includes('excel') ||
+        c.title.toLowerCase().includes('word')
+      );
+    }
+
+    if (activeTab === 'IT') {
+      return (
+        c.title.toLowerCase().includes('react') ||
+        c.title.toLowerCase().includes('sql') ||
+        c.title.toLowerCase().includes('.net') ||
+        c.title.toLowerCase().includes('offline')
+      );
+    }
+
     return true;
   });
 
@@ -106,7 +119,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
             Danh Mục Khóa Học Trực Tuyến &amp; Ngoại Tuyến
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-2xl">
-            Nền tảng đào tạo chuyên sâu với cấu trúc bài giảng tối ưu, cho phép học tập linh hoạt bất kể tình trạng kết nối mạng.
+            Nền tảng đào tạo chuyên sâu về Tin học văn phòng (Excel, Word) và Công nghệ thông tin (React, SQL, .NET), hỗ trợ học tập ngoại tuyến linh hoạt.
           </p>
         </div>
 
@@ -126,24 +139,46 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
       </div>
 
       {/* Bộ lọc tab & Ô tìm kiếm */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-900/80 border border-white/5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-white/5">
           <button
             onClick={() => setActiveTab('ALL')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'ALL'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Tất cả khóa học ({courses.length})
+            Tất cả ({courses.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('OFFICE')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'OFFICE'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Excel &amp; Word
+          </button>
+
+          <button
+            onClick={() => setActiveTab('IT')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'IT'
+                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Lập trình &amp; IT
           </button>
 
           <button
             onClick={() => setActiveTab('ENROLLED')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'ENROLLED'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
