@@ -4,6 +4,7 @@ using Microlearning.Exceptions;
 using Microlearning.Infrastructure.Factory;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
+using Microlearning.Model.Entities.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Microlearning.Areas.Sync.Services
@@ -129,6 +130,105 @@ namespace Microlearning.Areas.Sync.Services
                 _logger.LogError(ex, "Quá trình đồng bộ thất bại. Đã kích hoạt Transaction Rollback!");
                 throw new BusinessException($"Đồng bộ dữ liệu thất bại do lỗi hệ thống: {ex.Message}. Toàn bộ giao dịch đã được hoàn tác.");
             }
+        }
+
+
+
+        public async Task<SyncPullResponse> PullSyncChangesAsync(
+    SyncPullRequest request,
+    CancellationToken cancellationToken = default)
+        {
+            // 1. Chạy qua nhà máy Validation (Kiểm tra AfterSequence >= 0, Limit <= 100)
+            await _validationFactory.ValidateAsync(request, cancellationToken);
+
+            // 2. Truy vấn các thay đổi có Sequence lớn hơn AfterSequence, sắp xếp tăng dần tuyệt đối
+            var changesQuery = _context.ContentChanges
+                .AsNoTracking()
+                .Where(c => c.Sequence > request.AfterSequence)
+                .OrderBy(c => c.Sequence);
+
+            // Lấy nhiều hơn Limit 1 bản ghi để kiểm tra xem còn dữ liệu phía sau không (HasMoreChanges)
+            var changes = await changesQuery
+                .Take(request.Limit + 1)
+                .ToListAsync(cancellationToken);
+
+            var hasMoreChanges = changes.Count > request.Limit;
+            var resultChanges = changes.Take(request.Limit).ToList();
+
+            // 3. Tính toán mốc Checkpoint mới
+            var newCheckpoint = resultChanges.Count > 0
+                ? resultChanges.Max(c => c.Sequence)
+                : request.AfterSequence;
+
+            // 4. Map sang DTO trả về cho Mobile
+            var changeItems = new List<ContentChangeItemDto>();
+
+            foreach (var change in resultChanges)
+            {
+                object? payload = null;
+
+                // Nếu là bài học mới hoặc cập nhật -> Nạp kèm thông tin cơ bản
+                if (change.EntityType.Equals("Lesson", StringComparison.OrdinalIgnoreCase) && change.ChangeType != ContentChangeType.Deleted)
+                {
+                    var lesson = await _context.Lessons
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(l => l.Id == change.EntityId, cancellationToken);
+
+                    if (lesson != null)
+                    {
+                        payload = new
+                        {
+                            lessonId = lesson.Id,
+                            title = lesson.Title,
+                            durationSeconds = lesson.DurationSeconds,
+                            isPublished = lesson.IsPublished,
+                            version = lesson.Version
+                        };
+                    }
+                }
+                // Nếu là khóa học -> Nạp kèm thông tin khóa học
+                else if (change.EntityType.Equals("Course", StringComparison.OrdinalIgnoreCase) && change.ChangeType != ContentChangeType.Deleted)
+                {
+                    var course = await _context.Courses
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.Id == change.EntityId, cancellationToken);
+
+                    if (course != null)
+                    {
+                        payload = new
+                        {
+                            courseId = course.Id,
+                            title = course.Title,
+                            description = course.Description,
+                            isPublished = course.IsPublished,
+                            version = course.Version
+                        };
+                    }
+                }
+
+                changeItems.Add(new ContentChangeItemDto
+                {
+                    Sequence = change.Sequence,
+                    EntityType = change.EntityType,
+                    EntityId = change.EntityId,
+                    ChangeType = change.ChangeType.ToString(),
+                    Version = change.Version,
+                    ChangedAt = change.ChangedAt,
+                    Payload = payload
+                });
+            }
+
+            _logger.LogInformation(
+                "Đã xử lý Sync Pull: AfterSequence={AfterSeq}, Trả về={Count} thay đổi, NewCheckpoint={NewCheckpoint}, HasMore={HasMore}",
+                request.AfterSequence, changeItems.Count, newCheckpoint, hasMoreChanges);
+
+            return new SyncPullResponse
+            {
+                CurrentCheckpointSequence = request.AfterSequence,
+                NewCheckpointSequence = newCheckpoint,
+                HasMoreChanges = hasMoreChanges,
+                Changes = changeItems
+            };
         }
     }
 }

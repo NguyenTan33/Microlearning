@@ -101,7 +101,8 @@ builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IMediaService, MediaService>();
 builder.Services.AddScoped<ISyncService, SyncService>();
-builder.Services.AddScoped<ISyncOperationHandler, MockLessonProgressSyncHandler>();
+builder.Services.AddScoped<ISyncOperationHandler, LessonProgressSyncHandler>();
+builder.Services.AddScoped<ISyncOperationHandler, QuizAttemptSyncHandler>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();

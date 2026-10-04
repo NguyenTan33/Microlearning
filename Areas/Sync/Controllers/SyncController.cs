@@ -63,5 +63,26 @@ namespace Microlearning.Areas.Sync.Controllers
                 changedAt = result.ChangedAt
             });
         }
+
+        /// <summary>
+        /// API Kéo danh sách thay đổi vi sai (Delta Sync Pull) từ Server về thiết bị Mobile.
+        /// </summary>
+        /// <param name="afterSequence">Mốc Sequence cuối cùng mà điện thoại đang lưu (Mặc định = 0)</param>
+        /// <param name="limit">Số lượng thay đổi tối đa muốn lấy (Mặc định = 50)</param>
+        [HttpGet("pull")]
+        [Authorize] // Bắt buộc đăng nhập để đảm bảo an toàn dữ liệu
+        public async Task<IActionResult> PullSync(
+            [FromQuery] long afterSequence = 0,
+            [FromQuery] int limit = 50)
+        {
+            var request = new SyncPullRequest
+            {
+                AfterSequence = afterSequence,
+                Limit = limit
+            };
+
+            var response = await _syncService.PullSyncChangesAsync(request);
+            return Ok(response);
+        }
     }
 }
