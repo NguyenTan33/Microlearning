@@ -190,6 +190,28 @@ export async function getAllOfflineContent(): Promise<CachedContentItem[]> {
   });
 }
 
+export async function saveOfflineLessonPackage(lessonId: number, pkg: unknown): Promise<void> {
+  await saveOfflineContent({
+    id: `LessonPackage_${lessonId}`,
+    entityType: 'LessonPackage',
+    entityId: lessonId,
+    payload: pkg,
+    version: 1,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function getOfflineLessonPackage(lessonId: number): Promise<unknown | null> {
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.CONTENT, 'readonly');
+    const store = tx.objectStore(STORES.CONTENT);
+    const req = store.get(`LessonPackage_${lessonId}`);
+    req.onsuccess = () => resolve(req.result?.payload || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // ==========================================
 // 4. METADATA (SEQUENCE CHECKPOINT)
 // ==========================================
