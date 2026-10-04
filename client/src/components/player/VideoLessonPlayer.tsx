@@ -210,7 +210,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
             }}
             onError={() => {
-              const fallbackUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+              const fallbackUrl = '/videos/test.mp4';
               if (videoSrc !== fallbackUrl && playbackSource !== 'OFFLINE_BLOB') {
                 setVideoSrc(fallbackUrl);
               }
