@@ -84,5 +84,19 @@ namespace Microlearning.Areas.Sync.Controllers
             var response = await _syncService.PullSyncChangesAsync(request);
             return Ok(response);
         }
+
+
+        /// <summary>
+        /// API Gỡ bỏ nội dung và kích hoạt cơ chế Tombstone cho Offline Sync (Dành cho Admin).
+        /// </summary>
+        [HttpPost("tombstone")]
+        [Authorize] // Bắt buộc đăng nhập
+        public async Task<IActionResult> CreateTombstone(
+            [FromBody] TombstoneRequest request,
+            [FromServices] ITombstoneService tombstoneService)
+        {
+            var response = await tombstoneService.CreateTombstoneAsync(request);
+            return Ok(response);
+        }
     }
 }
