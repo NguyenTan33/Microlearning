@@ -1,8 +1,9 @@
-﻿using System.Text;
-using System.Threading.RateLimiting;
-using Microlearning.Areas.Auth.Interfaces;
+﻿using Microlearning.Areas.Auth.Interfaces;
 using Microlearning.Areas.Auth.Services;
+using Microlearning.Areas.Sync.Interfaces;
+using Microlearning.Areas.Sync.Services;
 using Microlearning.Infrastructure.Factory;
+using Microlearning.Middlewares;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -10,8 +11,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microlearning.Middlewares;
 using Microsoft.OpenApi.Models;
+using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +94,7 @@ builder.Services.AddScoped<IFacebookAuthService, FacebookAuthService>();
 builder.Services.AddScoped<IPhoneService, PhoneService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
+builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
 
 // Auto-register validation factory and rules
 builder.Services.AddAppValidation();
@@ -144,7 +147,6 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
