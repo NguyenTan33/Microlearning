@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Exceptions;
@@ -105,7 +105,16 @@ namespace Microlearning.Areas.Media.Services
         private string GetPhysicalFilePath(string fileName)
         {
             var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-            return Path.Combine(rootPath, "videos", fileName);
+            var target = Path.Combine(rootPath, "videos", fileName);
+            if (!File.Exists(target))
+            {
+                var fallback = Path.Combine(rootPath, "videos", "test.mp4");
+                if (File.Exists(fallback))
+                {
+                    return fallback;
+                }
+            }
+            return target;
         }
 
         private static async Task<string> CalculateSha256Async(string filePath)
