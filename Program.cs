@@ -1,4 +1,7 @@
+using Microlearning.Areas.Admin.Interfaces;
+using Microlearning.Areas.Admin.Services;
 using Microlearning.Areas.Auth.Interfaces;
+using Microlearning.Areas.Auth.Seeders;
 using Microlearning.Areas.Auth.Services;
 using Microlearning.Areas.Catalog.Interfaces;
 using Microlearning.Areas.Catalog.Seeders;
@@ -42,6 +45,9 @@ builder.Services.AddIdentity<Account, IdentityRole>(options =>
     options.Password.RequireUppercase = false;
     options.Password.RequiredLength = 6;
     options.User.RequireUniqueEmail = false;
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.MaxFailedAccessAttempts = 5;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
@@ -115,6 +121,7 @@ builder.Services.AddScoped<IFacebookAuthService, FacebookAuthService>();
 builder.Services.AddScoped<IPhoneService, PhoneService>();
 builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IHashService, HashService>();
+builder.Services.AddScoped<IUserManagementService, UserManagementService>();
 
 // Catalog Services (Thắng)
 builder.Services.AddScoped<ICourseService, CourseService>();
@@ -149,7 +156,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "https://localhost:5173")
+        policy.WithOrigins("http://localhost:5173", "https://localhost:5173", "http://localhost:5174", "https://localhost:5174")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -220,6 +227,16 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+// Tự động nạp Roles (Admin, Teacher, Student) và tài khoản Admin/Teacher mặc định
+try
+{
+    await IdentityDbSeeder.SeedRolesAndAdminAsync(app.Services);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Không thể tự động nạp vai trò và tài khoản quản trị khi khởi động: {Message}", ex.Message);
+}
 
 // Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
 try

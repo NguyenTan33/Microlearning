@@ -39,10 +39,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Tạo mới một môn học (Yêu cầu đăng nhập)
+        /// Tạo mới một môn học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateSubject([FromBody] CreateSubjectRequest request)
         {
             var result = await _subjectService.CreateSubjectAsync(request);
@@ -50,10 +50,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Cập nhật thông tin môn học
+        /// Cập nhật thông tin môn học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> UpdateSubject(int id, [FromBody] UpdateSubjectRequest request)
         {
             var result = await _subjectService.UpdateSubjectAsync(id, request);
@@ -61,10 +61,10 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Xóa môn học
+        /// Xóa môn học (Yêu cầu quyền Admin hoặc Giáo viên)
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> DeleteSubject(int id)
         {
             await _subjectService.DeleteSubjectAsync(id);

@@ -564,38 +564,146 @@ export async function verifyDownloadedFile(fileBlob: Blob, expectedChecksum: str
 }
 ```
 
+
 ---
 
-## 9. DANH MỤC TỔNG HỢP ENDPOINT VÀ MÃ TRUY CẬP
+## 8. PHÂN HỆ 7: QUẢN TRỊ NGƯỜI DÙNG & PHÂN QUYỀN (ADMIN USER MANAGEMENT & RBAC)
 
-| STT | Phân hệ | Endpoint | Method | Quyền hạn |
+> **Yêu cầu phân quyền:** Chỉ tài khoản có vai trò `Admin` mới được phép truy cập phân hệ này (`[Authorize(Roles = "Admin")]`).
+
+### 8.1. Ma trận phân quyền hệ thống (Role-Based Access Control)
+- **`Admin` (Quản trị viên):** Toàn quyền trong hệ thống. Quản lý tài khoản (tạo user, đổi mật khẩu, tạm khóa, gán quyền), quản lý toàn bộ khóa học, bài học, đề thi, xem báo cáo, gỡ bỏ dữ liệu (Tombstone).
+- **`Teacher` (Giáo viên):** Có quyền thêm, sửa, xóa, xuất bản/ẩn khóa học, môn học, bài học và đề thi trắc nghiệm. Không có quyền quản lý người dùng.
+- **`Student` / `User` (Học viên):** Quyền mặc định khi đăng ký mới. Chỉ được xem danh mục đào tạo, tải gói bài học ngoại tuyến, xem video, làm bài kiểm tra trắc nghiệm, lưu tiến độ và đồng bộ dữ liệu. Không có quyền CRUD danh mục.
+
+### 8.2. Danh sách tài khoản mẫu để kiểm thử đăng nhập
+| Vai trò | Số điện thoại | Mật khẩu | Quyền hạn nổi bật |
+| :--- | :--- | :--- | :--- |
+| **Admin** | `+84999999999` | `Admin@123456` | Toàn quyền quản trị hệ thống & quản lý tài khoản |
+| **Teacher** | `+84888888888` | `Teacher@123456` | Toàn quyền CRUD khóa học, bài học, đề thi |
+| **Student** | Đăng ký tài khoản mới trên App | Tự tạo khi đăng ký | Học tập, làm quiz, xem bài giảng ngoại tuyến |
+
+---
+
+### 8.3. Chi tiết các API Quản trị người dùng (Admin User Management)
+
+#### 1. Lấy danh sách tài khoản (Hỗ trợ tìm kiếm, lọc theo vai trò, phân trang)
+- **Method:** `GET`
+- **URL:** `/api/admin/users?search=...&role=...&page=1&pageSize=50`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Response (HTTP 200 OK):**
+  ```json
+  [
+    {
+      "id": "82cad1da-04bd-43b7-b037-dde65d411a8f",
+      "fullName": "Teo Nguyen",
+      "phoneNumber": "+84703345735",
+      "email": null,
+      "roles": ["Student", "User"],
+      "isLockedOut": false,
+      "lockoutEnd": null,
+      "phoneNumberConfirmed": true
+    }
+  ]
+  ```
+
+#### 2. Xem chi tiết thông tin người dùng
+- **Method:** `GET`
+- **URL:** `/api/admin/users/{id}`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+
+#### 3. Quản trị viên thêm tài khoản mới
+- **Method:** `POST`
+- **URL:** `/api/admin/users`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Body:**
+  ```json
+  {
+    "fullName": "Nguyễn Thị Thầy",
+    "phoneNumber": "0912345678",
+    "password": "Password123@",
+    "role": "Teacher" // "Admin", "Teacher" hoặc "Student"
+  }
+  ```
+
+#### 4. Quản trị viên đổi mật khẩu người dùng
+- **Method:** `PUT`
+- **URL:** `/api/admin/users/{id}/password`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Body:**
+  ```json
+  {
+    "newPassword": "NewStrongPassword123@"
+  }
+  ```
+
+#### 5. Quản trị viên Tạm khóa / Mở khóa tài khoản
+- **Method:** `PATCH`
+- **URL:** `/api/admin/users/{id}/toggle-lock`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Body (Tạm khóa):**
+  ```json
+  {
+    "lock": true,
+    "lockMinutes": 60 // Tuỳ chọn: số phút khóa. Bỏ qua sẽ khóa dài hạn
+  }
+  ```
+- **Body (Mở khóa):**
+  ```json
+  {
+    "lock": false
+  }
+  ```
+
+#### 6. Quản trị viên cập nhật vai trò (Role)
+- **Method:** `PUT`
+- **URL:** `/api/admin/users/{id}/role`
+- **Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+- **Body:**
+  ```json
+  {
+    "role": "Teacher" // "Admin", "Teacher", "Student"
+  }
+  ```
+
+---
+
+## 9. DANH MỤC TỔNG HỢP TOÀN BỘ 35 ENDPOINTS VÀ PHÂN QUYỀN
+
+| STT | Phân hệ | Endpoint | Method | Quyền hạn tối thiểu |
 | :---: | :--- | :--- | :---: | :---: |
 | 1 | Hạ tầng | `/health` | GET | Anonymous |
-| 2 | Auth | `/api/auth/register` | POST | Anonymous |
+| 2 | Auth | `/api/auth/register` | POST | Anonymous (Mặc định gán `Student`) |
 | 3 | Auth | `/api/auth/verify-otp` | POST | Anonymous |
-| 4 | Auth | `/api/auth/login` | POST | Anonymous |
+| 4 | Auth | `/api/auth/login` | POST | Anonymous (Chặn nếu bị Tạm khóa) |
 | 5 | Auth | `/api/auth/google-login` | POST | Anonymous |
 | 6 | Auth | `/api/auth/refresh` | POST | Anonymous |
 | 7 | Thiết bị | `/api/devices/register` | POST | **Authorize** |
 | 8 | Khóa học | `/api/courses` | GET | Anonymous |
-| 9 | Môn học | `/api/subjects/course/{courseId}` | GET | Anonymous |
-| 10 | Bài học | `/api/lessons/subject/{subjectId}` | GET | Anonymous |
-| 11 | Bài học | `/api/lessons/{id}` | GET | Anonymous |
-| 12 | Gói Offline | `/api/lessons/{id}/package` | GET | **Authorize** |
-| 13 | Đề thi | `/api/quizzes/lesson/{lessonId}` | GET | Anonymous |
-| 14 | Nộp bài thi | `/api/quizzes/attempts` | POST | **Authorize** |
-| 15 | Lịch sử thi | `/api/quizzes/{quizId}/history` | GET | **Authorize** |
-| 16 | Ghi danh | `/api/enrollments/course/{courseId}` | POST | **Authorize** |
-| 17 | Ghi danh | `/api/enrollments/my-courses` | GET | **Authorize** |
-| 18 | Tiến độ | `/api/progress/events` | POST | **Authorize** |
-| 19 | Tiến độ | `/api/progress/lesson/{lessonId}` | GET | **Authorize** |
-| 20 | Tiến độ | `/api/progress/course/{courseId}` | GET | **Authorize** |
-| 21 | Đồng bộ | `/api/sync/pull` | GET | **Authorize** |
-| 22 | Đồng bộ | `/api/sync/push` | POST | **Authorize** |
-| 23 | Streaming | `/api/media/{id}/stream` | GET | Anonymous |
-| 24 | Download Info| `/api/media/{id}/download-info` | GET | Anonymous |
-| 25 | Download File| `/api/media/{id}/download` | GET | Anonymous |
-| 26 | AI TTS Test | `/api/media/tts/test` | POST | Anonymous |
-| 27 | AI Kịch bản | `/api/media/tts/narration/{scriptId}` | POST | **Authorize** |
-| 28 | Media Jobs | `/api/media/jobs/enqueue` | POST | **Authorize** |
-| 29 | Media Jobs | `/api/media/jobs/{id}` | GET | Anonymous |
+| 9 | Khóa học | `/api/courses/{id}` | GET | Anonymous |
+| 10 | Khóa học | `/api/courses` | POST | **Admin, Teacher** |
+| 11 | Khóa học | `/api/courses/{id}` | PUT | **Admin, Teacher** |
+| 12 | Khóa học | `/api/courses/{id}/toggle-publish` | PATCH | **Admin, Teacher** |
+| 13 | Khóa học | `/api/courses/{id}` | DELETE | **Admin, Teacher** |
+| 14 | Môn học | `/api/subjects/course/{courseId}` | GET | Anonymous |
+| 15 | Môn học | `/api/subjects` | POST | **Admin, Teacher** |
+| 16 | Môn học | `/api/subjects/{id}` | PUT / DELETE | **Admin, Teacher** |
+| 17 | Bài học | `/api/lessons/subject/{subjectId}` | GET | Anonymous |
+| 18 | Bài học | `/api/lessons/{id}` | GET | Anonymous |
+| 19 | Bài học | `/api/lessons` | POST | **Admin, Teacher** |
+| 20 | Bài học | `/api/lessons/{id}` | PUT / DELETE | **Admin, Teacher** |
+| 21 | Bài học | `/api/lessons/{id}/toggle-publish` | PATCH | **Admin, Teacher** |
+| 22 | Gói Offline | `/api/lessons/{id}/package` | GET | **Authorize** (Student, Teacher, Admin) |
+| 23 | Đề thi | `/api/quizzes/lesson/{lessonId}` | GET | Anonymous (Ẩn `IsCorrect`) |
+| 24 | Đề thi | `/api/quizzes/lesson/{lessonId}` | POST | **Admin, Teacher** |
+| 25 | Nộp bài thi | `/api/quizzes/attempts` | POST | **Authorize** |
+| 26 | Lịch sử thi | `/api/quizzes/{quizId}/history` | GET | **Authorize** |
+| 27 | Ghi danh | `/api/enrollments/course/{courseId}` | POST | **Authorize** |
+| 28 | Ghi danh | `/api/enrollments/my-courses` | GET | **Authorize** |
+| 29 | Tiến độ | `/api/progress/events` | POST | **Authorize** (Monotonic Max) |
+| 30 | Đồng bộ | `/api/sync/pull` | GET | **Authorize** (Delta Sync) |
+| 31 | Đồng bộ | `/api/sync/push` | POST | **Authorize** (Outbox ACID Batch) |
+| 32 | Đồng bộ | `/api/sync/tombstone` | POST | **Admin, Teacher** |
+| 33 | Media | `/api/media/{id}/stream` | GET | Anonymous |
+| 34 | AI TTS | `/api/media/tts/test` | POST | Anonymous |
+| 35 | **Quản lý User**| `/api/admin/users/**` | CRUD/PATCH | **Admin** |
