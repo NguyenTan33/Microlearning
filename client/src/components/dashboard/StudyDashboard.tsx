@@ -26,8 +26,11 @@ import { BookmarkLibraryView } from '../bookmarks/BookmarkLibraryView';
 import { LessonSidebar } from './LessonSidebar';
 import { CourseManagementModal } from '../management/CourseManagementModal';
 import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
+import { UserProfileModal } from '../profile/UserProfileModal';
+import type { UserProfile } from '../../types/userProfile.types';
 import { getCurrentUser } from '../../utils/tokenHelper';
 import { mediaBookmarkService } from '../../services/mediaBookmarkService';
+import { userProfileService } from '../../services/userProfileService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
 import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
@@ -40,6 +43,15 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const currentUser = useMemo(() => getCurrentUser(), []);
   const [isCourseMgmtOpen, setIsCourseMgmtOpen] = useState<boolean>(false);
   const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [userProfile, setUserProfile] = useState<UserProfile>(() =>
+    userProfileService.getUserProfile(currentUser?.userId || '', {
+      fullName: currentUser?.displayName,
+      phoneNumber: currentUser?.phoneNumber,
+      email: currentUser?.email,
+      role: currentUser?.isAdmin ? 'Quản trị viên' : currentUser?.isTeacher ? 'Giáo viên' : 'Học viên',
+    })
+  );
   const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'BOOKMARKS'>('CATALOG');
   const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
   const [initialSeekTimestamp, setInitialSeekTimestamp] = useState<number | null>(null);
@@ -160,6 +172,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     setTotalBookmarksCount(mediaBookmarkService.getAllBookmarksCount());
   }, [currentView]);
+
+  // Lắng nghe cập nhật thông tin hồ sơ và avatar thời gian thực
+  useEffect(() => {
+    const unsubscribe = userProfileService.listenProfileChanges((updated) => {
+      setUserProfile(updated);
+    });
+    return unsubscribe;
+  }, []);
 
   // Tính danh sách bài học phẳng để hỗ trợ Prev / Next Lesson
   const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
@@ -319,15 +339,32 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               </button>
             )}
 
-            {/* User Role Badge */}
+            {/* User Profile & Role Badge - Nhấp vào để mở Dashboard tiến độ học & Quản lý hồ sơ */}
             {currentUser && (
-              <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-slate-900/80 border-white/10 text-slate-300"
-                title={`Tài khoản: ${currentUser.displayName} (${currentUser.isAdmin ? 'Quản trị viên' : currentUser.isTeacher ? 'Giáo viên' : 'Học viên'})`}
+              <button
+                type="button"
+                onClick={() => setIsProfileModalOpen(true)}
+                className="flex items-center gap-2 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-slate-900/80 hover:bg-slate-800 border-white/10 hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
+                title={`Hồ sơ: ${userProfile.fullName || currentUser.displayName} - Bấm để xem Dashboard học tập & Đổi mật khẩu`}
               >
-                <Shield className="w-3 h-3 text-cyan-400" />
-                <span className="truncate max-w-[140px] sm:max-w-[180px]">{currentUser.displayName}</span>
-              </div>
+                {userProfile.avatarUrl ? (
+                  <img
+                    src={userProfile.avatarUrl}
+                    alt={userProfile.fullName}
+                    className="w-5 h-5 rounded-lg object-cover border border-indigo-400/50 shrink-0"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-[10px] text-white font-bold shrink-0">
+                    {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
+                  </div>
+                )}
+                <span className="truncate max-w-[120px] sm:max-w-[160px] group-hover:text-cyan-300 transition-colors">
+                  {userProfile.fullName || currentUser.displayName}
+                </span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase">
+                  {currentUser.isAdmin ? 'Admin' : currentUser.isTeacher ? 'Teacher' : 'Student'}
+                </span>
+              </button>
             )}
 
             {/* Nút Đăng xuất */}
@@ -412,10 +449,30 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </div>
 
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-white/5 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-cyan-400" />
-                <span className="text-white font-semibold">{currentUser?.displayName || 'Học viên'}</span>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfileModalOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer text-left"
+              >
+                {userProfile.avatarUrl ? (
+                  <img
+                    src={userProfile.avatarUrl}
+                    alt={userProfile.fullName}
+                    className="w-6 h-6 rounded-lg object-cover border border-indigo-400/50 shrink-0"
+                  />
+                ) : (
+                  <Shield className="w-4 h-4 text-cyan-400 shrink-0" />
+                )}
+                <div className="flex flex-col">
+                  <span className="text-white font-semibold text-xs truncate max-w-[170px]">
+                    {userProfile.fullName || currentUser?.displayName || 'Học viên'}
+                  </span>
+                  <span className="text-[10px] text-indigo-400 font-medium">Dashboard học tập &amp; Hồ sơ</span>
+                </div>
+              </button>
               <button
                 onClick={onLogout}
                 className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 font-semibold"
@@ -600,6 +657,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           onClose={() => setIsAdminUsersOpen(false)}
         />
       )}
+
+      {/* USER PROFILE & LEARNING PROGRESS DASHBOARD MODAL */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={currentUser}
+        allCourses={SAMPLE_COURSES}
+        completedLessonIds={completedLessonIds}
+        onSelectCourse={handleSelectCourseFromCatalog}
+        onProfileUpdated={(updated) => setUserProfile(updated)}
+      />
     </div>
   );
 };
