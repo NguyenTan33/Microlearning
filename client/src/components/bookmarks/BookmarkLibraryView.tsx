@@ -208,9 +208,9 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
                     <GraduationCap className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                     <span
                       className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider truncate block"
-                      title={bm.courseTitle || 'Khóa học MicroLearn'}
+                      title={bm.courseTitle || 'Kiến trúc Offline-First Mobile & Web App'}
                     >
-                      {bm.courseTitle || 'Khóa học MicroLearn'}
+                      {bm.courseTitle || 'Kiến trúc Offline-First Mobile & Web App'}
                     </span>
                   </div>
 
@@ -232,9 +232,9 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
                     <h3
                       onClick={() => onSelectBookmark(bm)}
                       className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors cursor-pointer line-clamp-2"
-                      title={`Chuyển tới bài học: ${bm.lessonTitle || `Bài học #${bm.lessonId}`}`}
+                      title={`Chuyển tới bài học: ${bm.lessonTitle || 'Monotonic Merge chống tụt lùi tiến độ'}`}
                     >
-                      {bm.lessonTitle || `Bài học #${bm.lessonId}`}
+                      {bm.lessonTitle || 'Monotonic Merge chống tụt lùi tiến độ'}
                     </h3>
                   </div>
 

@@ -57,6 +57,12 @@ export interface ResetPasswordRequest {
   confirmNewPassword: string;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
 export interface ResendOtpRequest {
   phoneNumber: string;
   purpose: 'Register' | 'ForgotPassword';

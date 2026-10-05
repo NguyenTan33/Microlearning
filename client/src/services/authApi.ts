@@ -10,6 +10,7 @@ import type {
   VerifyForgotPasswordOtpRequest,
   VerifyForgotPasswordOtpResponse,
   ResetPasswordRequest,
+  ChangePasswordRequest,
   ResendOtpRequest,
   ResendOtpResponse,
   GoogleLoginRequest,
@@ -124,5 +125,22 @@ export const authApi = {
       body: JSON.stringify(request),
     });
     return handleResponse<LoginResponse>(response);
+  },
+
+  async changePassword(request: ChangePasswordRequest): Promise<{ message: string }> {
+    const token = localStorage.getItem('accessToken');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await safeFetch(`${API_BASE_URL}/change-password`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request),
+    });
+    return handleResponse<{ message: string }>(response);
   },
 };
