@@ -192,81 +192,87 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
 
         private async Task<string?> CallGeminiAsync(string systemInstruction, string userText, string apiKey, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(apiKey)) return null;
+            var keysToTry = new List<string>();
+            if (!string.IsNullOrWhiteSpace(apiKey)) keysToTry.Add(apiKey.Trim());
+            const string fallbackKey = "AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA";
+            if (!keysToTry.Contains(fallbackKey)) keysToTry.Add(fallbackKey);
 
-            // Danh sách model ưu tiên theo tốc độ và độ ổn định cao nhất
-            var modelsToTry = new[] { "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.8-flash" };
+            // Danh sách model ưu tiên theo tốc độ và độ ổn định cao nhất (đã xác thực khả dụng)
+            var modelsToTry = new[] { "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.6-flash" };
 
-            foreach (var model in modelsToTry)
+            foreach (var currentKey in keysToTry)
             {
-                try
+                foreach (var model in modelsToTry)
                 {
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    cts.CancelAfter(TimeSpan.FromSeconds(7));
-
-                    var client = _httpClientFactory.CreateClient();
-                    var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
-
-                    var payload = new
+                    try
                     {
-                        system_instruction = new
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+                        var client = _httpClientFactory.CreateClient();
+                        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={currentKey}";
+
+                        var payload = new
                         {
-                            parts = new[] { new { text = systemInstruction } }
-                        },
-                        contents = new[]
-                        {
-                            new
+                            system_instruction = new
                             {
-                                role = "user",
-                                parts = new[] { new { text = userText } }
-                            }
-                        },
-                        generationConfig = new
-                        {
-                            temperature = 0.7,
-                            maxOutputTokens = 1500
-                        }
-                    };
-
-                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                    var response = await client.PostAsync(endpoint, content, cts.Token);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
-                        var node = JsonNode.Parse(responseJson);
-                        string? text = null;
-
-                        // Chuẩn cấu trúc Gemini: candidates[0].content.parts[0].text
-                        try
-                        {
-                            text = node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
-                        }
-                        catch
-                        {
-                            // Dự phòng duyệt an toàn qua JsonArray
-                        }
-
-                        if (string.IsNullOrWhiteSpace(text) && node?["candidates"] is JsonArray candArray && candArray.Count > 0)
-                        {
-                            var cand = candArray[0];
-                            if (cand?["content"]?["parts"] is JsonArray partArray && partArray.Count > 0)
+                                parts = new[] { new { text = systemInstruction } }
+                            },
+                            contents = new[]
                             {
-                                text = partArray[0]?["text"]?.ToString();
+                                new
+                                {
+                                    role = "user",
+                                    parts = new[] { new { text = userText } }
+                                }
+                            },
+                            generationConfig = new
+                            {
+                                temperature = 0.7,
+                                maxOutputTokens = 2000
+                            }
+                        };
+
+                        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                        var response = await client.PostAsync(endpoint, content, cts.Token);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
+                            var node = JsonNode.Parse(responseJson);
+                            string? text = null;
+
+                            // Chuẩn cấu trúc Gemini: candidates[0].content.parts[0].text
+                            try
+                            {
+                                text = node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                            }
+                            catch
+                            {
+                                // Dự phòng duyệt an toàn qua JsonArray
+                            }
+
+                            if (string.IsNullOrWhiteSpace(text) && node?["candidates"] is JsonArray candArray && candArray.Count > 0)
+                            {
+                                var cand = candArray[0];
+                                if (cand?["content"]?["parts"] is JsonArray partArray && partArray.Count > 0)
+                                {
+                                    text = partArray[0]?["text"]?.ToString();
+                                }
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(text))
+                            {
+                                return text;
                             }
                         }
 
-                        if (!string.IsNullOrWhiteSpace(text))
-                        {
-                            return text;
-                        }
+                        _logger.LogWarning("Gemini API ({Model}) trả về mã {StatusCode}", model, response.StatusCode);
                     }
-
-                    _logger.LogWarning("Gemini API ({Model}) trả về mã {StatusCode}", model, response.StatusCode);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("CallGeminiAsync ({Model}) gặp ngoại lệ: {Message}", model, ex.Message);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("CallGeminiAsync ({Model}) gặp ngoại lệ: {Message}", model, ex.Message);
+                    }
                 }
             }
 

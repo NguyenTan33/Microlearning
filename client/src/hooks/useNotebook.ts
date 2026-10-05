@@ -431,6 +431,16 @@ export function useNotebook(initialCourseName?: string) {
     [activeNotebook, episodeProfiles]
   );
 
+  // Xóa tập Podcast
+  const removePodcast = useCallback(async (podcastId: string) => {
+    try {
+      await notebookService.deletePodcastEpisode(podcastId);
+      setPodcasts((prev) => prev.filter((p) => p.id !== podcastId));
+    } catch {
+      // Ignored
+    }
+  }, []);
+
   return {
     currentTab,
     setCurrentTab,
@@ -465,5 +475,6 @@ export function useNotebook(initialCourseName?: string) {
     searchKnowledge,
     askQuestion,
     createPodcast,
+    removePodcast,
   };
 }
