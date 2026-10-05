@@ -11,6 +11,12 @@ namespace Microlearning.Areas.Media.Interfaces
         /// <returns>Tuple chứa (FileStream, ContentType, FileLength, FileName)</returns>
         Task<(Stream stream, string contentType, long fileLength, string fileName)> GetVideoStreamAsync(int mediaId);
 
+        /// <summary>
+        /// Mở luồng đọc video của một bài học cụ thể (tự động lấy video mới nhất của bài học, nếu chưa có video sẽ phát test.mp4 dự phòng).
+        /// </summary>
+        /// <param name="lessonId">ID của bài học (LessonId)</param>
+        Task<(Stream stream, string contentType, long fileLength, string fileName)> GetLessonVideoStreamAsync(int lessonId);
+
 
         /// <summary>
         /// Lấy thông tin tệp tải về kèm mã băm SHA-256 để Client xác thực toàn vẹn dữ liệu khi tải offline.

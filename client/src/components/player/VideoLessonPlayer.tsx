@@ -18,7 +18,7 @@ import {
   AlertTriangle,
   RefreshCw,
 } from 'lucide-react';
-import { getVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
+import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -74,20 +74,22 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     setIsPlaying(false);
     setVideoError(null);
 
+    const streamTargetId = lessonId || mediaId;
+
     // Kiểm tra xem đã có bản tải ngoại tuyến trong IndexedDB chưa
-    getOfflineVideoBlob(mediaId)
+    getOfflineVideoBlob(streamTargetId)
       .then((blob) => {
         if (isCancelled) return;
         if (blob) {
           objectUrl = URL.createObjectURL(blob);
           setVideoSrc(objectUrl);
         } else {
-          setVideoSrc(getVideoStreamUrl(mediaId));
+          setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
         }
       })
       .catch(() => {
         if (!isCancelled) {
-          setVideoSrc(getVideoStreamUrl(mediaId));
+          setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
         }
       });
 
@@ -149,7 +151,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleRetryStream = () => {
     setVideoError(null);
     setIsPlaying(false);
-    setVideoSrc(`${getVideoStreamUrl(mediaId)}?retry=${Date.now()}`);
+    const streamTargetId = lessonId || mediaId;
+    setVideoSrc(`${getLessonVideoStreamUrl(streamTargetId)}?retry=${Date.now()}`);
   };
 
   const handleUseDemoFallback = () => {
@@ -343,8 +346,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
             }}
             onError={() => {
-              setIsPlaying(false);
-              setVideoError('Không thể tải luồng video bài giảng. Tệp video chưa được đồng bộ lên kho lưu trữ Azure Blob Storage hoặc kết nối mạng bị gián đoạn.');
+              if (videoSrc && !videoSrc.includes('test.mp4')) {
+                setVideoSrc('/videos/test.mp4');
+              } else {
+                setIsPlaying(false);
+                setVideoError('Không thể tải luồng video bài giảng. Vui lòng kiểm tra lại kết nối mạng.');
+              }
             }}
           />
         ) : (

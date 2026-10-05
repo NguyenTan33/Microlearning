@@ -38,6 +38,16 @@ namespace Microlearning.Areas.Media.Controllers
         }
 
         /// <summary>
+        /// API Stream Video bài giảng theo LessonId (Tự động lấy video mới nhất của bài học, nếu chưa có sẽ phát test.mp4).
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/stream")]
+        public async Task<IActionResult> StreamLessonVideo(int lessonId)
+        {
+            var (stream, contentType, _, _) = await _mediaService.GetLessonVideoStreamAsync(lessonId);
+            return File(stream, contentType, enableRangeProcessing: true);
+        }
+
+        /// <summary>
         /// API Lấy thông tin tệp tải về và mã Checksum SHA256 phục vụ kiểm tra toàn vẹn khi tải Offline.
         /// </summary>
         [HttpGet("{id}/download-info")]
