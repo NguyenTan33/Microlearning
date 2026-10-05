@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BookMarked,
   Sparkles,
@@ -119,6 +119,44 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   // Audio Podcast Player & Transcript view
   const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
   const [viewingTranscriptId, setViewingTranscriptId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const handleTogglePlayPodcast = (ep: any) => {
+    if (playingPodcastId === ep.id) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setPlayingPodcastId(null);
+    } else {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const rawText = typeof ep.transcript === 'string'
+          ? ep.transcript
+              .replace(/#{1,6}\s?/g, '')
+              .replace(/\*\*|__/g, '')
+              .replace(/\[.*?\]/g, '')
+              .trim()
+          : '';
+        if (rawText) {
+          const utter = new SpeechSynthesisUtterance(rawText);
+          utter.lang = 'vi-VN';
+          utter.rate = 1.0;
+          utter.onend = () => {
+            setPlayingPodcastId(null);
+          };
+          window.speechSynthesis.speak(utter);
+        }
+      }
+      setPlayingPodcastId(ep.id);
+    }
+  };
 
   // Mở modal thêm Source có chỉ định trước Sổ tay đích
   const openAddSourceModal = (initialNotebookId?: string, defaultMode: 'UPLOAD' | 'TEXT' | 'LESSON' = 'UPLOAD') => {
@@ -1135,9 +1173,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                           ) : (
                             <div className="flex items-center gap-1.5">
                               <button
-                                onClick={() => {
-                                  setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
-                                }}
+                                onClick={() => handleTogglePlayPodcast(ep)}
                                 className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-pink-600/20"
                               >
                                 {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -1178,16 +1214,32 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
 
                         {/* Trình phát âm thanh khi bấm play */}
                         {playingPodcastId === ep.id && !isJobRunning && (
-                          <div className="mt-3 pt-2 border-t border-white/5 space-y-1.5">
+                          <div className="mt-3 pt-2 border-t border-white/5 space-y-2">
+                            {/* Thanh sóng âm Equalizer sinh động */}
+                            <div className="flex items-center justify-between text-xs text-pink-300 bg-pink-950/40 border border-pink-500/20 px-3 py-1.5 rounded-xl">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                  <span className="w-1 h-3 bg-pink-400 rounded-full animate-pulse" />
+                                  <span className="w-1 h-5 bg-pink-300 rounded-full animate-pulse [animation-delay:0.15s]" />
+                                  <span className="w-1 h-2 bg-pink-500 rounded-full animate-pulse [animation-delay:0.3s]" />
+                                  <span className="w-1 h-4 bg-pink-400 rounded-full animate-pulse [animation-delay:0.2s]" />
+                                </div>
+                                <span className="font-semibold text-[11px] text-pink-200">Đang phát tóm tắt âm thanh bài giảng AI</span>
+                              </div>
+                              <button
+                                onClick={() => handleTogglePlayPodcast(ep)}
+                                className="text-[10px] text-pink-300 hover:text-white underline cursor-pointer"
+                              >
+                                Dừng
+                              </button>
+                            </div>
+
                             <audio
                               src={notebookService.getPodcastAudioUrl(ep.id)}
                               controls
                               autoPlay
                               className="w-full h-8 rounded-lg"
                             />
-                            <p className="text-[10px] text-slate-400 italic text-center">
-                              Đang phát tóm tắt âm thanh bài giảng AI
-                            </p>
                           </div>
                         )}
 
