@@ -88,14 +88,14 @@ export function useNotebook(initialCourseName?: string) {
     }
   }, [initialCourseName]);
 
-  const loadNotebookDetail = async (notebookId: string) => {
+  const loadNotebookDetail = useCallback(async (notebookId: string) => {
     try {
       const detail = await notebookService.getNotebookDetail(notebookId);
       setSources(detail.sources || []);
     } catch {
       // Ignored for smoother experience
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadInitialData();
@@ -105,7 +105,7 @@ export function useNotebook(initialCourseName?: string) {
   const selectNotebook = useCallback((nb: Notebook) => {
     setActiveNotebook(nb);
     loadNotebookDetail(nb.id);
-  }, []);
+  }, [loadNotebookDetail]);
 
   // Tạo Notebook mới
   const createNotebook = useCallback(async (name: string, description: string = '') => {
@@ -146,31 +146,130 @@ export function useNotebook(initialCourseName?: string) {
 
   // Nạp bài giảng / nguồn tài liệu mới vào Notebook
   const syncLessonSource = useCallback(
-    async (lessonTitle: string, lessonSummary: string) => {
-      if (!activeNotebook) {
-        setError('Vui lòng chọn hoặc tạo một Notebook trước khi nạp bài giảng!');
-        return;
-      }
+    async (lessonTitle: string, lessonSummary: string, targetNotebookId?: string) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
       setIsSyncing(true);
       setError(null);
       try {
         const newSource = await notebookService.addLessonSource(
-          activeNotebook.id,
+          nbId,
           lessonTitle,
           lessonSummary
         );
-        setSources((prev) => [newSource, ...prev]);
         setAllSources((prev) => [newSource, ...prev]);
-        setNotebooks((prev) =>
-          prev.map((nb) =>
-            nb.id === activeNotebook.id
-              ? { ...nb, source_count: (nb.source_count || 0) + 1 }
-              : nb
-          )
-        );
+        if (nbId && (!activeNotebook || activeNotebook.id === nbId)) {
+          setSources((prev) => [newSource, ...prev]);
+        }
+        if (nbId) {
+          setNotebooks((prev) =>
+            prev.map((nb) =>
+              nb.id === nbId
+                ? { ...nb, source_count: (nb.source_count || 0) + 1 }
+                : nb
+            )
+          );
+        }
         return newSource;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Không thể nạp bài giảng';
+        setError(msg);
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [activeNotebook]
+  );
+
+  // Tải file tài liệu lên Open Notebook (PDF, DOCX, TXT, MD...)
+  const uploadFileSource = useCallback(
+    async (file: File, targetNotebookId?: string, customTitle?: string) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
+      setIsSyncing(true);
+      setError(null);
+      try {
+        const newSource = await notebookService.uploadSourceFile(
+          file,
+          nbId,
+          customTitle || file.name
+        );
+        setAllSources((prev) => [newSource, ...prev]);
+        if (nbId && (!activeNotebook || activeNotebook.id === nbId)) {
+          setSources((prev) => [newSource, ...prev]);
+        }
+        if (nbId) {
+          setNotebooks((prev) =>
+            prev.map((nb) =>
+              nb.id === nbId
+                ? { ...nb, source_count: (nb.source_count || 0) + 1 }
+                : nb
+            )
+          );
+        }
+        return newSource;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Tải file lên thất bại';
+        setError(msg);
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [activeNotebook]
+  );
+
+  // Gắn nguồn tài liệu sẵn có vào Sổ tay
+  const attachSourceToNotebook = useCallback(
+    async (sourceId: string, targetNotebookId?: string) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
+      if (!nbId) return;
+      setIsSyncing(true);
+      setError(null);
+      try {
+        await notebookService.addSourceToNotebook(nbId, sourceId);
+        const updatedSources = await notebookService.getSourcesByNotebook(nbId);
+        if (activeNotebook?.id === nbId) {
+          setSources(updatedSources);
+        }
+        setNotebooks((prev) =>
+          prev.map((nb) =>
+            nb.id === nbId
+              ? { ...nb, source_count: updatedSources.length }
+              : nb
+          )
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Không thể gắn tài liệu vào Sổ tay';
+        setError(msg);
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [activeNotebook]
+  );
+
+  // Gỡ tài liệu khỏi Sổ tay (không xóa tài liệu khỏi hệ thống)
+  const detachSourceFromNotebook = useCallback(
+    async (sourceId: string, targetNotebookId?: string) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
+      if (!nbId) return;
+      setIsSyncing(true);
+      setError(null);
+      try {
+        await notebookService.removeSourceFromNotebook(nbId, sourceId);
+        if (activeNotebook?.id === nbId) {
+          setSources((prev) => prev.filter((s) => s.id !== sourceId));
+        }
+        setNotebooks((prev) =>
+          prev.map((nb) =>
+            nb.id === nbId
+              ? { ...nb, source_count: Math.max(0, (nb.source_count || 1) - 1) }
+              : nb
+          )
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Không thể gỡ tài liệu khỏi Sổ tay';
         setError(msg);
         throw err;
       } finally {
@@ -340,6 +439,10 @@ export function useNotebook(initialCourseName?: string) {
     createNotebook,
     removeNotebook,
     syncLessonSource,
+    uploadFileSource,
+    attachSourceToNotebook,
+    detachSourceFromNotebook,
+    loadNotebookDetail,
     removeSource,
     viewSourceDetail,
     searchKnowledge,

@@ -91,13 +91,42 @@ export const notebookService = {
     if (!res.ok) throw new Error('Xóa Notebook thất bại');
   },
 
+  async getSourcesByNotebook(notebookId: string): Promise<NotebookSource[]> {
+    const res = await requestWithFallback(`/sources?notebook_id=${encodeURIComponent(notebookId)}`, { method: 'GET' });
+    if (!res.ok) throw new Error('Không thể lấy danh sách tài liệu của Sổ tay');
+    return res.json();
+  },
+
+  async addSourceToNotebook(notebookId: string, sourceId: string): Promise<void> {
+    const res = await requestWithFallback(`/notebooks/${notebookId}/sources/${sourceId}`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Không thể thêm tài liệu vào Sổ tay');
+    }
+  },
+
+  async removeSourceFromNotebook(notebookId: string, sourceId: string): Promise<void> {
+    const res = await requestWithFallback(`/notebooks/${notebookId}/sources/${sourceId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Không thể gỡ tài liệu khỏi Sổ tay');
+    }
+  },
+
   async getNotebookDetail(notebookId: string): Promise<{ notebook: Notebook; sources: NotebookSource[] }> {
-    const res = await requestWithFallback(`/notebooks/${notebookId}`, { method: 'GET' });
-    if (!res.ok) throw new Error('Không thể tải chi tiết Notebook');
-    const data = await res.json();
+    const [nbRes, sources] = await Promise.all([
+      requestWithFallback(`/notebooks/${notebookId}`, { method: 'GET' }),
+      this.getSourcesByNotebook(notebookId).catch(() => [] as NotebookSource[]),
+    ]);
+    if (!nbRes.ok) throw new Error('Không thể tải chi tiết Notebook');
+    const notebook = await nbRes.json();
     return {
-      notebook: data,
-      sources: data.sources || [],
+      notebook,
+      sources,
     };
   },
 
@@ -123,19 +152,22 @@ export const notebookService = {
   },
 
   async addLessonSource(
-    notebookId: string,
+    notebookId: string | undefined,
     title: string,
     content: string
   ): Promise<NotebookSource> {
+    const body: Record<string, unknown> = {
+      type: 'text',
+      title,
+      content,
+      embed: true,
+    };
+    if (notebookId) {
+      body.notebook_id = notebookId;
+    }
     const res = await requestWithFallback('/sources/json', {
       method: 'POST',
-      body: JSON.stringify({
-        notebook_id: notebookId,
-        type: 'text',
-        title,
-        content,
-        embed: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -143,6 +175,49 @@ export const notebookService = {
       throw new Error(err || 'Không thể nạp bài giảng vào Notebook');
     }
     return res.json();
+  },
+
+  /**
+   * Tải file tài liệu lên Open Notebook (PDF, DOCX, TXT, MD...)
+   */
+  async uploadSourceFile(
+    file: File,
+    notebookId?: string,
+    title?: string
+  ): Promise<NotebookSource> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', 'upload');
+    formData.append('embed', 'true');
+    if (notebookId) {
+      formData.append('notebook_id', notebookId);
+    }
+    if (title) {
+      formData.append('title', title);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/sources`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) return res.json();
+      if (res.status === 404 || res.status === 502) {
+        throw new Error(`Proxy error ${res.status}`);
+      }
+      const err = await res.text();
+      throw new Error(err || 'Tải file lên thất bại');
+    } catch {
+      const directRes = await fetch(`${DIRECT_API_BASE}/sources`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!directRes.ok) {
+        const err = await directRes.text();
+        throw new Error(err || 'Tải file lên thất bại');
+      }
+      return directRes.json();
+    }
   },
 
   // =========================================================================
