@@ -36,7 +36,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const currentUser = useMemo(() => getCurrentUser(), []);
   const [isCourseMgmtOpen, setIsCourseMgmtOpen] = useState<boolean>(false);
   const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG'>('WORKSPACE');
+  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG'>('CATALOG');
   const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
 
   // Khóa học và bài học hiện tại đang học
