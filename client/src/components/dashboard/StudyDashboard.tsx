@@ -14,16 +14,20 @@ import {
   CheckCircle,
   ListOrdered,
   PlusCircle,
+  Bookmark,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
+import type { MediaBookmark } from '../../types/mediaBookmark.types';
 import { VideoLessonPlayer } from '../player/VideoLessonPlayer';
 import { AudioTtsPlayer } from '../player/AudioTtsPlayer';
 import { InteractiveQuizCard } from '../quiz/InteractiveQuizCard';
 import { CourseCatalogView } from '../catalog/CourseCatalogView';
+import { BookmarkLibraryView } from '../bookmarks/BookmarkLibraryView';
 import { LessonSidebar } from './LessonSidebar';
 import { CourseManagementModal } from '../management/CourseManagementModal';
 import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
 import { getCurrentUser } from '../../utils/tokenHelper';
+import { mediaBookmarkService } from '../../services/mediaBookmarkService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
 import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
@@ -36,8 +40,12 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const currentUser = useMemo(() => getCurrentUser(), []);
   const [isCourseMgmtOpen, setIsCourseMgmtOpen] = useState<boolean>(false);
   const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG'>('CATALOG');
+  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'BOOKMARKS'>('CATALOG');
   const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
+  const [initialSeekTimestamp, setInitialSeekTimestamp] = useState<number | null>(null);
+  const [totalBookmarksCount, setTotalBookmarksCount] = useState<number>(() =>
+    mediaBookmarkService.getAllBookmarksCount()
+  );
 
   // Khóa học và bài học hiện tại đang học
   const [currentCourse, setCurrentCourse] = useState<CourseDetail | null>(null);
@@ -148,6 +156,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     }
   };
 
+  // Cập nhật số lượng mốc cắm cờ khi chuyển view
+  useEffect(() => {
+    setTotalBookmarksCount(mediaBookmarkService.getAllBookmarksCount());
+  }, [currentView]);
+
   // Tính danh sách bài học phẳng để hỗ trợ Prev / Next Lesson
   const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
   const effectiveLesson = activeLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
@@ -159,6 +172,48 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     });
     return list;
   }, [effectiveCourse]);
+
+  // Xử lý khi chọn một mốc cắm cờ từ Thư viện Mục Đánh Dấu
+  const handleSelectBookmarkFromLibrary = useCallback(
+    (bm: MediaBookmark) => {
+      // 1. Nếu mốc cắm cờ thuộc khóa học khác, nạp khóa học đó
+      if (bm.courseId && currentCourse?.id !== bm.courseId) {
+        catalogApi
+          .getCourseById(bm.courseId)
+          .then((c) => {
+            if (c) setCurrentCourse(c);
+          })
+          .catch(() => {});
+      }
+
+      // 2. Tìm bài giảng tương ứng
+      let targetLesson = flatLessons.find((l) => l.id === bm.lessonId);
+      if (!targetLesson) {
+        for (const c of SAMPLE_COURSES) {
+          for (const s of c.subjects) {
+            const l = s.lessons?.find((item) => item.id === bm.lessonId);
+            if (l) {
+              setCurrentCourse(c);
+              targetLesson = l;
+              break;
+            }
+          }
+        }
+      }
+
+      if (targetLesson) {
+        setActiveLesson(targetLesson);
+      }
+
+      // 3. Đặt mốc thời gian để video player tự động tua tới và phát ngay
+      setInitialSeekTimestamp(bm.timestamp);
+
+      // 4. Mở Phòng học
+      setCurrentView('WORKSPACE');
+      setIsMobileMenuOpen(false);
+    },
+    [currentCourse, flatLessons]
+  );
 
   const currentLessonIndex = flatLessons.findIndex((l) => l.id === effectiveLesson.id);
   const prevLesson = currentLessonIndex > 0 ? flatLessons[currentLessonIndex - 1] : null;
@@ -220,6 +275,23 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             >
               <BookOpen className="w-4 h-4" />
               <span>Phòng học</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('BOOKMARKS')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                currentView === 'BOOKMARKS'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Bookmark className="w-4 h-4 text-cyan-400" />
+              <span>Mục đánh dấu</span>
+              {totalBookmarksCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 text-[10px] font-bold">
+                  {totalBookmarksCount}
+                </span>
+              )}
             </button>
           </nav>
 
@@ -292,20 +364,20 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         {/* Mobile Dropdown Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden pt-3 pb-2 border-t border-white/10 mt-3 space-y-2 animate-fadeIn">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => {
                   setCurrentView('CATALOG');
                   setIsMobileMenuOpen(false);
                 }}
-                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
                   currentView === 'CATALOG'
                     ? 'bg-indigo-600 border-indigo-500 text-white'
                     : 'bg-slate-900/80 border-white/5 text-slate-300'
                 }`}
               >
                 <Compass className="w-4 h-4" />
-                <span>Khám phá khóa học</span>
+                <span>Khóa học</span>
               </button>
 
               <button
@@ -313,7 +385,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                   setCurrentView('WORKSPACE');
                   setIsMobileMenuOpen(false);
                 }}
-                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
                   currentView === 'WORKSPACE'
                     ? 'bg-indigo-600 border-indigo-500 text-white'
                     : 'bg-slate-900/80 border-white/5 text-slate-300'
@@ -321,6 +393,21 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               >
                 <BookOpen className="w-4 h-4" />
                 <span>Phòng học</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setCurrentView('BOOKMARKS');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                  currentView === 'BOOKMARKS'
+                    ? 'bg-indigo-600 border-indigo-500 text-white'
+                    : 'bg-slate-900/80 border-white/5 text-slate-300'
+                }`}
+              >
+                <Bookmark className="w-4 h-4 text-cyan-400" />
+                <span>Mục cờ ({totalBookmarksCount})</span>
               </button>
             </div>
 
@@ -350,6 +437,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           <CourseCatalogView
             onSelectCourse={handleSelectCourseFromCatalog}
             onOpenStudio={() => setIsCourseMgmtOpen(true)}
+          />
+        )}
+
+        {/* VIEW 2: THƯ VIỆN TOÀN BỘ MỐC CẮM CỜ ĐÁNH DẤU (BOOKMARKS) */}
+        {currentView === 'BOOKMARKS' && (
+          <BookmarkLibraryView
+            onSelectBookmark={handleSelectBookmarkFromLibrary}
+            onGoToWorkspace={() => setCurrentView('WORKSPACE')}
           />
         )}
 
@@ -424,6 +519,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     mediaId={effectiveLesson.id}
                     lessonId={effectiveLesson.id}
                     lessonTitle={effectiveLesson.title}
+                    courseId={effectiveCourse?.id}
+                    courseTitle={effectiveCourse?.title}
+                    initialSeekTime={initialSeekTimestamp}
+                    onOpenBookmarksView={() => setCurrentView('BOOKMARKS')}
                     onProgressSaved={handleLessonCompleted}
                   />
 
