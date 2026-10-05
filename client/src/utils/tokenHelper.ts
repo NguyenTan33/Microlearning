@@ -1,6 +1,8 @@
 export interface UserTokenPayload {
   userId: string;
   phoneNumber?: string;
+  fullName?: string;
+  email?: string;
   roles: string[];
   isAdmin: boolean;
   isTeacher: boolean;
@@ -42,17 +44,40 @@ export function getCurrentUser(): UserTokenPayload | null {
       data.phone ||
       '';
 
+    const rawFullName =
+      data['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] ||
+      data.name ||
+      data.fullName ||
+      '';
+
+    const email =
+      data['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'] ||
+      data.email ||
+      '';
+
     const isAdmin = roles.some((r) => r.toLowerCase() === 'admin');
     const isTeacher = roles.some((r) => r.toLowerCase() === 'teacher');
     const isStudent = roles.some((r) => r.toLowerCase() === 'student') || (!isAdmin && !isTeacher);
 
-    let displayName = phoneNumber;
-    if (isAdmin) displayName = `Quản trị viên (${phoneNumber})`;
-    else if (isTeacher) displayName = `Giáo viên (${phoneNumber})`;
+    // Tính toán tên hiển thị sạch sẽ và thân thiện cho người dùng, loại bỏ mã thô OAuth gg_...
+    const isRawOAuthId = (str: string) => str.startsWith('gg_') || str.startsWith('fb_');
+
+    let displayName = '';
+    if (rawFullName && !isRawOAuthId(rawFullName)) {
+      displayName = rawFullName;
+    } else if (email) {
+      displayName = email.split('@')[0];
+    } else if (phoneNumber && !isRawOAuthId(phoneNumber)) {
+      displayName = phoneNumber;
+    } else {
+      displayName = isAdmin ? 'Quản trị viên' : isTeacher ? 'Giáo viên' : 'Học viên';
+    }
 
     return {
       userId,
       phoneNumber,
+      fullName: rawFullName,
+      email,
       roles,
       isAdmin,
       isTeacher,

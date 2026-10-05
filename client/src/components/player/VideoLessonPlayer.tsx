@@ -10,7 +10,6 @@ import {
   Gauge,
   CheckCircle,
   Sparkles,
-  Tv,
   Flag,
   Bookmark,
   X,
@@ -191,7 +190,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleOpenAddFlagModal = () => {
     const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
     setFlagTimestamp(curTime);
-    setFlagTitleInput(`Mốc đánh dấu lúc ${formatBookmarkTime(curTime)}`);
+    setFlagTitleInput(lessonTitle || 'Mốc ghi nhớ');
     setFlagNoteInput('');
     setIsAddFlagModalOpen(true);
   };
@@ -231,20 +230,15 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         ref={containerRef}
         className="w-full rounded-2xl bg-[#090D1A] border border-white/10 overflow-hidden shadow-2xl relative group select-none"
       >
-      {/* Badge trạng thái phát & Thông báo lưu */}
-      <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
-        <span className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[11px] sm:text-xs font-semibold backdrop-blur-md shadow-lg">
-          <Tv className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-cyan-400" />
-          <span>Trực tuyến HD • HTTP 206</span>
-        </span>
-
-        {saveNotice && (
+      {/* Thông báo lưu / chuyển mốc đánh dấu */}
+      {saveNotice && (
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 pointer-events-none">
           <span className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-indigo-950/90 border border-indigo-500/50 text-indigo-300 text-[11px] sm:text-xs font-medium backdrop-blur-md shadow-lg animate-fadeIn">
             <CheckCircle className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-indigo-400" />
             <span>{saveNotice}</span>
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
@@ -467,11 +461,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
           <form onSubmit={handleConfirmSaveFlag} className="space-y-3 text-xs">
             <div>
-              <label className="block text-slate-300 mb-1 font-medium">Tiêu đề mốc đánh dấu *</label>
+              <label className="block text-slate-300 mb-1 font-medium">Tên bài học hoặc ghi chú mốc đánh dấu *</label>
               <input
                 type="text"
                 required
-                placeholder="Ví dụ: Đoạn giải thích kiến thức quan trọng"
+                placeholder="Ví dụ: Đoạn giải thích trọng tâm, bài học..."
                 value={flagTitleInput}
                 onChange={(e) => setFlagTitleInput(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"

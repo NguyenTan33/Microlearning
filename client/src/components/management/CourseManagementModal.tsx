@@ -658,26 +658,6 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
           {/* VIEW 1: DANH SÁCH KHÓA HỌC */}
           {!selectedCourseDetail ? (
             <div className="space-y-4">
-              {/* Notice Banner giải thích rõ tính năng Ẩn/Hiện */}
-              <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2.5 text-slate-300">
-                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
-                    <EyeOff className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="font-semibold text-white">Chế độ quản lý xuất bản: </span>
-                    <span className="text-slate-400">
-                      Khóa học ở trạng thái <strong>Đang ẩn (Bản nháp)</strong> sẽ bị ẩn khỏi học viên trên trang chủ nhưng <strong>luôn được lưu giữ đầy đủ trong Studio</strong> để bạn chỉnh sửa hoặc mở lại bất kỳ lúc nào.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0 text-[11px] text-slate-400">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Tổng {courses.length} khóa học</span>
-                </div>
-              </div>
-
               {/* Filter Tabs & Search Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/50 p-2 rounded-2xl border border-white/5">
                 <div className="flex items-center gap-1.5 overflow-x-auto">

@@ -56,6 +56,23 @@ namespace Microlearning.Areas.Auth.Services
             // 4. Add mobile phone claim
             claims.Add(new Claim(ClaimTypes.MobilePhone, account.PhoneNumber ?? string.Empty));
 
+            // 4b. Add Name & Email claims
+            var effectiveName = !string.IsNullOrWhiteSpace(account.FullName)
+                ? account.FullName
+                : (!string.IsNullOrWhiteSpace(account.UserName) && !account.UserName.StartsWith("gg_")
+                    ? account.UserName
+                    : "Học viên");
+
+            claims.Add(new Claim(ClaimTypes.Name, effectiveName));
+            claims.Add(new Claim("name", effectiveName));
+            claims.Add(new Claim("fullName", effectiveName));
+
+            if (!string.IsNullOrWhiteSpace(account.Email))
+            {
+                claims.Add(new Claim(ClaimTypes.Email, account.Email));
+                claims.Add(new Claim("email", account.Email));
+            }
+
             // 5. Get JWT Secret key from configuration
             var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key chưa được cấu hình.");
 
