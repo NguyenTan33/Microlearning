@@ -16,7 +16,7 @@ import {
   X,
   Info,
 } from 'lucide-react';
-import { getVideoStreamUrl } from '../../services/mediaService';
+import { getVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -62,11 +62,31 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   const lastSavedPercentRef = useRef<number>(0);
 
-  // 1. Tải URL phát trực tuyến HTTP 206 & nạp danh sách cắm cờ
+  // 1. Tải URL phát trực tuyến HTTP 206 (hoặc phát từ Offline Blob) & nạp danh sách cắm cờ
   useEffect(() => {
+    let objectUrl: string | null = null;
+    let isCancelled = false;
+
     setInitialSeekDone(false);
     setIsPlaying(false);
-    setVideoSrc(getVideoStreamUrl(mediaId));
+
+    // Kiểm tra xem đã có bản tải ngoại tuyến trong IndexedDB chưa
+    getOfflineVideoBlob(mediaId)
+      .then((blob) => {
+        if (isCancelled) return;
+        if (blob) {
+          objectUrl = URL.createObjectURL(blob);
+          setVideoSrc(objectUrl);
+        } else {
+          setVideoSrc(getVideoStreamUrl(mediaId));
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setVideoSrc(getVideoStreamUrl(mediaId));
+        }
+      });
+
     setBookmarks(mediaBookmarkService.getBookmarks(lessonId));
 
     // Khôi phục mốc thời gian học viên đã học trước đó
@@ -78,6 +98,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         }
       })
       .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [mediaId, lessonId]);
 
   // 2. Lưu tiến độ trực tuyến lên hệ thống
