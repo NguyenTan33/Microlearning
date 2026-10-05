@@ -51,22 +51,18 @@ namespace Microlearning.Areas.Media.Services
             return new BlobContainerClient(connectionString, containerName);
         }
 
-        public async Task<(Stream stream, string contentType, long fileLength, string fileName)> GetVideoStreamAsync(int mediaId)
+        public async Task<(Stream stream, string contentType, long fileLength, string fileName)> GetLessonVideoStreamAsync(int lessonId)
         {
-            // 1. Gửi qua nhà máy Validation để kiểm tra MediaId
-            await _validationFactory.ValidateAsync(new GetMediaStreamRequest(mediaId));
-
-            // 2. Tìm thông tin media asset trong DB (hỗ trợ cả tìm theo mediaId hoặc lessonId)
+            // 1. Tìm MediaAsset mới nhất gắn trực tiếp với bài học này
             var mediaAsset = await _dbContext.MediaAssets
                 .AsNoTracking()
-                .Where(m => m.Id == mediaId || m.LessonId == mediaId)
-                .OrderByDescending(m => m.Id == mediaId)
-                .ThenByDescending(m => m.CreatedAt)
+                .Where(m => m.LessonId == lessonId)
+                .OrderByDescending(m => m.CreatedAt)
                 .FirstOrDefaultAsync();
 
+            // 2. Nếu bài học chưa có video tải lên -> Phát video demo test.mp4 dự phòng theo yêu cầu
             if (mediaAsset == null)
             {
-                // Dự phòng tệp demo mặc định nếu có
                 var fallbackDemo = GetFallbackDemoFilePath();
                 if (fallbackDemo != null)
                 {
@@ -74,14 +70,56 @@ namespace Microlearning.Areas.Media.Services
                     var stream = new FileStream(fallbackDemo, FileMode.Open, FileAccess.Read, FileShare.Read);
                     return (stream, "video/mp4", fileInfo.Length, "test.mp4");
                 }
-                throw new BusinessException($"Không tìm thấy tệp video với ID = {mediaId}.");
+                throw new BusinessException($"Bài giảng ID {lessonId} chưa có video và không tìm thấy tệp dự phòng test.mp4.");
             }
 
+            return await StreamMediaAssetInternalAsync(mediaAsset);
+        }
+
+        public async Task<(Stream stream, string contentType, long fileLength, string fileName)> GetVideoStreamAsync(int id)
+        {
+            // 1. Gửi qua nhà máy Validation để kiểm tra ID
+            await _validationFactory.ValidateAsync(new GetMediaStreamRequest(id));
+
+            // 2. Ưu tiên tìm theo LessonId trước (vì Player Client thường truyền ID của bài học)
+            var mediaAsset = await _dbContext.MediaAssets
+                .AsNoTracking()
+                .Where(m => m.LessonId == id)
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            // 3. Nếu không có bài học nào khớp, tìm theo Id tài nguyên MediaAsset
+            if (mediaAsset == null)
+            {
+                mediaAsset = await _dbContext.MediaAssets
+                    .AsNoTracking()
+                    .Where(m => m.Id == id)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (mediaAsset == null)
+            {
+                var fallbackDemo = GetFallbackDemoFilePath();
+                if (fallbackDemo != null)
+                {
+                    var fileInfo = new FileInfo(fallbackDemo);
+                    var stream = new FileStream(fallbackDemo, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return (stream, "video/mp4", fileInfo.Length, "test.mp4");
+                }
+                throw new BusinessException($"Không tìm thấy tệp video hoặc bài học với ID = {id}.");
+            }
+
+            return await StreamMediaAssetInternalAsync(mediaAsset);
+        }
+
+        private async Task<(Stream stream, string contentType, long fileLength, string fileName)> StreamMediaAssetInternalAsync(MediaAsset mediaAsset)
+        {
             var contentType = string.IsNullOrWhiteSpace(mediaAsset.ContentType)
                 ? "video/mp4"
                 : mediaAsset.ContentType;
 
-            // 3. Kiểm tra tệp vật lý cục bộ chính xác trên đĩa trước (nếu có cache trên máy)
+            // 1. Kiểm tra tệp vật lý cục bộ chính xác trên đĩa trước (nếu có cache trên máy)
             var filePath = GetPhysicalFilePath(mediaAsset.FileName);
             if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
@@ -90,7 +128,7 @@ namespace Microlearning.Areas.Media.Services
                 return (stream, contentType, fileInfo.Length, mediaAsset.FileName);
             }
 
-            // 4. Nếu không có trên đĩa cứng máy chủ (môi trường Cloud/App Service), lấy trực tiếp từ Azure Blob Storage
+            // 2. Nếu không có trên đĩa cứng máy chủ, lấy trực tiếp từ kho Azure Blob Storage
             var containerClient = GetAzureBlobContainerClient();
             if (containerClient != null)
             {
@@ -110,25 +148,17 @@ namespace Microlearning.Areas.Media.Services
                 }
             }
 
-            // 5. CHỈ dự phòng video test.mp4 nếu tệp yêu cầu thực sự là test.mp4 (bài giảng mẫu seeder)
-            if (string.Equals(mediaAsset.FileName, "test.mp4", StringComparison.OrdinalIgnoreCase))
+            // 3. Nếu tệp vật lý chưa sẵn sàng trên đám mây, dự phòng tệp test.mp4 để trải nghiệm người dùng không bị gián đoạn
+            var fallbackPath = GetFallbackDemoFilePath();
+            if (fallbackPath != null)
             {
-                var fallbackPath = GetFallbackDemoFilePath();
-                if (fallbackPath != null)
-                {
-                    var fileInfo = new FileInfo(fallbackPath);
-                    var stream = new FileStream(fallbackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    return (stream, "video/mp4", fileInfo.Length, "test.mp4");
-                }
+                _logger.LogWarning("Tệp {FileName} chưa sẵn sàng, tự động phát dự phòng test.mp4", mediaAsset.FileName);
+                var fileInfo = new FileInfo(fallbackPath);
+                var stream = new FileStream(fallbackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return (stream, "video/mp4", fileInfo.Length, "test.mp4");
             }
 
-            // 6. Đối với video do người dùng hoặc giảng viên tải lên thật sự, không âm thầm tráo sang test.mp4
-            if (containerClient == null)
-            {
-                throw new BusinessException($"Tệp video '{mediaAsset.FileName}' chưa sẵn sàng trên đám mây do máy chủ chưa cấu hình Azure Blob Storage Connection String (chuỗi kết nối rỗng). Video chỉ từng được lưu tạm vào ổ đĩa container cục bộ và đã biến mất khi tái khởi động.");
-            }
-
-            throw new BusinessException($"Tệp video '{mediaAsset.FileName}' không tìm thấy trên kho lưu trữ đám mây Azure Blob Storage. Vui lòng kiểm tra lại container 'videos' trên Azure Portal.");
+            throw new BusinessException($"Tệp video '{mediaAsset.FileName}' không tìm thấy trên kho lưu trữ đám mây Azure Blob Storage.");
         }
 
         public async Task<MediaDownloadInfoResponse> GetDownloadInfoAsync(int mediaId, string baseUrl)

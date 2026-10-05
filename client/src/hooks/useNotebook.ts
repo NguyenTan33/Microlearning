@@ -389,7 +389,8 @@ export function useNotebook(initialCourseName?: string) {
       episodeProfile: string,
       speakerProfile?: string,
       content?: string,
-      customNotebookId?: string
+      customNotebookId?: string,
+      voiceName?: string
     ) => {
       setIsGeneratingPodcast(true);
       setError(null);
@@ -404,7 +405,8 @@ export function useNotebook(initialCourseName?: string) {
           episodeProfile,
           resolvedSpeaker,
           targetNbId,
-          content
+          content,
+          voiceName || 'vi-VN-HoaiMyNeural'
         );
 
         // Refresh danh sách podcasts

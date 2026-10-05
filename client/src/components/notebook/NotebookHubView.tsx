@@ -20,6 +20,8 @@ import {
   Pause,
   X,
   Volume2,
+  VolumeX,
+  Loader2,
   FolderOpen,
   Upload,
   FileUp,
@@ -31,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
+import { ttsApi } from '../../services/ttsApi';
 import type { Course, Lesson } from '../../types/catalog.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 
@@ -116,46 +119,191 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   const [askQuestionInput, setAskQuestionInput] = useState<string>('');
   const [searchFilterType, setSearchFilterType] = useState<'text' | 'vector'>('text');
 
-  // Audio Podcast Player & Transcript view
+  // Audio Podcast Player & Vietnamese Voice States
   const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
   const [viewingTranscriptId, setViewingTranscriptId] = useState<string | null>(null);
+  const [isSynthesizingAudioId, setIsSynthesizingAudioId] = useState<string | null>(null);
+  const [vietnameseVoices, setVietnameseVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedBrowserVoice, setSelectedBrowserVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [globalVoiceType, setGlobalVoiceType] = useState<string>('vi-VN-HoaiMyNeural');
+  const [audioPlaybackRate, setAudioPlaybackRate] = useState<number>(1.0);
+  const [playbackSourceType, setPlaybackSourceType] = useState<'AUDIO' | 'SYNTHESIS'>('AUDIO');
+  const [newPodcastVoice, setNewPodcastVoice] = useState<string>('vi-VN-HoaiMyNeural');
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
+  // Phát hiện và nạp danh sách giọng tiếng Việt của trình duyệt (Web Speech API)
   useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const updateVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      const vi = allVoices.filter(
+        (v) =>
+          v.lang === 'vi-VN' ||
+          v.lang.toLowerCase().startsWith('vi') ||
+          v.name.toLowerCase().includes('vietnam') ||
+          v.name.toLowerCase().includes('tiếng việt') ||
+          v.name.toLowerCase().includes('hoaimy') ||
+          v.name.toLowerCase().includes('namminh')
+      );
+      setVietnameseVoices(vi);
+      if (vi.length > 0) {
+        const preferred =
+          vi.find(
+            (v) =>
+              v.name.includes('Natural') ||
+              v.name.includes('Online') ||
+              v.name.includes('Neural') ||
+              v.name.toLowerCase().includes('google')
+          ) || vi[0];
+        setSelectedBrowserVoice((prev) => prev || preferred);
+      }
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+
     return () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+      }
     };
   }, []);
 
-  const handleTogglePlayPodcast = (ep: any) => {
+  // Làm sạch văn bản kịch bản để giọng đọc lưu loát, tự nhiên
+  const cleanScriptForSpeech = (rawText: string): string => {
+    if (!rawText || typeof rawText !== 'string') return '';
+    return rawText
+      .replace(/^#{1,6}\s+.*$/gm, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/`{1,3}.*?`{1,3}/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const handleTogglePlayPodcast = async (ep: any) => {
+    // 1. Nếu đang phát tập này thì bấm sẽ dừng lại
     if (playingPodcastId === ep.id) {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
-      setPlayingPodcastId(null);
-    } else {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const rawText = typeof ep.transcript === 'string'
-          ? ep.transcript
-              .replace(/#{1,6}\s?/g, '')
-              .replace(/\*\*|__/g, '')
-              .replace(/\[.*?\]/g, '')
-              .trim()
-          : '';
-        if (rawText) {
-          const utter = new SpeechSynthesisUtterance(rawText);
-          utter.lang = 'vi-VN';
-          utter.rate = 1.0;
-          utter.onend = () => {
-            setPlayingPodcastId(null);
-          };
-          window.speechSynthesis.speak(utter);
-        }
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
       }
-      setPlayingPodcastId(ep.id);
+      setPlayingPodcastId(null);
+      return;
     }
+
+    // Dừng âm thanh hiện tại nếu đang phát tập khác
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+    }
+
+    // 2. Chế độ phát giọng đọc trình duyệt (Web Speech API với giọng tiếng Việt gán trực tiếp)
+    if (globalVoiceType === 'browser') {
+      const rawText = cleanScriptForSpeech(ep.transcript || ep.name);
+      if (rawText && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const utter = new SpeechSynthesisUtterance(rawText);
+        const targetVoice = selectedBrowserVoice || vietnameseVoices[0];
+        if (targetVoice) {
+          utter.voice = targetVoice;
+          utter.lang = targetVoice.lang || 'vi-VN';
+        } else {
+          utter.lang = 'vi-VN';
+        }
+        utter.rate = audioPlaybackRate;
+        utter.onend = () => {
+          setPlayingPodcastId(null);
+        };
+        utter.onerror = () => {
+          setPlayingPodcastId(null);
+        };
+        setPlaybackSourceType('SYNTHESIS');
+        setPlayingPodcastId(ep.id);
+        window.speechSynthesis.speak(utter);
+        return;
+      }
+    }
+
+    // 3. Chế độ phát âm thanh AI Microsoft Edge-TTS tiếng Việt (Hoài My / Nam Minh)
+    const isLiveAudioUrl =
+      ep.audio_url &&
+      (ep.audio_url.startsWith('http') || ep.audio_url.includes('/Audios/'));
+
+    if (isLiveAudioUrl) {
+      // Đã có audio chuẩn từ Azure -> phát trực tiếp
+      setPlaybackSourceType('AUDIO');
+      setPlayingPodcastId(ep.id);
+      setTimeout(() => {
+        if (audioElementRef.current) {
+          audioElementRef.current.playbackRate = audioPlaybackRate;
+          audioElementRef.current.play().catch(() => {});
+        }
+      }, 50);
+      return;
+    }
+
+    // Nếu chưa có file audio riêng của tập này, gọi Azure Edge-TTS sinh ngay lập tức
+    const scriptText = cleanScriptForSpeech(ep.transcript || ep.name);
+    if (scriptText) {
+      setIsSynthesizingAudioId(ep.id);
+      try {
+        const voiceToUse = globalVoiceType.startsWith('vi-VN-') ? globalVoiceType : 'vi-VN-HoaiMyNeural';
+        const textToSynthesize = scriptText.length > 1900 ? scriptText.slice(0, 1900) : scriptText;
+        const res = await ttsApi.synthesizeSpeech(textToSynthesize, voiceToUse);
+        if (res?.audioUrl) {
+          ep.audio_url = res.audioUrl;
+          await notebookService.updatePodcastAudio(ep.id, res.audioUrl);
+          setPlaybackSourceType('AUDIO');
+          setPlayingPodcastId(ep.id);
+          setTimeout(() => {
+            if (audioElementRef.current) {
+              audioElementRef.current.playbackRate = audioPlaybackRate;
+              audioElementRef.current.play().catch(() => {});
+            }
+          }, 50);
+          return;
+        }
+      } catch (err) {
+        console.warn('Lỗi sinh giọng AI Edge-TTS, tự động fallback sang giọng tiếng Việt của trình duyệt:', err);
+      } finally {
+        setIsSynthesizingAudioId(null);
+      }
+    }
+
+    // Fallback sang Web Speech API với giọng tiếng Việt nếu API Edge-TTS gặp sự cố
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const utter = new SpeechSynthesisUtterance(cleanScriptForSpeech(ep.transcript || ep.name));
+      const targetVoice = selectedBrowserVoice || vietnameseVoices[0];
+      if (targetVoice) {
+        utter.voice = targetVoice;
+        utter.lang = targetVoice.lang || 'vi-VN';
+      } else {
+        utter.lang = 'vi-VN';
+      }
+      utter.rate = audioPlaybackRate;
+      utter.onend = () => setPlayingPodcastId(null);
+      utter.onerror = () => setPlayingPodcastId(null);
+      setPlaybackSourceType('SYNTHESIS');
+      setPlayingPodcastId(ep.id);
+      window.speechSynthesis.speak(utter);
+      return;
+    }
+
+    // Fallback cuối cùng: phát tệp âm thanh demo tiếng Việt
+    setPlaybackSourceType('AUDIO');
+    setPlayingPodcastId(ep.id);
   };
 
   // Mở modal thêm Source có chỉ định trước Sổ tay đích
@@ -249,7 +397,8 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
           newPodcastProfile,
           resolvedSpeaker,
           contentToUse || undefined,
-          podcastTargetNbId || activeNotebook?.id || undefined
+          podcastTargetNbId || activeNotebook?.id || undefined,
+          newPodcastVoice
         );
         setNewPodcastName('');
         setNewPodcastContent('');
@@ -1117,6 +1266,66 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               </div>
 
+              {/* Thanh công cụ Cấu hình Giọng đọc Tiếng Việt & Tốc độ phát */}
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                    <Volume2 className="w-4 h-4 text-pink-400" />
+                    <span>Giọng đọc Tiếng Việt:</span>
+                  </div>
+
+                  {/* Dropdown chọn giọng */}
+                  <select
+                    value={globalVoiceType}
+                    onChange={(e) => {
+                      const newVoice = e.target.value;
+                      setGlobalVoiceType(newVoice);
+                      if (playingPodcastId) {
+                        if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+                        if (audioElementRef.current) audioElementRef.current.pause();
+                        setPlayingPodcastId(null);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-950 border border-white/15 text-xs text-white focus:outline-none focus:border-pink-500 cursor-pointer"
+                  >
+                    <option value="vi-VN-HoaiMyNeural">🎙️ Hoài My (Nữ - AI Tự nhiên Microsoft Azure)</option>
+                    <option value="vi-VN-NamMinhNeural">🎙️ Nam Minh (Nam - AI Trầm ấm Microsoft Azure)</option>
+                    {vietnameseVoices.map((v) => (
+                      <option key={v.name} value="browser">
+                        🔊 Trình duyệt: {v.name} ({v.lang})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Tốc độ đọc */}
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <span>Tốc độ:</span>
+                    {[0.8, 1.0, 1.25, 1.5].map((rate) => (
+                      <button
+                        key={rate}
+                        type="button"
+                        onClick={() => {
+                          setAudioPlaybackRate(rate);
+                          if (audioElementRef.current) audioElementRef.current.playbackRate = rate;
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                          audioPlaybackRate === rate
+                            ? 'bg-pink-600 text-white shadow-sm'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {rate}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-pink-300/90 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Phát âm tiếng Việt chuẩn 100% tự nhiên</span>
+                </div>
+              </div>
+
               {/* Danh sách Podcasts */}
               {podcasts.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 space-y-3 bg-slate-900/30 border border-dashed border-white/10 rounded-3xl">
@@ -1170,6 +1379,11 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                               <span>Đang tổng hợp âm thanh...</span>
                             </div>
+                          ) : isSynthesizingAudioId === ep.id ? (
+                            <div className="flex items-center gap-2 text-xs text-pink-300 bg-pink-950/40 px-3 py-1.5 rounded-xl border border-pink-500/30">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-400" />
+                              <span>Đang tạo giọng tiếng Việt...</span>
+                            </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
                               <button
@@ -1213,7 +1427,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                         </div>
 
                         {/* Trình phát âm thanh khi bấm play */}
-                        {playingPodcastId === ep.id && !isJobRunning && (
+                        {playingPodcastId === ep.id && !isJobRunning && isSynthesizingAudioId !== ep.id && (
                           <div className="mt-3 pt-2 border-t border-white/5 space-y-2">
                             {/* Thanh sóng âm Equalizer sinh động */}
                             <div className="flex items-center justify-between text-xs text-pink-300 bg-pink-950/40 border border-pink-500/20 px-3 py-1.5 rounded-xl">
@@ -1224,7 +1438,11 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                                   <span className="w-1 h-2 bg-pink-500 rounded-full animate-pulse [animation-delay:0.3s]" />
                                   <span className="w-1 h-4 bg-pink-400 rounded-full animate-pulse [animation-delay:0.2s]" />
                                 </div>
-                                <span className="font-semibold text-[11px] text-pink-200">Đang phát tóm tắt âm thanh bài giảng AI</span>
+                                <span className="font-semibold text-[11px] text-pink-200">
+                                  {playbackSourceType === 'AUDIO'
+                                    ? 'Đang phát âm thanh AI chuẩn tiếng Việt (Edge-TTS)'
+                                    : 'Đang đọc bằng giọng tiếng Việt của trình duyệt'}
+                                </span>
                               </div>
                               <button
                                 onClick={() => handleTogglePlayPodcast(ep)}
@@ -1234,12 +1452,16 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                               </button>
                             </div>
 
-                            <audio
-                              src={notebookService.getPodcastAudioUrl(ep.id)}
-                              controls
-                              autoPlay
-                              className="w-full h-8 rounded-lg"
-                            />
+                            {playbackSourceType === 'AUDIO' && (
+                              <audio
+                                ref={audioElementRef}
+                                src={notebookService.getPodcastAudioUrl(ep.id)}
+                                controls
+                                autoPlay
+                                onEnded={() => setPlayingPodcastId(null)}
+                                className="w-full h-8 rounded-lg"
+                              />
+                            )}
                           </div>
                         )}
 
@@ -1552,6 +1774,25 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                           <option value="business_analysis">business_analysis - Ban chuyên gia phân tích</option>
                         </>
                       )}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Giọng đọc AI Tiếng Việt
+                    </label>
+                    <select
+                      value={newPodcastVoice}
+                      onChange={(e) => setNewPodcastVoice(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
+                    >
+                      <option value="vi-VN-HoaiMyNeural">🎙️ Hoài My (Nữ - Truyền cảm, chuẩn phát thanh viên Microsoft Azure)</option>
+                      <option value="vi-VN-NamMinhNeural">🎙️ Nam Minh (Nam - Trầm ấm, thuyết phục Microsoft Azure)</option>
+                      {vietnameseVoices.map((v) => (
+                        <option key={v.name} value="browser">
+                          🔊 Trình duyệt: {v.name} ({v.lang})
+                        </option>
+                      ))}
                     </select>
                   </div>
 
