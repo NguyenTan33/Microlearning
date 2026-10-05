@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   BookMarked,
   Sparkles,
@@ -21,6 +21,13 @@ import {
   X,
   Volume2,
   FolderOpen,
+  Upload,
+  FileUp,
+  Layers,
+  Unlink,
+  Paperclip,
+  Check,
+  File,
 } from 'lucide-react';
 import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
@@ -62,6 +69,9 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     createNotebook,
     removeNotebook,
     syncLessonSource,
+    uploadFileSource,
+    attachSourceToNotebook,
+    detachSourceFromNotebook,
     removeSource,
     viewSourceDetail,
     searchKnowledge,
@@ -72,10 +82,25 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   // States cho Modals & Forms
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
   const [modalType, setModalType] = useState<'NOTEBOOK' | 'SOURCE' | 'PODCAST'>('NOTEBOOK');
-  const [newNotebookTitle, setNewNotebookTitle] = useState<string>('');
-  const [newNotebookDesc, setNewNotebookDesc] = useState<string>('');
+  const [sourceAddMode, setSourceAddMode] = useState<'UPLOAD' | 'TEXT' | 'LESSON'>('UPLOAD');
+  const [targetNotebookId, setTargetNotebookId] = useState<string>('');
+
+  // Existing source attachment modal
+  const [isExistingSourceModalOpen, setIsExistingSourceModalOpen] = useState<boolean>(false);
+  const [existingSourceSearch, setExistingSourceSearch] = useState<string>('');
+
+  // Source form states
   const [newSourceTitle, setNewSourceTitle] = useState<string>('');
   const [newSourceContent, setNewSourceContent] = useState<string>('');
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Notebook form states
+  const [newNotebookTitle, setNewNotebookTitle] = useState<string>('');
+  const [newNotebookDesc, setNewNotebookDesc] = useState<string>('');
+
+  // Podcast form states
   const [newPodcastName, setNewPodcastName] = useState<string>('');
   const [newPodcastProfile, setNewPodcastProfile] = useState<string>('solo_expert');
   const [newPodcastSpeaker, setNewPodcastSpeaker] = useState<string>('speaker_profile:w0svyiocc4areyhjebj8');
@@ -88,13 +113,39 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   // Audio Podcast Player
   const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
 
+  // Mở modal thêm Source có chỉ định trước Sổ tay đích
+  const openAddSourceModal = (initialNotebookId?: string, defaultMode: 'UPLOAD' | 'TEXT' | 'LESSON' = 'UPLOAD') => {
+    setModalType('SOURCE');
+    setSourceAddMode(defaultMode);
+    setTargetNotebookId(initialNotebookId || activeNotebook?.id || '');
+    setNewSourceTitle('');
+    setNewSourceContent('');
+    setSelectedUploadFile(null);
+    setIsNewModalOpen(true);
+  };
+
+  const handleFileChange = (file: File | null) => {
+    if (!file) return;
+    setSelectedUploadFile(file);
+    if (!newSourceTitle.trim()) {
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+      setNewSourceTitle(nameWithoutExt);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   // Xử lý nạp nhanh bài giảng Microlearning hiện tại
-  const handleQuickSyncCurrentLesson = async () => {
+  const handleQuickSyncCurrentLesson = async (customNbId?: string) => {
     if (!activeLesson) return;
     const durationMin = Math.round((activeLesson.durationSeconds || 0) / 60);
     const lessonTitle = `Bài giảng: ${activeLesson.title}`;
     const lessonContent = `Khóa học: ${currentCourse?.title || 'Chưa phân loại'}\nBài học: ${activeLesson.title}\nMô tả nội dung: ${activeLesson.description || 'Nội dung cốt lõi của bài học.'}\nThời lượng: ${durationMin} phút.`;
-    await syncLessonSource(lessonTitle, lessonContent);
+    await syncLessonSource(lessonTitle, lessonContent, customNbId || activeNotebook?.id);
   };
 
   // Xử lý tạo mới từ Modal
@@ -106,11 +157,35 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
         setNewNotebookTitle('');
         setNewNotebookDesc('');
         setIsNewModalOpen(false);
-      } else if (modalType === 'SOURCE' && newSourceTitle.trim() && newSourceContent.trim()) {
-        await syncLessonSource(newSourceTitle.trim(), newSourceContent.trim());
-        setNewSourceTitle('');
-        setNewSourceContent('');
-        setIsNewModalOpen(false);
+      } else if (modalType === 'SOURCE') {
+        if (sourceAddMode === 'UPLOAD') {
+          if (!selectedUploadFile) return;
+          await uploadFileSource(
+            selectedUploadFile,
+            targetNotebookId || undefined,
+            newSourceTitle.trim() || selectedUploadFile.name
+          );
+          setSelectedUploadFile(null);
+          setNewSourceTitle('');
+          setIsNewModalOpen(false);
+        } else if (sourceAddMode === 'TEXT') {
+          if (!newSourceTitle.trim() || !newSourceContent.trim()) return;
+          await syncLessonSource(
+            newSourceTitle.trim(),
+            newSourceContent.trim(),
+            targetNotebookId || undefined
+          );
+          setNewSourceTitle('');
+          setNewSourceContent('');
+          setIsNewModalOpen(false);
+        } else if (sourceAddMode === 'LESSON') {
+          if (!activeLesson) return;
+          const durationMin = Math.round((activeLesson.durationSeconds || 0) / 60);
+          const lessonTitle = `Bài giảng: ${activeLesson.title}`;
+          const lessonContent = `Khóa học: ${currentCourse?.title || 'Chưa phân loại'}\nBài học: ${activeLesson.title}\nMô tả nội dung: ${activeLesson.description || 'Nội dung cốt lõi của bài học.'}\nThời lượng: ${durationMin} phút.`;
+          await syncLessonSource(lessonTitle, lessonContent, targetNotebookId || undefined);
+          setIsNewModalOpen(false);
+        }
       } else if (modalType === 'PODCAST' && newPodcastName.trim()) {
         await createPodcast(newPodcastName.trim(), newPodcastProfile, newPodcastSpeaker);
         setNewPodcastName('');
@@ -215,12 +290,21 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
             </div>
           </div>
 
-          {/* Nút to màu xanh lá "+ New" y hệt ảnh */}
+          {/* Nút to màu xanh lá "+ New" */}
           <div className="p-3">
             <button
               onClick={() => {
-                setModalType('NOTEBOOK');
-                setIsNewModalOpen(true);
+                if (currentTab === 'SOURCES') {
+                  openAddSourceModal(undefined, 'UPLOAD');
+                } else if (currentTab === 'NOTEBOOKS') {
+                  setModalType('NOTEBOOK');
+                  setIsNewModalOpen(true);
+                } else if (currentTab === 'PODCASTS') {
+                  setModalType('PODCAST');
+                  setIsNewModalOpen(true);
+                } else {
+                  openAddSourceModal(undefined, 'UPLOAD');
+                }
               }}
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-600/20 active:scale-98"
             >
@@ -340,7 +424,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 <div className="flex items-center gap-2">
                   {activeLesson && (
                     <button
-                      onClick={handleQuickSyncCurrentLesson}
+                      onClick={() => handleQuickSyncCurrentLesson()}
                       disabled={isSyncing}
                       className="px-3 py-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
                       title="Nạp bài giảng đang xem vào nguồn tài liệu"
@@ -351,14 +435,11 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   )}
 
                   <button
-                    onClick={() => {
-                      setModalType('SOURCE');
-                      setIsNewModalOpen(true);
-                    }}
+                    onClick={() => openAddSourceModal(undefined, 'UPLOAD')}
                     className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-emerald-600/30"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Thêm tài liệu</span>
+                    <FileUp className="w-4 h-4" />
+                    <span>Thêm tài liệu (Tải file / Chữ)</span>
                   </button>
                 </div>
               </div>
@@ -368,59 +449,75 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 <div className="p-12 text-center text-slate-500">
                   <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-semibold">Chưa có nguồn tài liệu nào</p>
-                  <p className="text-xs mt-1">Bấm "Nạp bài giảng hiện tại" hoặc "Thêm tài liệu" để bắt đầu nạp kiến thức cho AI.</p>
+                  <p className="text-xs mt-1">Bấm "Thêm tài liệu" để tải file PDF, Word, TXT hoặc nạp bài giảng cho AI.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {allSources.map((source) => (
-                    <div
-                      key={source.id}
-                      className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between group"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-bold text-white line-clamp-2">
-                            {source.title}
-                          </h3>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                              source.embedded
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-amber-500/20 text-amber-400'
-                            }`}
-                          >
-                            {source.embedded ? 'Đã vector hóa' : 'Đang xử lý'}
-                          </span>
+                  {allSources.map((source) => {
+                    const fileName = source.asset?.file_path ? source.asset.file_path.split('/').pop() : null;
+                    const fileExt = fileName ? fileName.split('.').pop()?.toUpperCase() : (source.asset ? 'FILE' : 'TEXT');
+                    return (
+                      <div
+                        key={source.id}
+                        className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between group"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-mono font-bold text-slate-300 shrink-0">
+                                {fileExt}
+                              </span>
+                              <h3 className="text-xs font-bold text-white line-clamp-2" title={source.title}>
+                                {source.title}
+                              </h3>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                source.embedded
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-amber-500/20 text-amber-400'
+                              }`}
+                            >
+                              {source.embedded ? 'Vector OK' : 'Đang xử lý'}
+                            </span>
+                          </div>
+
+                          {fileName && (
+                            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1 font-mono">
+                              <Paperclip className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span>{fileName}</span>
+                            </p>
+                          )}
+
+                          <p className="text-[11px] text-slate-500 font-mono">
+                            ID: {source.id}
+                          </p>
                         </div>
 
-                        <p className="text-[11px] text-slate-400 font-mono">
-                          ID: {source.id}
-                        </p>
-                      </div>
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5">
+                          <button
+                            onClick={() => viewSourceDetail(source.id)}
+                            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            <span>Xem toàn văn</span>
+                          </button>
 
-                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5">
-                        <button
-                          onClick={() => viewSourceDetail(source.id)}
-                          className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
-                        >
-                          <FolderOpen className="w-3.5 h-3.5" />
-                          <span>Xem toàn văn</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (confirm(`Bạn có chắc muốn xóa tài liệu "${source.title}"?`)) {
-                              removeSource(source.id);
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
-                          title="Xóa tài liệu này"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Bạn có chắc muốn xóa vĩnh viễn tài liệu "${source.title}"?`)) {
+                                removeSource(source.id);
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
+                            title="Xóa tài liệu này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -468,58 +565,265 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               </div>
 
-              {/* Grid danh sách Notebooks */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {notebooks.map((nb) => {
-                  const isCurrent = activeNotebook?.id === nb.id;
-                  return (
-                    <div
-                      key={nb.id}
-                      onClick={() => selectNotebook(nb)}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
-                        isCurrent
-                          ? 'bg-purple-950/60 border-purple-500/60 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/30'
-                          : 'bg-slate-900/60 hover:bg-slate-900 border-white/10 text-slate-300 hover:text-white'
-                      }`}
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-bold truncate">
-                            {nb.name}
-                          </h3>
-                          {isCurrent && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                              Đang dùng
-                            </span>
-                          )}
-                        </div>
+                {/* Grid danh sách Notebooks */}
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                    Danh sách Sổ tay ({notebooks.length})
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {notebooks.map((nb) => {
+                      const isCurrent = activeNotebook?.id === nb.id;
+                      return (
+                        <div
+                          key={nb.id}
+                          onClick={() => selectNotebook(nb)}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
+                            isCurrent
+                              ? 'bg-purple-950/60 border-purple-500/60 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/30'
+                              : 'bg-slate-900/60 hover:bg-slate-900 border-white/10 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="text-xs font-bold truncate">
+                                {nb.name}
+                              </h3>
+                              {isCurrent && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                  Đang chọn
+                                </span>
+                              )}
+                            </div>
 
-                        <p className="text-[11px] text-slate-400 line-clamp-2">
-                          {nb.description || 'Không có mô tả'}
-                        </p>
+                            <p className="text-[11px] text-slate-400 line-clamp-2">
+                              {nb.description || 'Không có mô tả'}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5 text-[11px] text-slate-400">
+                            <span className="font-semibold">{nb.source_count || 0} tài liệu</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openAddSourceModal(nb.id, 'UPLOAD');
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-300 text-[10px] font-semibold text-slate-300 transition-all flex items-center gap-1"
+                                title="Thêm source vào sổ tay này"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>Thêm Source</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Bạn có chắc muốn xóa sổ tay "${nb.name}"?`)) {
+                                    removeNotebook(nb.id);
+                                  }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
+                                title="Xóa sổ tay này"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* KHU VỰC CHI TIẾT SỔ TAY ĐANG CHỌN & QUẢN LÝ SOURCES CỦA SỔ TAY */}
+                {activeNotebook ? (
+                  <div className="mt-8 pt-6 border-t border-white/10 space-y-4">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/60 to-slate-900/80 border border-purple-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <BookMarked className="w-5 h-5 text-purple-400 shrink-0" />
+                          <h3 className="text-sm sm:text-base font-bold text-white">
+                            {activeNotebook.name}
+                          </h3>
+                          <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold text-[11px] border border-purple-500/30">
+                            {sources.length} tài liệu liên kết
+                          </span>
+                        </div>
+                        {activeNotebook.description && (
+                          <p className="text-xs text-slate-400 max-w-2xl">
+                            {activeNotebook.description}
+                          </p>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5 text-[11px] text-slate-400">
-                        <span>{nb.source_count || 0} tài liệu</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Nút to màu xanh: Thêm Source vào Sổ tay này */}
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Bạn có chắc muốn xóa sổ tay "${nb.name}"?`)) {
-                              removeNotebook(nb.id);
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
-                          title="Xóa sổ tay này"
+                          onClick={() => openAddSourceModal(activeNotebook.id, 'UPLOAD')}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 active:scale-95 cursor-pointer"
+                          title="Tải file hoặc nhập văn bản vào Sổ tay này"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Plus className="w-4 h-4 stroke-[3]" />
+                          <FileUp className="w-4 h-4" />
+                          <span>+ Thêm Source vào Sổ tay này</span>
+                        </button>
+
+                        {/* Nút Gắn Source có sẵn */}
+                        <button
+                          onClick={() => setIsExistingSourceModalOpen(true)}
+                          className="px-3 py-2 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          title="Chọn tài liệu đã có trong kho để gắn vào Sổ tay này"
+                        >
+                          <Layers className="w-4 h-4 text-indigo-300" />
+                          <span>Gắn Source có sẵn</span>
+                        </button>
+
+                        {/* Nút Chuyển sang Hỏi đáp về Sổ tay này */}
+                        <button
+                          onClick={() => setCurrentTab('ASK_SEARCH')}
+                          className="px-3 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          title="Hỏi đáp AI về các tài liệu trong Sổ tay này"
+                        >
+                          <Search className="w-4 h-4 text-purple-300" />
+                          <span>Hỏi đáp RAG</span>
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Danh sách Sources của Sổ tay */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-emerald-400" />
+                          <span>Tài liệu trong Sổ tay này ({sources.length})</span>
+                        </h4>
+                        {activeLesson && (
+                          <button
+                            onClick={() => handleQuickSyncCurrentLesson(activeNotebook.id)}
+                            disabled={isSyncing}
+                            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition-all"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Nạp bài giảng hiện tại vào sổ tay này</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {sources.length === 0 ? (
+                        <div className="p-8 rounded-2xl bg-slate-900/30 border border-dashed border-white/10 text-center space-y-3">
+                          <FileText className="w-10 h-10 mx-auto text-slate-600" />
+                          <div>
+                            <p className="text-xs font-bold text-slate-300">Sổ tay này chưa có tài liệu nào</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Hãy tải file tài liệu (PDF, Word, TXT) hoặc gắn tài liệu từ kho để AI tra cứu bài học.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                            <button
+                              onClick={() => openAddSourceModal(activeNotebook.id, 'UPLOAD')}
+                              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                            >
+                              <FileUp className="w-3.5 h-3.5" />
+                              <span>Tải file lên</span>
+                            </button>
+                            <button
+                              onClick={() => setIsExistingSourceModalOpen(true)}
+                              className="px-3.5 py-1.5 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                              <span>Gắn tài liệu có sẵn</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {sources.map((src) => {
+                            const fileName = src.asset?.file_path ? src.asset.file_path.split('/').pop() : null;
+                            const fileExt = fileName ? fileName.split('.').pop()?.toUpperCase() : (src.asset ? 'FILE' : 'TEXT');
+                            return (
+                              <div
+                                key={src.id}
+                                className="p-3.5 rounded-2xl bg-slate-900/70 border border-white/10 hover:border-purple-500/40 transition-all flex flex-col justify-between group"
+                              >
+                                <div className="space-y-1.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-mono font-bold text-slate-300 shrink-0">
+                                        {fileExt}
+                                      </span>
+                                      <h5 className="text-xs font-bold text-white truncate" title={src.title}>
+                                        {src.title}
+                                      </h5>
+                                    </div>
+                                    <span
+                                      className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${
+                                        src.embedded
+                                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                          : 'bg-amber-500/20 text-amber-400'
+                                      }`}
+                                    >
+                                      {src.embedded ? 'Vector OK' : 'Đang xử lý'}
+                                    </span>
+                                  </div>
+
+                                  {fileName && (
+                                    <p className="text-[10px] text-slate-400 truncate flex items-center gap-1 font-mono">
+                                      <Paperclip className="w-3 h-3 text-slate-500 shrink-0" />
+                                      <span>{fileName}</span>
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2.5 mt-2.5 border-t border-white/5 text-[11px]">
+                                  <button
+                                    onClick={() => viewSourceDetail(src.id)}
+                                    className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
+                                  >
+                                    <FolderOpen className="w-3.5 h-3.5" />
+                                    <span>Toàn văn</span>
+                                  </button>
+
+                                  <div className="flex items-center gap-1">
+                                    {/* Gỡ khỏi sổ tay */}
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Bạn có muốn gỡ tài liệu "${src.title}" ra khỏi Sổ tay này? (Tài liệu vẫn được giữ trong kho)`)) {
+                                          detachSourceFromNotebook(src.id, activeNotebook.id);
+                                        }
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-amber-400 transition-all rounded hover:bg-white/5"
+                                      title="Gỡ khỏi Sổ tay này"
+                                    >
+                                      <Unlink className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Xóa vĩnh viễn */}
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Bạn có chắc muốn xóa VĨNH VIỄN tài liệu "${src.title}" khỏi toàn bộ hệ thống?`)) {
+                                          removeSource(src.id);
+                                        }
+                                      }}
+                                      className="p-1 text-slate-500 hover:text-rose-400 transition-all rounded hover:bg-white/5"
+                                      title="Xóa vĩnh viễn tài liệu"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-8 p-8 rounded-2xl bg-slate-900/30 border border-dashed border-white/10 text-center">
+                    <p className="text-xs text-slate-400">Chọn một Sổ tay ở trên để xem chi tiết và quản lý các tài liệu của sổ tay đó.</p>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
           {/* =====================================================================
               VIEW 3: ASK AND SEARCH (HỎI ĐÁP & TÌM KIẾM THÔNG MINH RAG)
@@ -791,7 +1095,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 {modalType === 'NOTEBOOK' && 'Tạo Sổ Tay Mới'}
-                {modalType === 'SOURCE' && 'Thêm Nguồn Tài Liệu'}
+                {modalType === 'SOURCE' && 'Thêm Nguồn Tài Liệu (Source)'}
                 {modalType === 'PODCAST' && 'Tạo Podcast Bài Học'}
               </h3>
               <button
@@ -836,33 +1140,189 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
 
               {modalType === 'SOURCE' && (
                 <>
+                  {/* Tab chọn hình thức nạp tài liệu */}
+                  <div className="flex rounded-xl bg-slate-900/80 p-1 border border-white/5 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSourceAddMode('UPLOAD')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        sourceAddMode === 'UPLOAD'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <FileUp className="w-3.5 h-3.5" />
+                      <span>Tải File</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSourceAddMode('TEXT')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        sourceAddMode === 'TEXT'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Nhập Chữ</span>
+                    </button>
+                    {activeLesson && (
+                      <button
+                        type="button"
+                        onClick={() => setSourceAddMode('LESSON')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                          sourceAddMode === 'LESSON'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <BookMarked className="w-3.5 h-3.5" />
+                        <span>Bài Giảng</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Chọn Sổ tay đích để gắn */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Tiêu đề tài liệu *
+                      Gắn vào Sổ tay nào?
                     </label>
-                    <input
-                      type="text"
-                      value={newSourceTitle}
-                      onChange={(e) => setNewSourceTitle(e.target.value)}
-                      placeholder="Ví dụ: Tóm tắt bài 1..."
+                    <select
+                      value={targetNotebookId}
+                      onChange={(e) => setTargetNotebookId(e.target.value)}
                       className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                      required
-                      autoFocus
-                    />
+                    >
+                      <option value="">Kho tài liệu chung (Không gắn vào Sổ tay)</option>
+                      {notebooks.map((nb) => (
+                        <option key={nb.id} value={nb.id}>
+                          Sổ tay: {nb.name} ({nb.source_count || 0} tài liệu)
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Nội dung văn bản tài liệu *
-                    </label>
-                    <textarea
-                      value={newSourceContent}
-                      onChange={(e) => setNewSourceContent(e.target.value)}
-                      placeholder="Dán nội dung lý thuyết, bài giảng hoặc ghi chú vào đây..."
-                      rows={4}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                      required
-                    />
-                  </div>
+
+                  {/* Mode 1: Tải File Lên */}
+                  {sourceAddMode === 'UPLOAD' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          File tài liệu (PDF, Word DOCX, TXT, MD, EPUB) *
+                        </label>
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDraggingFile(true);
+                          }}
+                          onDragLeave={() => setIsDraggingFile(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingFile(false);
+                            const droppedFile = e.dataTransfer.files?.[0];
+                            if (droppedFile) handleFileChange(droppedFile);
+                          }}
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all ${
+                            isDraggingFile
+                              ? 'border-emerald-400 bg-emerald-950/40'
+                              : selectedUploadFile
+                              ? 'border-emerald-500/50 bg-slate-900/90'
+                              : 'border-white/10 hover:border-emerald-500/40 bg-slate-900/50 hover:bg-slate-900'
+                          }`}
+                        >
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf,.docx,.doc,.txt,.md,.epub"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleFileChange(f);
+                            }}
+                          />
+                          {selectedUploadFile ? (
+                            <div className="space-y-1">
+                              <div className="w-10 h-10 mx-auto rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                <Check className="w-5 h-5" />
+                              </div>
+                              <p className="text-xs font-bold text-white truncate max-w-xs mx-auto">
+                                {selectedUploadFile.name}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                {formatFileSize(selectedUploadFile.size)} • Nhấn để đổi file khác
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <Upload className="w-8 h-8 mx-auto text-slate-500" />
+                              <p className="text-xs font-semibold text-slate-300">
+                                Kéo thả file vào đây hoặc <span className="text-emerald-400 font-bold">chọn file</span>
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                Hỗ trợ: PDF, Word (DOCX/DOC), Text (TXT), Markdown (MD), EPUB
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Tiêu đề tài liệu (Tùy chọn)
+                        </label>
+                        <input
+                          type="text"
+                          value={newSourceTitle}
+                          onChange={(e) => setNewSourceTitle(e.target.value)}
+                          placeholder="Mặc định lấy theo tên file..."
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode 2: Nhập Văn Bản */}
+                  {sourceAddMode === 'TEXT' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Tiêu đề tài liệu *
+                        </label>
+                        <input
+                          type="text"
+                          value={newSourceTitle}
+                          onChange={(e) => setNewSourceTitle(e.target.value)}
+                          placeholder="Ví dụ: Tóm tắt bài 1 hoặc ghi chú..."
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">
+                          Nội dung văn bản tài liệu *
+                        </label>
+                        <textarea
+                          value={newSourceContent}
+                          onChange={(e) => setNewSourceContent(e.target.value)}
+                          placeholder="Dán nội dung lý thuyết, bài giảng hoặc ghi chú vào đây..."
+                          rows={4}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode 3: Nạp Bài Giảng Đang Học */}
+                  {sourceAddMode === 'LESSON' && activeLesson && (
+                    <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 space-y-1.5 text-xs">
+                      <p className="font-bold text-cyan-300">Bài giảng: {activeLesson.title}</p>
+                      <p className="text-slate-300 line-clamp-2">{activeLesson.description || 'Nội dung cốt lõi của bài học.'}</p>
+                      <p className="text-[10px] text-cyan-400/80 font-mono">
+                        Khóa học: {currentCourse?.title || 'Chưa phân loại'} • Thời lượng: {Math.round((activeLesson.durationSeconds || 0) / 60)} phút
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -904,10 +1364,25 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  disabled={isLoading || isGeneratingPodcast}
+                  disabled={
+                    isLoading ||
+                    isSyncing ||
+                    isGeneratingPodcast ||
+                    (modalType === 'SOURCE' && sourceAddMode === 'UPLOAD' && !selectedUploadFile)
+                  }
                   className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition-all disabled:opacity-50"
                 >
-                  {isGeneratingPodcast ? 'Đang tạo...' : 'Xác nhận tạo'}
+                  {isSyncing
+                    ? 'Đang tải lên & xử lý vector...'
+                    : isGeneratingPodcast
+                    ? 'Đang tạo...'
+                    : modalType === 'SOURCE'
+                    ? sourceAddMode === 'UPLOAD'
+                      ? 'Tải lên & Vector hóa'
+                      : sourceAddMode === 'LESSON'
+                      ? 'Nạp bài giảng vào Sổ tay'
+                      : 'Lưu & Vector hóa'
+                    : 'Xác nhận tạo'}
                 </button>
                 <button
                   type="button"
@@ -918,6 +1393,136 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL GẮN SOURCE CÓ SẴN VÀO SỔ TAY (ADD EXISTING SOURCE)
+      ========================================================================= */}
+      {isExistingSourceModalOpen && activeNotebook && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0f1423] border border-white/10 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <span>Gắn Source có sẵn vào Sổ tay</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Sổ tay đích: <span className="font-semibold text-purple-300">{activeNotebook.name}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsExistingSourceModalOpen(false);
+                  setExistingSourceSearch('');
+                }}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tìm kiếm nhanh */}
+            <div className="relative">
+              <input
+                type="text"
+                value={existingSourceSearch}
+                onChange={(e) => setExistingSourceSearch(e.target.value)}
+                placeholder="Tìm tài liệu theo tên..."
+                className="w-full px-3.5 py-2 pl-9 rounded-xl bg-slate-900 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+            </div>
+
+            {/* Danh sách các source chưa gắn */}
+            {(() => {
+              const unattachedSources = allSources
+                .filter((s) => !sources.some((existing) => existing.id === s.id))
+                .filter((s) =>
+                  existingSourceSearch.trim()
+                    ? s.title.toLowerCase().includes(existingSourceSearch.toLowerCase())
+                    : true
+                );
+
+              if (unattachedSources.length === 0) {
+                return (
+                  <div className="py-8 text-center text-slate-500 text-xs space-y-2">
+                    <FileText className="w-8 h-8 mx-auto opacity-30" />
+                    <p>
+                      {existingSourceSearch
+                        ? 'Không tìm thấy tài liệu phù hợp.'
+                        : 'Tất cả tài liệu trong hệ thống đã được gắn vào sổ tay này, hoặc chưa có tài liệu nào khác.'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setIsExistingSourceModalOpen(false);
+                        openAddSourceModal(activeNotebook.id, 'UPLOAD');
+                      }}
+                      className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                    >
+                      + Tải file mới vào Sổ tay này ngay
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar max-h-72 pr-1">
+                  {unattachedSources.map((s) => {
+                    const fileName = s.asset?.file_path ? s.asset.file_path.split('/').pop() : null;
+                    const fileExt = fileName ? fileName.split('.').pop()?.toUpperCase() : (s.asset ? 'FILE' : 'TEXT');
+                    return (
+                      <div
+                        key={s.id}
+                        className="p-3 rounded-xl bg-slate-900/80 border border-white/5 hover:border-indigo-500/30 flex items-center justify-between gap-3 transition-all"
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-mono font-bold text-slate-300 shrink-0">
+                              {fileExt}
+                            </span>
+                            <h4 className="text-xs font-bold text-white truncate" title={s.title}>
+                              {s.title}
+                            </h4>
+                          </div>
+                          {fileName && (
+                            <p className="text-[10px] text-slate-500 truncate font-mono">
+                              {fileName}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={async () => {
+                            await attachSourceToNotebook(s.id, activeNotebook.id);
+                          }}
+                          disabled={isSyncing}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shrink-0 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Gắn vào Sổ tay</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            <div className="pt-2 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExistingSourceModalOpen(false);
+                  setExistingSourceSearch('');
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-all"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
