@@ -1054,30 +1054,49 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   </p>
                 </div>
 
-                {isTeacherOrAdmin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => refreshAll()}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all border border-white/10 cursor-pointer"
+                    title="Cập nhật danh sách podcasts"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Làm mới</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       setModalType('PODCAST');
                       setIsNewModalOpen(true);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-pink-600/30"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-emerald-600/30 cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Tạo Podcast mới</span>
+                    <Sparkles className="w-4 h-4 text-emerald-200" />
+                    <span>+ Generate Podcast (Tạo mới)</span>
                   </button>
-                )}
+                </div>
               </div>
 
               {/* Danh sách Podcasts */}
               {podcasts.length === 0 ? (
-                <div className="p-12 text-center text-slate-500">
-                  <Mic className="w-12 h-12 mx-auto mb-3 opacity-30 text-pink-400" />
-                  <p className="text-sm font-semibold">Chưa có tập Podcast nào</p>
-                  <p className="text-xs mt-1">
-                    {isTeacherOrAdmin
-                      ? 'Bấm "Tạo Podcast mới" để AI tự động biên soạn kịch bản và sinh giọng nói bài giảng.'
-                      : 'Giáo viên chưa tạo podcast âm thanh cho các bài học này.'}
-                  </p>
+                <div className="p-12 text-center text-slate-500 space-y-3 bg-slate-900/30 border border-dashed border-white/10 rounded-3xl">
+                  <Mic className="w-12 h-12 mx-auto opacity-30 text-pink-400" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-300">Chưa có tập Podcast nào</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Bấm "Generate Podcast" để AI tự động phân tích bài học và sinh giọng nói đối thoại sống động.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setModalType('PODCAST');
+                      setIsNewModalOpen(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Tạo Podcast đầu tiên ngay</span>
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1155,7 +1174,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 {modalType === 'NOTEBOOK' && 'Tạo Sổ Tay Mới'}
                 {modalType === 'SOURCE' && 'Thêm Nguồn Tài Liệu (Source)'}
-                {modalType === 'PODCAST' && 'Tạo Podcast Bài Học'}
+                {modalType === 'PODCAST' && 'Tạo & Sinh Podcast AI (Generate Audio)'}
               </h3>
               <button
                 onClick={() => setIsNewModalOpen(false)}
@@ -1473,13 +1492,15 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   {isSyncing
                     ? 'Đang tải lên & xử lý vector...'
                     : isGeneratingPodcast
-                    ? 'Đang tạo...'
+                    ? 'AI đang biên soạn & tạo giọng nói...'
                     : modalType === 'SOURCE'
                     ? sourceAddMode === 'UPLOAD'
                       ? 'Tải lên & Vector hóa'
                       : sourceAddMode === 'LESSON'
                       ? 'Nạp bài giảng vào Sổ tay'
                       : 'Lưu & Vector hóa'
+                    : modalType === 'PODCAST'
+                    ? 'Bắt đầu Sinh Podcast (Generate Audio)'
                     : 'Xác nhận tạo'}
                 </button>
                 <button
