@@ -2,6 +2,9 @@ import type {
   Notebook,
   NotebookSource,
   NotebookStatus,
+  PodcastEpisode,
+  EpisodeProfile,
+  SearchResult,
 } from '../types/notebook.types';
 
 const API_BASE = '/notebook-api';
@@ -17,13 +20,11 @@ async function requestWithFallback(endpoint: string, options: RequestInit = {}):
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
     if (res.ok) return res;
-    // Nếu proxy trả về lỗi khác 404/500 thử fallback sang direct port
     if (res.status === 404 || res.status === 502 || res.status === 503) {
       throw new Error(`Proxy status: ${res.status}`);
     }
     return res;
   } catch {
-    // Fallback sang gọi trực tiếp cổng 5055
     return fetch(`${DIRECT_API_BASE}${endpoint}`, { ...options, headers });
   }
 }
@@ -63,20 +64,16 @@ export const notebookService = {
     }
   },
 
-  /**
-   * Lấy danh sách tất cả các Notebook
-   */
+  // =========================================================================
+  // 1. CHỨC NĂNG NOTEBOOKS (SỔ TAY)
+  // =========================================================================
+
   async getNotebooks(): Promise<Notebook[]> {
     const res = await requestWithFallback('/notebooks', { method: 'GET' });
-    if (!res.ok) {
-      throw new Error(`Không thể lấy danh sách Notebook (Mã lỗi: ${res.status})`);
-    }
+    if (!res.ok) throw new Error(`Không thể lấy danh sách Notebook (Mã lỗi: ${res.status})`);
     return res.json();
   },
 
-  /**
-   * Tạo một Notebook mới từ Khóa học hoặc chủ đề tùy chọn
-   */
   async createNotebook(name: string, description: string = ''): Promise<Notebook> {
     const res = await requestWithFallback('/notebooks', {
       method: 'POST',
@@ -89,26 +86,14 @@ export const notebookService = {
     return res.json();
   },
 
-  /**
-   * Xóa một Notebook
-   */
   async deleteNotebook(notebookId: string): Promise<void> {
-    const res = await requestWithFallback(`/notebooks/${notebookId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) {
-      throw new Error('Xóa Notebook thất bại');
-    }
+    const res = await requestWithFallback(`/notebooks/${notebookId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Xóa Notebook thất bại');
   },
 
-  /**
-   * Lấy chi tiết thông tin và tài liệu của Notebook
-   */
   async getNotebookDetail(notebookId: string): Promise<{ notebook: Notebook; sources: NotebookSource[] }> {
     const res = await requestWithFallback(`/notebooks/${notebookId}`, { method: 'GET' });
-    if (!res.ok) {
-      throw new Error('Không thể tải chi tiết Notebook');
-    }
+    if (!res.ok) throw new Error('Không thể tải chi tiết Notebook');
     const data = await res.json();
     return {
       notebook: data,
@@ -116,9 +101,27 @@ export const notebookService = {
     };
   },
 
-  /**
-   * Nạp nội dung bài giảng / ghi chú / transcript vào Notebook làm nguồn tri thức (Source)
-   */
+  // =========================================================================
+  // 2. CHỨC NĂNG SOURCES (NGUỒN TÀI LIỆU & BÀI HỌC)
+  // =========================================================================
+
+  async getAllSources(): Promise<NotebookSource[]> {
+    const res = await requestWithFallback('/sources', { method: 'GET' });
+    if (!res.ok) throw new Error('Không thể lấy danh sách tài liệu');
+    return res.json();
+  },
+
+  async getSourceDetail(sourceId: string): Promise<NotebookSource> {
+    const res = await requestWithFallback(`/sources/${sourceId}`, { method: 'GET' });
+    if (!res.ok) throw new Error('Không thể lấy chi tiết tài liệu');
+    return res.json();
+  },
+
+  async deleteSource(sourceId: string): Promise<void> {
+    const res = await requestWithFallback(`/sources/${sourceId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Xóa tài liệu thất bại');
+  },
+
   async addLessonSource(
     notebookId: string,
     title: string,
@@ -142,11 +145,30 @@ export const notebookService = {
     return res.json();
   },
 
-  /**
-   * Hỏi đáp AI (Chat RAG) với Notebook
-   */
+  // =========================================================================
+  // 3. CHỨC NĂNG ASK & SEARCH (HỎI ĐÁP & TÌM KIẾM NGỮ NGHĨA RAG)
+  // =========================================================================
+
+  async searchKnowledgeBase(
+    query: string,
+    type: 'text' | 'vector' = 'text',
+    notebookIds?: string[]
+  ): Promise<SearchResult[]> {
+    const res = await requestWithFallback('/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        type,
+        scope_notebook_ids: notebookIds && notebookIds.length > 0 ? notebookIds : undefined,
+      }),
+    });
+
+    if (!res.ok) throw new Error('Tìm kiếm tài liệu thất bại');
+    const data = await res.json();
+    return data.results || [];
+  },
+
   async askQuestion(notebookId: string, question: string): Promise<string> {
-    // 1. Tạo hoặc lấy Chat Session cho Notebook này
     const sessionRes = await requestWithFallback('/chat/sessions', {
       method: 'POST',
       body: JSON.stringify({
@@ -162,7 +184,6 @@ export const notebookService = {
 
     const session = await sessionRes.json();
 
-    // 2. Gửi câu hỏi và nhận câu trả lời
     const chatRes = await requestWithFallback('/chat/execute', {
       method: 'POST',
       body: JSON.stringify({
@@ -175,7 +196,7 @@ export const notebookService = {
     if (!chatRes.ok) {
       const err = await chatRes.text();
       if (err.includes('Rate limit')) {
-        throw new Error('Tần suất gọi Gemini AI đang quá nhanh (Free Tier Rate Limit). Vui lòng đợi 30 giây rồi thử lại nhé!');
+        throw new Error('Tần suất gọi Gemini AI đang quá nhanh. Vui lòng đợi vài giây rồi thử lại nhé!');
       }
       throw new Error(err || 'AI gặp trục trặc khi tạo câu trả lời');
     }
@@ -183,5 +204,50 @@ export const notebookService = {
     const chatData = await chatRes.json();
     const assistantMsg = chatData.messages?.find((m: { type: string; content: string }) => m.type === 'ai');
     return assistantMsg?.content || 'Đã xử lý xong câu hỏi của bạn.';
+  },
+
+  // =========================================================================
+  // 4. CHỨC NĂNG PODCASTS (TẠO & PHÁT PODCAST ÂM THANH BÀI GIẢNG)
+  // =========================================================================
+
+  async getPodcastEpisodes(): Promise<PodcastEpisode[]> {
+    const res = await requestWithFallback('/podcasts/episodes', { method: 'GET' });
+    if (!res.ok) throw new Error('Không thể lấy danh sách Podcasts');
+    return res.json();
+  },
+
+  async getEpisodeProfiles(): Promise<EpisodeProfile[]> {
+    const res = await requestWithFallback('/episode-profiles', { method: 'GET' });
+    if (!res.ok) throw new Error('Không thể lấy danh mục hồ sơ Podcast');
+    return res.json();
+  },
+
+  async generatePodcast(
+    episodeName: string,
+    episodeProfile: string,
+    speakerProfile: string,
+    notebookId?: string,
+    content?: string
+  ): Promise<{ job_id: string; message: string }> {
+    const res = await requestWithFallback('/podcasts/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        episode_name: episodeName,
+        episode_profile: episodeProfile,
+        speaker_profile: speakerProfile,
+        notebook_id: notebookId,
+        content: content,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Không thể tạo Podcast bài học');
+    }
+    return res.json();
+  },
+
+  getPodcastAudioUrl(episodeId: string): string {
+    return `/notebook-api/podcasts/episodes/${episodeId}/audio`;
   },
 };
