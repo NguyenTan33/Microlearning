@@ -44,6 +44,7 @@ interface StudyDashboardProps {
 
 export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const currentUser = useMemo(() => getCurrentUser(), []);
+  const isTeacherOrAdmin = Boolean(currentUser?.isAdmin || currentUser?.isTeacher);
   const [isCourseMgmtOpen, setIsCourseMgmtOpen] = useState<boolean>(false);
   const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
@@ -337,15 +338,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
           {/* Desktop Action Buttons & User Menu */}
           <div className="hidden md:flex items-center gap-2 sm:gap-3">
-            {/* Nút Studio Đăng Tải Bài Giảng & Quiz */}
-            <button
-              onClick={() => setIsCourseMgmtOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-900/80 to-purple-900/80 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Đăng tải bài giảng, học phần và soạn đề thi quizz"
-            >
-              <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Studio Đăng tải</span>
-            </button>
+            {/* Nút Studio Đăng Tải Bài Giảng & Quiz (Chỉ hiện cho Teacher & Admin) */}
+            {isTeacherOrAdmin && (
+              <button
+                onClick={() => setIsCourseMgmtOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-900/80 to-purple-900/80 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-white transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Đăng tải bài giảng, học phần và soạn đề thi quizz"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Studio Đăng tải</span>
+              </button>
+            )}
 
             {/* Quản lý người dùng (Dành cho Admin) */}
             {currentUser?.isAdmin && (
@@ -419,14 +422,16 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               )}
             </button>
 
-            <button
-              onClick={() => setIsCourseMgmtOpen(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
-              title="Studio Đăng tải"
-            >
-              <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Studio</span>
-            </button>
+            {isTeacherOrAdmin && (
+              <button
+                onClick={() => setIsCourseMgmtOpen(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
+                title="Studio Đăng tải"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Studio</span>
+              </button>
+            )}
 
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -549,7 +554,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         {currentView === 'CATALOG' && (
           <CourseCatalogView
             onSelectCourse={handleSelectCourseFromCatalog}
-            onOpenStudio={() => setIsCourseMgmtOpen(true)}
+            onOpenStudio={isTeacherOrAdmin ? () => setIsCourseMgmtOpen(true) : undefined}
           />
         )}
 
@@ -567,6 +572,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             currentCourse={effectiveCourse}
             activeLesson={effectiveLesson}
             onBackToWorkspace={() => setCurrentView('WORKSPACE')}
+            currentUser={currentUser}
           />
         )}
 
@@ -797,25 +803,29 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           <span className="text-[10px] mt-0.5">Tiến độ</span>
         </button>
 
-        {/* 5. Studio Đăng tải bài giảng */}
-        <button
-          type="button"
-          onClick={() => setIsCourseMgmtOpen(true)}
-          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 hover:text-purple-300 transition-all cursor-pointer"
-        >
-          <FolderKanban className="w-5 h-5 text-purple-400" />
-          <span className="text-[10px] mt-0.5">Studio</span>
-        </button>
+        {/* 5. Studio Đăng tải bài giảng (Chỉ hiện cho Teacher & Admin) */}
+        {isTeacherOrAdmin && (
+          <button
+            type="button"
+            onClick={() => setIsCourseMgmtOpen(true)}
+            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 hover:text-purple-300 transition-all cursor-pointer"
+          >
+            <FolderKanban className="w-5 h-5 text-purple-400" />
+            <span className="text-[10px] mt-0.5">Studio</span>
+          </button>
+        )}
       </nav>
 
       {/* =========================================================================
           STUDIO MODAL: ĐĂNG TẢI KHÓA HỌC, BÀI GIẢNG & SOẠN ĐỀ THI QUIZZ
       ========================================================================= */}
-      <CourseManagementModal
-        isOpen={isCourseMgmtOpen}
-        onClose={() => setIsCourseMgmtOpen(false)}
-        onDataChanged={() => loadInitialCourse(effectiveCourse.id)}
-      />
+      {isTeacherOrAdmin && (
+        <CourseManagementModal
+          isOpen={isCourseMgmtOpen}
+          onClose={() => setIsCourseMgmtOpen(false)}
+          onDataChanged={() => loadInitialCourse(effectiveCourse.id)}
+        />
+      )}
 
       {/* ADMIN USER MANAGEMENT MODAL */}
       {currentUser?.isAdmin && (
