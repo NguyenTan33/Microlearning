@@ -112,17 +112,26 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
                 userPrompt.AppendLine($"Câu hỏi của học viên: {request.Question}");
 
                 // 3. Gọi Google Gemini API
-                var geminiKey = _config["AiSettings:GoogleApiKey"] 
-                                ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY") 
-                                ?? "AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA";
+                var geminiKey = _config["AiSettings:GoogleApiKey"];
+                if (string.IsNullOrWhiteSpace(geminiKey))
+                {
+                    geminiKey = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+                }
+                if (string.IsNullOrWhiteSpace(geminiKey))
+                {
+                    geminiKey = "AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA";
+                }
 
                 var answer = await CallGeminiAsync(systemPrompt, userPrompt.ToString(), geminiKey, cancellationToken);
 
                 // 4. Nếu Gemini không phản hồi, thử gọi Open Notebook AI Container
                 if (string.IsNullOrWhiteSpace(answer))
                 {
-                    var openNotebookUrl = _config["AiSettings:OpenNotebookUrl"] 
-                                          ?? "https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io";
+                    var openNotebookUrl = _config["AiSettings:OpenNotebookUrl"];
+                    if (string.IsNullOrWhiteSpace(openNotebookUrl))
+                    {
+                        openNotebookUrl = "https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io";
+                    }
                     answer = await CallOpenNotebookAsync(openNotebookUrl, request.Question, contextBuilder.ToString(), cancellationToken);
                 }
 
@@ -226,8 +235,27 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
                     {
                         var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
                         var node = JsonNode.Parse(responseJson);
-                        var text = node?["candidates"]?[0]?["content"]?[0]?["parts"]?[0]?["text"]?.ToString()
-                                   ?? node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                        string? text = null;
+
+                        // Chuẩn cấu trúc Gemini: candidates[0].content.parts[0].text
+                        try
+                        {
+                            text = node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                        }
+                        catch
+                        {
+                            // Dự phòng duyệt an toàn qua JsonArray
+                        }
+
+                        if (string.IsNullOrWhiteSpace(text) && node?["candidates"] is JsonArray candArray && candArray.Count > 0)
+                        {
+                            var cand = candArray[0];
+                            if (cand?["content"]?["parts"] is JsonArray partArray && partArray.Count > 0)
+                            {
+                                text = partArray[0]?["text"]?.ToString();
+                            }
+                        }
+
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             return text;
