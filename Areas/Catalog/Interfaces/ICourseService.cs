@@ -4,8 +4,8 @@ namespace Microlearning.Areas.Catalog.Interfaces
 {
     public interface ICourseService
     {
-        Task<List<CourseResponse>> GetAllCoursesAsync();
-        Task<CourseDetailResponse> GetCourseByIdAsync(int courseId);
+        Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false);
+        Task<CourseDetailResponse> GetCourseByIdAsync(int courseId, bool includeUnpublished = false);
         Task<CourseResponse> CreateCourseAsync(CreateCourseRequest request);
         Task<CourseResponse> UpdateCourseAsync(int courseId, UpdateCourseRequest request);
         Task<bool> DeleteCourseAsync(int courseId);

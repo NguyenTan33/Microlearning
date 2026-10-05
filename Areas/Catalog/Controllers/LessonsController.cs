@@ -21,9 +21,9 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// </summary>
         [HttpGet("subject/{subjectId}")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetLessonsBySubject(int subjectId)
+        public async Task<IActionResult> GetLessonsBySubject(int subjectId, [FromQuery] bool includeUnpublished = false)
         {
-            var lessons = await _lessonService.GetLessonsBySubjectIdAsync(subjectId);
+            var lessons = await _lessonService.GetLessonsBySubjectIdAsync(subjectId, includeUnpublished);
             return Ok(lessons);
         }
 

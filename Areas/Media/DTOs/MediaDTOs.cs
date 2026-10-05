@@ -1,4 +1,4 @@
-﻿namespace Microlearning.Areas.Media.DTOs
+namespace Microlearning.Areas.Media.DTOs
 {
     // DTO yêu cầu phát video
     public record GetMediaStreamRequest(int MediaId);
@@ -51,4 +51,16 @@
         public DateTime? StartedAt { get; init; }
         public DateTime? CompletedAt { get; init; }
     }
+
+    // DTO phản hồi kết quả tải lên tệp video
+    public record UploadMediaResponse(
+        int MediaId,
+        int LessonId,
+        string FileName,
+        long FileSizeBytes,
+        string ContentType,
+        string Checksum,
+        string StreamUrl,
+        string DownloadUrl
+    );
 }

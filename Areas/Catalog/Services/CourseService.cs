@@ -16,11 +16,15 @@ namespace Microlearning.Areas.Catalog.Services
             _dbContext = dbContext;
         }
 
-        public async Task<List<CourseResponse>> GetAllCoursesAsync()
+        public async Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false)
         {
-            var courses = await _dbContext.Courses
-                .AsNoTracking()
-                .Where(c => c.IsPublished)
+            var query = _dbContext.Courses.AsNoTracking();
+            if (!includeUnpublished)
+            {
+                query = query.Where(c => c.IsPublished);
+            }
+
+            var courses = await query
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new CourseResponse(
                     c.Id,
@@ -38,12 +42,12 @@ namespace Microlearning.Areas.Catalog.Services
             return courses;
         }
 
-        public async Task<CourseDetailResponse> GetCourseByIdAsync(int courseId)
+        public async Task<CourseDetailResponse> GetCourseByIdAsync(int courseId, bool includeUnpublished = false)
         {
             var course = await _dbContext.Courses
                 .AsNoTracking()
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
-                    .ThenInclude(s => s.Lessons.Where(l => l.IsPublished).OrderBy(l => l.SortOrder))
+                    .ThenInclude(s => s.Lessons.Where(l => includeUnpublished || l.IsPublished).OrderBy(l => l.SortOrder))
                         .ThenInclude(l => l.Quiz)
                 .FirstOrDefaultAsync(c => c.Id == courseId);
 

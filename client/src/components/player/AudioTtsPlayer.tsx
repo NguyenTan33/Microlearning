@@ -5,13 +5,11 @@ import { ttsApi } from '../../services/ttsApi';
 interface AudioTtsPlayerProps {
   lessonTitle: string;
   lessonDescription?: string;
-  isOnline: boolean;
 }
 
 export const AudioTtsPlayer: React.FC<AudioTtsPlayerProps> = ({
   lessonTitle,
   lessonDescription,
-  isOnline,
 }) => {
   const [selectedVoice, setSelectedVoice] = useState<string>('vi-VN-HoaiMyNeural');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -25,11 +23,6 @@ export const AudioTtsPlayer: React.FC<AudioTtsPlayerProps> = ({
     : `Bài học: ${lessonTitle}. Chúc bạn có một buổi học tập hiệu quả.`;
 
   const handleSynthesize = async () => {
-    if (!isOnline) {
-      setErrorMessage('Tính năng tạo giọng đọc AI yêu cầu kết nối mạng trực tuyến.');
-      return;
-    }
-
     setIsSynthesizing(true);
     setErrorMessage(null);
 
@@ -88,7 +81,7 @@ export const AudioTtsPlayer: React.FC<AudioTtsPlayerProps> = ({
           {!audioUrl ? (
             <button
               onClick={handleSynthesize}
-              disabled={isSynthesizing || !isOnline}
+              disabled={isSynthesizing}
               className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer"
             >
               {isSynthesizing ? (

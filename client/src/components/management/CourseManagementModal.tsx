@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Layers,
   Plus,
@@ -17,10 +17,19 @@ import {
   FolderPlus,
   FilePlus,
   ArrowLeft,
-  Check,
+  Video,
+  Upload,
+  Search,
+  Filter,
+  Sparkles,
+  FileText,
+  Download,
+  FileCheck,
+  Info,
 } from 'lucide-react';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
+import { parseDocxQuizFile, parseQuizText, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
 
 interface CourseManagementModalProps {
   isOpen: boolean;
@@ -39,15 +48,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Modal dialog states
+  // Filter & Search in Studio
+  const [courseFilter, setCourseFilter] = useState<'all' | 'published' | 'draft'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Course Modal
   const [showCourseModal, setShowCourseModal] = useState<boolean>(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [courseForm, setCourseForm] = useState({ title: '', description: '', thumbnailUrl: '' });
 
+  // Subject Modal
   const [showSubjectModal, setShowSubjectModal] = useState<boolean>(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [subjectForm, setSubjectForm] = useState({ title: '', description: '', sortOrder: 1 });
 
+  // Lesson Modal
   const [showLessonModal, setShowLessonModal] = useState<boolean>(false);
   const [targetSubjectId, setTargetSubjectId] = useState<number | null>(null);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
@@ -57,6 +72,14 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     durationSeconds: 180,
     sortOrder: 1,
   });
+  const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
+
+  // Dedicated Video Upload Modal
+  const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
+  const [targetLessonForVideo, setTargetLessonForVideo] = useState<Lesson | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState<boolean>(false);
 
   // Quiz Builder Modal
   const [showQuizModal, setShowQuizModal] = useState<boolean>(false);
@@ -92,6 +115,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     },
   ]);
 
+  // Word (.docx) Import for Quiz
+  const wordFileInputRef = useRef<HTMLInputElement>(null);
+  const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
+  const [showWordGuide, setShowWordGuide] = useState<boolean>(false);
+  const [showPasteTextModal, setShowPasteTextModal] = useState<boolean>(false);
+  const [wordTextDraft, setWordTextDraft] = useState<string>('');
+
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -99,11 +129,11 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // 1. Tải danh sách khóa học
+  // 1. Tải danh sách khóa học (BẬT includeUnpublished=true ĐỂ KHÔNG BỊ BIẾN MẤT KHI ẨN)
   const fetchCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await catalogApi.getAllCourses();
+      const data = await catalogApi.getAllCourses(true);
       setCourses(data);
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi tải danh sách khóa học.');
@@ -112,11 +142,11 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   }, []);
 
-  // 2. Tải chi tiết khóa học được chọn
+  // 2. Tải chi tiết khóa học được chọn (BẬT includeUnpublished=true)
   const loadCourseDetail = useCallback(async (courseId: number) => {
     setDetailLoading(true);
     try {
-      const data = await catalogApi.getCourseById(courseId);
+      const data = await catalogApi.getCourseById(courseId, true);
       setSelectedCourseDetail(data);
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi tải chi tiết khóa học.');
@@ -130,6 +160,15 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       fetchCourses();
     }
   }, [isOpen, fetchCourses]);
+
+  // Clean up object URL when modal closes or video changes
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+    };
+  }, [videoPreviewUrl]);
 
   // =================== COURSE ACTIONS ===================
   const handleSaveCourse = async (e: React.FormEvent) => {
@@ -149,7 +188,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       }
       setShowCourseModal(false);
       setEditingCourse(null);
-      fetchCourses();
+      await fetchCourses();
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi lưu khóa học.');
@@ -162,9 +201,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       const res = await catalogApi.togglePublishCourse(course.id);
       showToast('success', res.message);
-      fetchCourses();
+      await fetchCourses();
       if (selectedCourseDetail?.id === course.id) {
-        loadCourseDetail(course.id);
+        await loadCourseDetail(course.id);
       }
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
@@ -182,7 +221,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       if (selectedCourseDetail?.id === courseId) {
         setSelectedCourseDetail(null);
       }
-      fetchCourses();
+      await fetchCourses();
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi xóa khóa học.');
@@ -213,7 +252,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       }
       setShowSubjectModal(false);
       setEditingSubject(null);
-      loadCourseDetail(selectedCourseDetail.id);
+      await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi lưu môn học.');
@@ -227,7 +266,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       await catalogApi.deleteSubject(subjectId);
       showToast('success', 'Đã xóa môn học thành công.');
-      if (selectedCourseDetail) loadCourseDetail(selectedCourseDetail.id);
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi xóa môn học.');
@@ -240,6 +279,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     if (!targetSubjectId || !lessonForm.title.trim()) return;
     setActionLoading(true);
     try {
+      let savedLessonId: number | null = null;
       if (editingLesson) {
         await catalogApi.updateLesson(editingLesson.id, {
           title: lessonForm.title,
@@ -247,20 +287,31 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
           durationSeconds: Number(lessonForm.durationSeconds),
           sortOrder: Number(lessonForm.sortOrder),
         });
+        savedLessonId = editingLesson.id;
         showToast('success', 'Đã cập nhật bài giảng.');
       } else {
-        await catalogApi.createLesson({
+        const created = await catalogApi.createLesson({
           subjectId: targetSubjectId,
           title: lessonForm.title,
           description: lessonForm.description,
           durationSeconds: Number(lessonForm.durationSeconds),
           sortOrder: Number(lessonForm.sortOrder),
         });
+        savedLessonId = created.id;
         showToast('success', 'Đã tạo bài giảng mới.');
       }
+
+      // Tải video đính kèm nếu người dùng đã chọn
+      if (lessonVideoFile && savedLessonId) {
+        showToast('success', 'Đang tải file video lên hệ thống...');
+        await catalogApi.uploadLessonVideo(lessonVideoFile, savedLessonId);
+        showToast('success', 'Đã tải lên và gắn video vào bài học thành công!');
+      }
+
       setShowLessonModal(false);
       setEditingLesson(null);
-      if (selectedCourseDetail) loadCourseDetail(selectedCourseDetail.id);
+      setLessonVideoFile(null);
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi lưu bài giảng.');
@@ -273,7 +324,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       const res = await catalogApi.togglePublishLesson(lessonId);
       showToast('success', res.message);
-      if (selectedCourseDetail) loadCourseDetail(selectedCourseDetail.id);
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi cập nhật trạng thái bài giảng.');
@@ -285,10 +336,64 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       await catalogApi.deleteLesson(lessonId);
       showToast('success', 'Đã xóa bài giảng thành công.');
-      if (selectedCourseDetail) loadCourseDetail(selectedCourseDetail.id);
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi xóa bài giảng.');
+    }
+  };
+
+  // =================== DEDICATED VIDEO UPLOAD ===================
+  const handleOpenVideoUpload = (lesson: Lesson) => {
+    setTargetLessonForVideo(lesson);
+    setVideoFile(null);
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl);
+      setVideoPreviewUrl(null);
+    }
+    setShowVideoModal(true);
+  };
+
+  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 500 * 1024 * 1024) {
+        showToast('error', 'Kích thước video không được vượt quá 500MB.');
+        return;
+      }
+      setVideoFile(file);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+      setVideoPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleUploadVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetLessonForVideo || !videoFile) {
+      showToast('error', 'Vui lòng chọn file video để tải lên.');
+      return;
+    }
+
+    setUploadingVideo(true);
+    try {
+      await catalogApi.uploadLessonVideo(videoFile, targetLessonForVideo.id);
+      showToast('success', `Đã tải lên video "${videoFile.name}" thành công!`);
+      setShowVideoModal(false);
+      setVideoFile(null);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+        setVideoPreviewUrl(null);
+      }
+      if (selectedCourseDetail) {
+        await loadCourseDetail(selectedCourseDetail.id);
+      }
+      if (onDataChanged) onDataChanged();
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi tải video lên hệ thống.');
+    } finally {
+      setUploadingVideo(false);
     }
   };
 
@@ -318,7 +423,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       showToast('success', `Đã tạo đề thi trắc nghiệm cho bài "${targetLessonForQuiz.title}".`);
       setShowQuizModal(false);
       setTargetLessonForQuiz(null);
-      if (selectedCourseDetail) loadCourseDetail(selectedCourseDetail.id);
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi tạo đề trắc nghiệm.');
@@ -327,6 +432,112 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
+  // =================== WORD QUIZ IMPORT ACTIONS ===================
+  const handleWordFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.txt')) {
+      showToast('error', 'Vui lòng chọn tệp Word định dạng .docx (hoặc .txt).');
+      return;
+    }
+
+    setIsParsingWord(true);
+    try {
+      let parsed: ParsedQuizQuestion[] = [];
+      if (lowerName.endsWith('.docx')) {
+        const res = await parseDocxQuizFile(file);
+        parsed = res.questions;
+      } else {
+        const text = await file.text();
+        parsed = parseQuizText(text);
+      }
+
+      if (parsed.length === 0) {
+        showToast('error', 'Không tìm thấy câu hỏi trắc nghiệm hợp lệ trong tệp. Bấm "Hướng dẫn" để xem cấu trúc chuẩn.');
+        return;
+      }
+
+      setQuizQuestions(parsed);
+      const autoTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      if (quizTitle === 'Bài kiểm tra đánh giá' || !quizTitle) {
+        setQuizTitle(`Bài kiểm tra: ${autoTitle}`);
+      }
+      showToast('success', `Đã nhập thành công ${parsed.length} câu hỏi từ tệp "${file.name}"!`);
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi trích xuất tệp Word.');
+    } finally {
+      setIsParsingWord(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleParseFromTextDraft = () => {
+    if (!wordTextDraft.trim()) {
+      showToast('error', 'Vui lòng dán văn bản câu hỏi trước khi xác nhận.');
+      return;
+    }
+
+    const parsed = parseQuizText(wordTextDraft);
+    if (parsed.length === 0) {
+      showToast('error', 'Không tìm thấy câu hỏi hợp lệ trong đoạn văn bản đã dán. Vui lòng kiểm tra định dạng.');
+      return;
+    }
+
+    setQuizQuestions(parsed);
+    setShowPasteTextModal(false);
+    setWordTextDraft('');
+    showToast('success', `Đã trích xuất thành công ${parsed.length} câu hỏi từ văn bản!`);
+  };
+
+  const handleDownloadSampleFormat = () => {
+    const sampleText = `Câu 1: Hàm nào trong Excel dùng để tìm kiếm giá trị theo cột dọc?
+*A. VLOOKUP
+B. SUM
+C. AVERAGE
+D. COUNT
+Giải thích: Hàm VLOOKUP tìm kiếm giá trị ở cột đầu tiên và trả về dữ liệu tương ứng.
+
+Câu 2: Đâu là một phương pháp cốt lõi của Microlearning?
+A. Học dồn 8 tiếng liên tục
+*B. Chia nhỏ kiến thức thành bài học 3-5 phút
+C. Bỏ qua các bài kiểm tra thực hành
+D. Chỉ học lý thuyết sách vở
+Giải thích: Microlearning tập trung vào các bài học vi mô ngắn gọn, súc tích và có bài tập ứng dụng ngay.
+
+Câu 3: Đâu là câu lệnh git dùng để tạo commit theo chuẩn Conventional Commits?
+A. git push origin main
+*B. git commit -m "feat: thêm tính năng mới"
+C. git status
+D. git pull
+Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, refactor:, etc.`;
+
+    const blob = new Blob([sampleText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Mau_De_Thi_Trac_Nghiem_MicroLearn.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Filtered courses in Studio
+  const filteredCourses = courses.filter((c) => {
+    const matchesSearch =
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (courseFilter === 'published') return c.isPublished;
+    if (courseFilter === 'draft') return !c.isPublished;
+    return true;
+  });
+
+  const publishedCount = courses.filter((c) => c.isPublished).length;
+  const draftCount = courses.filter((c) => !c.isPublished).length;
+
   if (!isOpen) return null;
 
   return (
@@ -334,25 +545,71 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       <div className="relative w-full max-w-6xl max-h-[92vh] bg-[#0A0F1F] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         
         {/* Header Modal */}
-        <div className="px-6 py-4.5 border-b border-white/10 flex items-center justify-between gap-4 bg-[#0D1429]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Layers className="w-5 h-5" />
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4.5 border-b border-white/10 bg-[#0D1429] flex flex-col gap-2.5 sm:gap-3">
+          {/* Hàng 1 (Top Row): Logo/Icon + Tiêu đề + Badge bên trái, Nút đóng [X] & Nút Desktop bên phải */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                <Layers className="w-4.5 sm:w-5 h-4.5 sm:h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight">
+                    Studio Quản Lý Khóa Học & Bài Giảng
+                  </h2>
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 whitespace-nowrap">
+                    TEACHER & ADMIN
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden sm:block">
+                  Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                Studio Quản Lý Khóa Học & Bài Giảng
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300">
-                  TEACHER & ADMIN
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Thêm, sửa, xóa khóa học, học phần, bài giảng vi mô và ngân hàng đề thi trắc nghiệm
-              </p>
+
+            {/* Desktop Actions & Nút đóng [X] */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="hidden sm:flex items-center gap-2">
+                {!selectedCourseDetail ? (
+                  <button
+                    onClick={() => {
+                      setEditingCourse(null);
+                      setCourseForm({ title: '', description: '', thumbnailUrl: '' });
+                      setShowCourseModal(true);
+                    }}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo Khóa Học Mới</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setSelectedCourseDetail(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Danh sách khóa học</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Đóng Studio"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Hàng 2 (Mô tả chi tiết nằm riêng biệt trên Mobile) */}
+          <p className="text-[11px] text-slate-400 sm:hidden leading-relaxed">
+            Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+          </p>
+
+          {/* Hàng 3 (Nút hành động nằm riêng thành 1 hàng bên dưới trên Mobile để không bị bể chữ) */}
+          <div className="sm:hidden flex items-center gap-2 pt-1 border-t border-white/5">
             {!selectedCourseDetail ? (
               <button
                 onClick={() => {
@@ -360,7 +617,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   setCourseForm({ title: '', description: '', thumbnailUrl: '' });
                   setShowCourseModal(true);
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tạo Khóa Học Mới</span>
@@ -368,23 +625,16 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             ) : (
               <button
                 onClick={() => setSelectedCourseDetail(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Danh sách khóa học</span>
+                <span>Quay lại danh sách khóa học</span>
               </button>
             )}
-
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
-        {/* Thông báo Alert */}
+        {/* Thông báo Toast Alert */}
         {notification && (
           <div
             className={`mx-6 mt-4 p-3 rounded-xl border flex items-center gap-3 text-xs ${
@@ -404,95 +654,197 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
 
         {/* Nội dung chính */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          
           {/* VIEW 1: DANH SÁCH KHÓA HỌC */}
           {!selectedCourseDetail ? (
-            loading ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
-                <span className="text-xs">Đang tải danh sách khóa học...</span>
+            <div className="space-y-4">
+              {/* Notice Banner giải thích rõ tính năng Ẩn/Hiện */}
+              <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 text-slate-300">
+                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
+                    <EyeOff className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-white">Chế độ quản lý xuất bản: </span>
+                    <span className="text-slate-400">
+                      Khóa học ở trạng thái <strong>Đang ẩn (Bản nháp)</strong> sẽ bị ẩn khỏi học viên trên trang chủ nhưng <strong>luôn được lưu giữ đầy đủ trong Studio</strong> để bạn chỉnh sửa hoặc mở lại bất kỳ lúc nào.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0 text-[11px] text-slate-400">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Tổng {courses.length} khóa học</span>
+                </div>
               </div>
-            ) : courses.length === 0 ? (
-              <div className="py-20 text-center text-slate-500">
-                <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-semibold">Chưa có khóa học nào được tạo.</p>
-                <p className="text-xs text-slate-400 mt-1">Bấm nút "Tạo Khóa Học Mới" ở trên để bắt đầu soạn bài giảng.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {courses.map((course) => (
-                  <div
-                    key={course.id}
-                    className="p-4 rounded-2xl bg-[#090D1A] border border-white/10 hover:border-indigo-500/30 transition-all flex flex-col justify-between group shadow-lg"
+
+              {/* Filter Tabs & Search Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/50 p-2 rounded-2xl border border-white/5">
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <button
+                    onClick={() => setCourseFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      courseFilter === 'all'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5'
+                    }`}
                   >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            course.isPublished
-                              ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
-                              : 'bg-amber-950/70 border-amber-500/40 text-amber-300'
-                          }`}
-                        >
-                          {course.isPublished ? 'Đã xuất bản' : 'Bản nháp (Ẩn)'}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => {
-                              setEditingCourse(course);
-                              setCourseForm({
-                                title: course.title,
-                                description: course.description || '',
-                                thumbnailUrl: course.thumbnailUrl || '',
-                              });
-                              setShowCourseModal(true);
-                            }}
-                            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-                            title="Sửa khóa học"
+                    Tất cả ({courses.length})
+                  </button>
+                  <button
+                    onClick={() => setCourseFilter('published')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      courseFilter === 'published'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-slate-900/80 text-slate-400 hover:text-emerald-300 border border-white/5'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Đang công khai ({publishedCount})</span>
+                  </button>
+                  <button
+                    onClick={() => setCourseFilter('draft')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      courseFilter === 'draft'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-slate-900/80 text-slate-400 hover:text-amber-300 border border-white/5'
+                    }`}
+                  >
+                    <EyeOff className="w-3.5 h-3.5" />
+                    <span>Đang ẩn ({draftCount})</span>
+                  </button>
+                </div>
+
+                <div className="relative min-w-[220px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tên khóa học..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                  <span className="text-xs">Đang tải danh sách khóa học...</span>
+                </div>
+              ) : filteredCourses.length === 0 ? (
+                <div className="py-16 text-center text-slate-500 bg-slate-950/40 rounded-2xl border border-dashed border-white/10">
+                  <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-40 text-indigo-400" />
+                  <p className="text-sm font-semibold text-slate-300">Không tìm thấy khóa học nào phù hợp.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {courses.length === 0
+                      ? 'Bấm nút "Tạo Khóa Học Mới" ở trên để bắt đầu.'
+                      : 'Hãy thử đổi bộ lọc hoặc từ khóa tìm kiếm.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredCourses.map((course) => (
+                    <div
+                      key={course.id}
+                      className={`p-4 rounded-2xl bg-[#090D1A] border transition-all flex flex-col justify-between group shadow-lg ${
+                        course.isPublished
+                          ? 'border-white/10 hover:border-indigo-500/40'
+                          : 'border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                              course.isPublished
+                                ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
+                                : 'bg-amber-950/80 border-amber-500/40 text-amber-300'
+                            }`}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleTogglePublishCourse(course)}
-                            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
-                            title={course.isPublished ? 'Ẩn khóa học' : 'Xuất bản khóa học'}
-                          >
-                            {course.isPublished ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCourse(course.id, course.title)}
-                            className="p-1 rounded-lg hover:bg-rose-950/80 text-slate-400 hover:text-rose-400"
-                            title="Xóa khóa học"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            {course.isPublished ? (
+                              <>
+                                <Eye className="w-3 h-3" />
+                                <span>Đang công khai</span>
+                              </>
+                            ) : (
+                              <>
+                                <EyeOff className="w-3 h-3" />
+                                <span>Đang ẩn (Bản nháp)</span>
+                              </>
+                            )}
+                          </span>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingCourse(course);
+                                setCourseForm({
+                                  title: course.title,
+                                  description: course.description || '',
+                                  thumbnailUrl: course.thumbnailUrl || '',
+                                });
+                                setShowCourseModal(true);
+                              }}
+                              className="p-1.5 rounded-lg bg-slate-900 border border-white/10 hover:border-white/20 text-slate-400 hover:text-white"
+                              title="Sửa khóa học"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleTogglePublishCourse(course)}
+                              className={`p-1.5 rounded-lg border transition-colors ${
+                                course.isPublished
+                                  ? 'bg-amber-950/60 border-amber-500/30 text-amber-300 hover:bg-amber-900'
+                                  : 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900'
+                              }`}
+                              title={course.isPublished ? 'Bấm để ẩn khóa học khỏi học viên' : 'Bấm để công khai khóa học cho học viên'}
+                            >
+                              {course.isPublished ? (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <Eye className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCourse(course.id, course.title)}
+                              className="p-1.5 rounded-lg bg-slate-900 border border-white/10 hover:border-rose-500/40 text-slate-400 hover:text-rose-400"
+                              title="Xóa khóa học"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h3 className="font-bold text-white text-sm group-hover:text-indigo-300 transition-colors line-clamp-1">
+                            {course.title}
+                          </h3>
+                          <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                            {course.description || 'Không có mô tả.'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-white/5">
+                          <span>{course.totalSubjects} môn học</span>
+                          <span className={course.isPublished ? 'text-emerald-400' : 'text-amber-400'}>
+                            {course.isPublished ? 'Học viên xem được' : 'Chỉ hiển thị tại Studio'}
+                          </span>
                         </div>
                       </div>
 
-                      <div>
-                        <h3 className="font-bold text-white text-sm group-hover:text-indigo-300 transition-colors line-clamp-1">
-                          {course.title}
-                        </h3>
-                        <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                          {course.description || 'Không có mô tả.'}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-2 border-t border-white/5">
-                        <span>{course.totalSubjects} môn học</span>
-                      </div>
+                      <button
+                        onClick={() => loadCourseDetail(course.id)}
+                        className="mt-4 w-full py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-xs font-semibold text-slate-200 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <span>Quản lý học phần & Video bài giảng</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />
+                      </button>
                     </div>
-
-                    <button
-                      onClick={() => loadCourseDetail(course.id)}
-                      className="mt-4 w-full py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-xs font-semibold text-slate-200 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <span>Quản lý nội dung bài giảng</span>
-                      <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             /* VIEW 2: CHI TIẾT CẤU TRÚC KHÓA HỌC (MÔN & BÀI HỌC) */
             detailLoading ? (
@@ -507,33 +859,70 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-indigo-400 font-semibold uppercase">Đang soạn thảo khóa học:</span>
-                      <span className={`px-2 py-0.2 rounded-full text-[10px] font-bold border ${
-                        selectedCourseDetail.isPublished
-                          ? 'bg-emerald-950 border-emerald-500/40 text-emerald-300'
-                          : 'bg-amber-950 border-amber-500/40 text-amber-300'
-                      }`}>
-                        {selectedCourseDetail.isPublished ? 'Xuất bản' : 'Bản nháp'}
-                      </span>
+                      <button
+                        onClick={() => handleTogglePublishCourse(selectedCourseDetail)}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 cursor-pointer transition-colors ${
+                          selectedCourseDetail.isPublished
+                            ? 'bg-emerald-950 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900'
+                            : 'bg-amber-950 border-amber-500/40 text-amber-300 hover:bg-amber-900'
+                        }`}
+                        title="Bấm để chuyển đổi trạng thái Công khai / Ẩn"
+                      >
+                        {selectedCourseDetail.isPublished ? (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            <span>Đang công khai</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            <span>Đang ẩn (Bản nháp)</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                     <h3 className="text-base font-bold text-white mt-1">{selectedCourseDetail.title}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{selectedCourseDetail.description}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{selectedCourseDetail.description || 'Không có mô tả.'}</p>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setEditingSubject(null);
-                      setSubjectForm({
-                        title: '',
-                        description: '',
-                        sortOrder: (selectedCourseDetail.subjects?.length || 0) + 1,
-                      });
-                      setShowSubjectModal(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer shrink-0"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                    <span>Thêm Môn Học Mới</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTogglePublishCourse(selectedCourseDetail)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
+                        selectedCourseDetail.isPublished
+                          ? 'bg-amber-950/50 border-amber-500/30 text-amber-300 hover:bg-amber-900'
+                          : 'bg-emerald-950/50 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900'
+                      }`}
+                    >
+                      {selectedCourseDetail.isPublished ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Ẩn khóa học</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Xuất bản ngay</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setEditingSubject(null);
+                        setSubjectForm({
+                          title: '',
+                          description: '',
+                          sortOrder: (selectedCourseDetail.subjects?.length || 0) + 1,
+                        });
+                        setShowSubjectModal(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer shrink-0"
+                    >
+                      <FolderPlus className="w-4 h-4" />
+                      <span>Thêm Môn Học Mới</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Danh sách các Môn học & Bài giảng bên trong */}
@@ -574,6 +963,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                   durationSeconds: 180,
                                   sortOrder: (subj.lessons?.length || 0) + 1,
                                 });
+                                setLessonVideoFile(null);
                                 setShowLessonModal(true);
                               }}
                               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/70 border border-indigo-500/30 hover:bg-indigo-900 text-indigo-300 text-xs font-semibold cursor-pointer"
@@ -625,10 +1015,12 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                     {lesson.sortOrder}
                                   </div>
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span className="font-semibold text-white text-xs">
                                         {lesson.title}
                                       </span>
+                                      
+                                      {/* Trạng thái Xuất bản / Ẩn bài học */}
                                       <span
                                         className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold border ${
                                           lesson.isPublished
@@ -638,6 +1030,20 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                       >
                                         {lesson.isPublished ? 'Xuất bản' : 'Ẩn'}
                                       </span>
+
+                                      {/* Trạng thái Video */}
+                                      <span
+                                        className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold border flex items-center gap-1 ${
+                                          lesson.mediaAssetCount > 0
+                                            ? 'bg-indigo-950 border-indigo-500/40 text-indigo-300'
+                                            : 'bg-slate-800 border-white/10 text-slate-400'
+                                        }`}
+                                      >
+                                        <Video className="w-2.5 h-2.5" />
+                                        <span>{lesson.mediaAssetCount > 0 ? 'Có Video' : 'Chưa có Video'}</span>
+                                      </span>
+
+                                      {/* Trạng thái Quiz */}
                                       {lesson.hasQuiz && (
                                         <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-950 border border-purple-500/40 text-purple-300">
                                           Có trắc nghiệm
@@ -653,7 +1059,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                   </div>
                                 </div>
 
-                                <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                                <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0 flex-wrap">
+                                  {/* ĐĂNG TẢI / ĐỔI VIDEO BÀI GIẢNG */}
+                                  <button
+                                    onClick={() => handleOpenVideoUpload(lesson)}
+                                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                                      lesson.mediaAssetCount > 0
+                                        ? 'bg-indigo-950/80 border-indigo-500/40 hover:bg-indigo-900 text-indigo-300'
+                                        : 'bg-emerald-950/80 border-emerald-500/40 hover:bg-emerald-900 text-emerald-300'
+                                    }`}
+                                    title={lesson.mediaAssetCount > 0 ? 'Bấm để thay thế file video bài học' : 'Bấm để đăng tải video mới'}
+                                  >
+                                    <Upload className="w-3 h-3" />
+                                    <span>{lesson.mediaAssetCount > 0 ? 'Đổi Video' : 'Tải Video'}</span>
+                                  </button>
+
                                   {/* Tạo / Soạn Đề thi trắc nghiệm */}
                                   <button
                                     onClick={() => {
@@ -661,7 +1081,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                       setQuizTitle(`Bài tập trắc nghiệm: ${lesson.title}`);
                                       setShowQuizModal(true);
                                     }}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-950/60 border border-purple-500/30 hover:bg-purple-900 text-purple-300 text-[11px] font-semibold cursor-pointer"
+                                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-purple-950/60 border border-purple-500/30 hover:bg-purple-900 text-purple-300 text-[11px] font-semibold cursor-pointer"
                                     title="Soạn đề thi trắc nghiệm cho bài học này"
                                   >
                                     <HelpCircle className="w-3 h-3" />
@@ -679,9 +1099,10 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                         durationSeconds: lesson.durationSeconds,
                                         sortOrder: lesson.sortOrder,
                                       });
+                                      setLessonVideoFile(null);
                                       setShowLessonModal(true);
                                     }}
-                                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
                                     title="Sửa bài học"
                                   >
                                     <Edit2 className="w-3 h-3" />
@@ -690,19 +1111,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                   {/* Ẩn / Xuất bản */}
                                   <button
                                     onClick={() => handleTogglePublishLesson(lesson.id)}
-                                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
                                     title={lesson.isPublished ? 'Ẩn bài học' : 'Xuất bản bài học'}
                                   >
-                                    {lesson.isPublished ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    {lesson.isPublished ? <EyeOff className="w-3.5 h-3.5 text-amber-400" /> : <Eye className="w-3.5 h-3.5 text-emerald-400" />}
                                   </button>
 
                                   {/* Xóa bài học */}
                                   <button
                                     onClick={() => handleDeleteLesson(lesson.id, lesson.title)}
-                                    className="p-1 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400"
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400"
                                     title="Xóa bài học"
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>
@@ -738,7 +1159,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Lập trình React Native Thực chiến"
+                  placeholder="Ví dụ: Kỹ năng Excel Nâng cao & Dashboard"
                   value={courseForm.title}
                   onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
@@ -808,7 +1229,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Chương 1: Kiến trúc Cơ bản"
+                  placeholder="Ví dụ: Chương 1: Hàm Thống kê và Xử lý Chuỗi"
                   value={subjectForm.title}
                   onChange={(e) => setSubjectForm({ ...subjectForm, title: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
@@ -859,10 +1280,10 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         </div>
       )}
 
-      {/* DIALOG C: TẠO / SỬA BÀI HỌC */}
+      {/* DIALOG C: TẠO / SỬA BÀI HỌC CÓ ĐÍNH KÈM VIDEO */}
       {showLessonModal && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 text-slate-100">
+          <div className="w-full max-w-lg bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 text-slate-100">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <h3 className="text-sm font-bold text-white">
                 {editingLesson ? 'Chỉnh sửa bài giảng' : 'Tạo bài giảng mới'}
@@ -872,13 +1293,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveLesson} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveLesson} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-slate-300 mb-1 font-medium">Tiêu đề bài học *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Bài 1: Giới thiệu Nguyên lý Vi mô"
+                  placeholder="Ví dụ: Kỹ thuật dùng hàm XLOOKUP thay thế VLOOKUP"
                   value={lessonForm.title}
                   onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
@@ -923,6 +1344,45 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 </div>
               </div>
 
+              {/* Đính kèm file Video bài giảng */}
+              <div>
+                <label className="block text-slate-300 mb-1 font-medium">
+                  Đính kèm File Video (MP4, WebM - Tùy chọn tải ngay)
+                </label>
+                <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 500 * 1024 * 1024) {
+                          showToast('error', 'Kích thước file vượt quá giới hạn 500MB.');
+                          return;
+                        }
+                        setLessonVideoFile(file);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  {lessonVideoFile ? (
+                    <div className="flex items-center justify-center gap-2 text-indigo-300 py-1">
+                      <Video className="w-4 h-4 text-indigo-400" />
+                      <span className="font-semibold text-xs truncate max-w-[200px]">{lessonVideoFile.name}</span>
+                      <span className="text-[10px] text-slate-400">
+                        ({(lessonVideoFile.size / (1024 * 1024)).toFixed(1)} MB)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
+                      <Upload className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs">Kéo thả hoặc nhấp để chọn tệp video MP4</span>
+                      <span className="text-[10px] text-slate-500">Dung lượng tối đa 500MB</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -945,7 +1405,117 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         </div>
       )}
 
-      {/* DIALOG D: QUIZ BUILDER (SOẠN ĐỀ TRẮC NGHIỆM) */}
+      {/* DIALOG D: TẢI VIDEO RIÊNG BIỆT (DEDICATED VIDEO UPLOAD) */}
+      {showVideoModal && targetLessonForVideo && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-lg bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col space-y-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Đăng Tải Video Bài Giảng</h3>
+                  <p className="text-xs text-slate-400 line-clamp-1">{targetLessonForVideo.title}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowVideoModal(false);
+                  setVideoFile(null);
+                  if (videoPreviewUrl) {
+                    URL.revokeObjectURL(videoPreviewUrl);
+                    setVideoPreviewUrl(null);
+                  }
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUploadVideo} className="space-y-4 text-xs">
+              {/* Dropzone */}
+              <div className="relative border-2 border-dashed border-white/20 hover:border-indigo-500/50 rounded-2xl p-6 bg-slate-900/60 text-center transition-colors">
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+                  onChange={handleVideoFileChange}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <Upload className="w-8 h-8 text-indigo-400" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Kéo thả file video vào đây hoặc bấm để chọn tệp</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Hỗ trợ MP4, WebM, QuickTime (Tối đa 500MB)</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selected file preview */}
+              {videoFile && (
+                <div className="space-y-3 p-3.5 rounded-xl bg-slate-950/80 border border-indigo-500/30">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-white font-medium">
+                      <Video className="w-4 h-4 text-indigo-400" />
+                      <span className="truncate max-w-xs">{videoFile.name}</span>
+                    </div>
+                    <span className="text-indigo-300 font-mono text-[11px]">
+                      {(videoFile.size / (1024 * 1024)).toFixed(1)} MB
+                    </span>
+                  </div>
+
+                  {videoPreviewUrl && (
+                    <div className="rounded-lg overflow-hidden border border-white/10 bg-black aspect-video max-h-52 flex items-center justify-center">
+                      <video
+                        src={videoPreviewUrl}
+                        controls
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVideoModal(false);
+                    setVideoFile(null);
+                    if (videoPreviewUrl) {
+                      URL.revokeObjectURL(videoPreviewUrl);
+                      setVideoPreviewUrl(null);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={!videoFile || uploadingVideo}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg"
+                >
+                  {uploadingVideo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang tải lên máy chủ...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Bắt đầu Tải Lên</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DIALOG E: QUIZ BUILDER (SOẠN ĐỀ TRẮC NGHIỆM) */}
       {showQuizModal && targetLessonForQuiz && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-2xl max-h-[85vh] bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col space-y-4 text-slate-100 overflow-hidden">
@@ -984,10 +1554,129 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 </div>
               </div>
 
+              {/* Input file ẩn cho tải Word */}
+              <input
+                type="file"
+                ref={wordFileInputRef}
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt"
+                onChange={handleWordFileUpload}
+                className="hidden"
+              />
+
+              {/* Thanh công cụ Tải Word (.docx) & Tùy chọn nhập câu hỏi */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-900 border border-purple-500/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Nhập câu hỏi tự động từ File Word</span>
+                    </span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Tải file .docx hoặc dán văn bản trắc nghiệm chuẩn để hệ thống tự động nhận diện câu hỏi &amp; đáp án
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Nút 1: Tải file Word (.docx) */}
+                    <button
+                      type="button"
+                      disabled={isParsingWord}
+                      onClick={() => wordFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 cursor-pointer transition-all disabled:opacity-50"
+                      title="Tải file Word (.docx) chứa câu hỏi trắc nghiệm"
+                    >
+                      {isParsingWord ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang đọc file Word...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Tải File Word (.docx)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Nút 2: Dán văn bản */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPasteTextModal(true)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-purple-500/40 text-purple-300 text-xs font-semibold cursor-pointer transition-colors"
+                      title="Dán nhanh văn bản câu hỏi từ Word hoặc Notepad"
+                    >
+                      <FileCheck className="w-3.5 h-3.5" />
+                      <span>Dán Văn Bản</span>
+                    </button>
+
+                    {/* Nút 3: Tải file mẫu */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadSampleFormat}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                      title="Tải file mẫu định dạng câu hỏi"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>File mẫu</span>
+                    </button>
+
+                    {/* Nút 4: Xem hướng dẫn */}
+                    <button
+                      type="button"
+                      onClick={() => setShowWordGuide(!showWordGuide)}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-400 hover:text-white text-xs cursor-pointer transition-colors"
+                      title="Xem cú pháp chuẩn cho file Word"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      <span>{showWordGuide ? 'Ẩn HD' : 'Hướng dẫn'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Khung hướng dẫn định dạng chi tiết */}
+                {showWordGuide && (
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-purple-500/30 space-y-2 text-[11px] text-slate-300">
+                    <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" />
+                      <span>Cấu trúc chuẩn file Word (.docx) được hỗ trợ tự động:</span>
+                    </div>
+                    <pre className="p-2.5 rounded-lg bg-black/60 border border-white/10 font-mono text-[10.5px] text-purple-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+{`Câu 1: Hàm nào trong Excel dùng để tìm kiếm giá trị theo cột dọc?
+*A. VLOOKUP
+B. SUM
+C. AVERAGE
+D. COUNT
+Giải thích: Hàm VLOOKUP tìm kiếm theo cột dọc đầu tiên của bảng.
+
+Câu 2: Đâu là định nghĩa của vi học (Microlearning)?
+A. Học dồn nhiều giờ liên tục
+*B. Chia nhỏ bài giảng thành các phần 3-5 phút (Đúng)
+C. Không cần làm bài tập
+D. Chỉ học lý thuyết`}
+                    </pre>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-400 text-[10.5px]">
+                      <li>Đánh dấu đáp án đúng: Đặt dấu <strong>*</strong> ở đầu hoặc cuối phương án (ví dụ: <code className="text-purple-300">*A. ...</code>), hoặc ghi <code className="text-purple-300">[x] A. ...</code> hoặc <code className="text-purple-300">Đáp án: A</code> ở dòng dưới.</li>
+                      <li>Hỗ trợ cả định dạng "Câu 1:", "1.", "Bài 1:" hoặc "Question 1:".</li>
+                      <li>Có thể thêm dòng "Giải thích: ..." hoặc "Lời giải: ..." cho từng câu hỏi.</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+
               {/* Danh sách câu hỏi */}
               <div className="space-y-4 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-white text-xs">Danh sách câu hỏi ({quizQuestions.length} câu)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-xs">
+                      Danh sách câu hỏi ({quizQuestions.length} câu)
+                    </span>
+                    {quizQuestions.length > 0 && (
+                      <span className="text-[10px] text-purple-400 font-mono px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-500/30">
+                        ~{Math.max(1, Math.round(100 / quizQuestions.length))} điểm/câu
+                      </span>
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -996,7 +1685,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                         {
                           content: `Câu hỏi số ${quizQuestions.length + 1}`,
                           explanation: 'Giải thích câu trả lời đúng',
-                          points: 50,
+                          points: Math.max(1, Math.round(100 / (quizQuestions.length + 1))),
                           options: [
                             { optionText: 'Đáp án A (Đúng)', isCorrect: true },
                             { optionText: 'Đáp án B', isCorrect: false },
@@ -1004,7 +1693,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                         },
                       ]);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-purple-950 border border-purple-500/30 text-purple-300 hover:bg-purple-900 text-[11px] font-semibold"
+                    className="px-2.5 py-1 rounded-lg bg-purple-950 border border-purple-500/30 text-purple-300 hover:bg-purple-900 text-[11px] font-semibold cursor-pointer"
                   >
                     + Thêm câu hỏi
                   </button>
@@ -1018,7 +1707,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setQuizQuestions(quizQuestions.filter((_, idx) => idx !== qIndex))}
-                          className="text-rose-400 hover:text-rose-300 text-[11px]"
+                          className="text-rose-400 hover:text-rose-300 text-[11px] cursor-pointer"
                         >
                           Xóa câu
                         </button>
@@ -1080,13 +1769,68 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 >
                   {actionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>Lưu Đề Trắc Nghiệm</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-DIALOG: DÁN VĂN BẢN TRẮC NGHIỆM */}
+      {showPasteTextModal && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-xl bg-[#0D1429] border border-white/10 rounded-2xl p-5 shadow-2xl flex flex-col space-y-3.5 text-slate-100">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-purple-400" />
+                <span>Dán Văn Bản Câu Hỏi Từ Word / Bộ Nhớ Tạm</span>
+              </h4>
+              <button
+                onClick={() => setShowPasteTextModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Sao chép nội dung câu hỏi trong file Word và dán vào ô bên dưới. Hệ thống sẽ tự động tách câu hỏi, phương án và nhận diện đáp án đúng.
+            </p>
+
+            <textarea
+              rows={10}
+              value={wordTextDraft}
+              onChange={(e) => setWordTextDraft(e.target.value)}
+              placeholder={`Ví dụ:
+Câu 1: HTML là viết tắt của từ gì?
+*A. HyperText Markup Language
+B. Hyper Transfer Markup Language
+C. High Tech Markup Language
+D. Home Tool Multi Language
+Giải thích: HTML là ngôn ngữ đánh dấu siêu văn bản.`}
+              className="w-full p-3 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-500/50 resize-y"
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowPasteTextModal(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={handleParseFromTextDraft}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold cursor-pointer shadow-md"
+              >
+                Xác Nhận & Trích Xuất Câu Hỏi
+              </button>
+            </div>
           </div>
         </div>
       )}

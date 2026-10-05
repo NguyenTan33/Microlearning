@@ -17,13 +17,13 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách toàn bộ các khóa học đang được xuất bản
+        /// Lấy danh sách toàn bộ các khóa học (hỗ trợ includeUnpublished cho Studio Quản lý)
         /// </summary>
         [HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> GetAllCourses()
+        public async Task<IActionResult> GetAllCourses([FromQuery] bool includeUnpublished = false)
         {
-            var courses = await _courseService.GetAllCoursesAsync();
+            var courses = await _courseService.GetAllCoursesAsync(includeUnpublished);
             return Ok(courses);
         }
 
@@ -32,9 +32,9 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// </summary>
         [HttpGet("{id}")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetCourseById(int id)
+        public async Task<IActionResult> GetCourseById(int id, [FromQuery] bool includeUnpublished = false)
         {
-            var course = await _courseService.GetCourseByIdAsync(id);
+            var course = await _courseService.GetCourseByIdAsync(id, includeUnpublished);
             return Ok(course);
         }
 

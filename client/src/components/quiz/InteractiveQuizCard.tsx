@@ -3,7 +3,6 @@ import {
   HelpCircle,
   Check,
   Send,
-  Inbox,
   Award,
   AlertCircle,
   History,
@@ -11,23 +10,21 @@ import {
   XCircle,
   RotateCcw,
   Loader2,
+  Sparkles,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
 } from 'lucide-react';
 import type { QuizDetail, QuizAttemptResult, QuizHistoryItem } from '../../types/catalog.types';
 import { quizApi } from '../../services/quizApi';
-import { queueQuizAttempt } from '../../services/syncService';
-import { getOfflineLessonPackage } from '../../services/indexedDbService';
 
 interface InteractiveQuizCardProps {
   lessonId: number;
-  isOnline: boolean;
   onAttemptSubmitted?: () => void;
 }
 
 export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
   lessonId,
-  isOnline,
   onAttemptSubmitted,
 }) => {
   const [quiz, setQuiz] = useState<QuizDetail | null>(null);
@@ -42,7 +39,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const QUESTIONS_PER_PAGE = 5;
 
-  // Tải đề thi từ máy chủ (hoặc lấy từ gói ngoại tuyến khi mất mạng)
+  // 1. Tải đề thi trắc nghiệm trực tuyến từ máy chủ
   const loadQuiz = useCallback(async () => {
     setLoading(true);
     setAttemptResult(null);
@@ -51,44 +48,17 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     setCurrentPage(1);
 
     try {
-      if (isOnline) {
-        const data = await quizApi.getQuizByLesson(lessonId);
-        setQuiz(data);
-        if (data) {
-          // Tải lịch sử làm bài nếu có
-          quizApi.getQuizHistory(data.id).then(setHistoryList).catch(() => {});
-        }
-      } else {
-        // Lấy đề thi từ kho lưu trữ ngoại tuyến IndexedDB
-        const offlinePkg = (await getOfflineLessonPackage(lessonId)) as {
-          quiz?: {
-            id: number;
-            title: string;
-            passScore: number;
-            version: number;
-            questions: QuizDetail['questions'];
-          };
-        } | null;
-
-        if (offlinePkg?.quiz) {
-          setQuiz({
-            id: offlinePkg.quiz.id,
-            lessonId,
-            title: offlinePkg.quiz.title,
-            passScore: offlinePkg.quiz.passScore,
-            version: offlinePkg.quiz.version,
-            questions: offlinePkg.quiz.questions,
-          });
-        } else {
-          setQuiz(null);
-        }
+      const data = await quizApi.getQuizByLesson(lessonId);
+      setQuiz(data);
+      if (data) {
+        quizApi.getQuizHistory(data.id).then(setHistoryList).catch(() => {});
       }
     } catch {
       setQuiz(null);
     } finally {
       setLoading(false);
     }
-  }, [lessonId, isOnline]);
+  }, [lessonId]);
 
   useEffect(() => {
     loadQuiz();
@@ -119,7 +89,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     ).length;
 
     if (answeredCount < quiz.questions.length) {
-      if (!confirm('Bạn vẫn còn câu hỏi chưa chọn câu trả lời. Bạn có chắc chắn muốn nộp bài ngay?')) {
+      if (!confirm(`Bạn mới trả lời ${answeredCount}/${quiz.questions.length} câu. Bạn có chắc chắn muốn nộp bài ngay?`)) {
         return;
       }
     }
@@ -134,38 +104,22 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     }));
 
     try {
-      if (isOnline) {
-        // Nộp trực tuyến và nhận kết quả chấm điểm tức thì
-        const result = await quizApi.submitQuizAttempt({
-          clientAttemptId,
-          quizId: quiz.id,
-          startedAt: startTime,
-          answers: answersPayload,
-        });
+      const result = await quizApi.submitQuizAttempt({
+        clientAttemptId,
+        quizId: quiz.id,
+        startedAt: startTime,
+        answers: answersPayload,
+      });
 
-        setAttemptResult(result);
-        setNoticeMessage(
-          result.isPassed
-            ? `Chúc mừng! Bạn đã đạt ${result.score} điểm (${result.correctAnswersCount}/${result.totalQuestionsCount} câu đúng).`
-            : `Bạn đạt ${result.score} điểm (${result.correctAnswersCount}/${result.totalQuestionsCount} câu đúng). Điểm chuẩn yêu cầu là ${quiz.passScore} điểm.`
-        );
+      setAttemptResult(result);
+      setNoticeMessage(
+        result.isPassed
+          ? `Xuất sắc! Bạn đã đạt ${result.score} điểm (${result.correctAnswersCount}/${result.totalQuestionsCount} câu đúng). Bài học đã được hoàn thành!`
+          : `Bạn đạt ${result.score} điểm (${result.correctAnswersCount}/${result.totalQuestionsCount} câu đúng). Điểm chuẩn yêu cầu là ${quiz.passScore} điểm. Hãy ôn tập và làm lại nhé!`
+      );
 
-        // Cập nhật lại danh sách lịch sử thi
-        quizApi.getQuizHistory(quiz.id).then(setHistoryList).catch(() => {});
-      } else {
-        // Chế độ Ngoại tuyến: Đóng gói và lưu vào hàng đợi Outbox
-        const outboxAnswers = quiz.questions
-          .filter((q) => (selectedAnswers[q.id] || []).length > 0)
-          .map((q) => ({
-            questionId: q.id,
-            selectedOptionId: selectedAnswers[q.id][0],
-          }));
-
-        await queueQuizAttempt(quiz.id, outboxAnswers);
-        setNoticeMessage(
-          'Bài làm đã được lưu an toàn vào hàng đợi ngoại tuyến. Điểm số sẽ được cập nhật tự động khi có kết nối mạng.'
-        );
-      }
+      // Cập nhật lại danh sách lịch sử thi
+      quizApi.getQuizHistory(quiz.id).then(setHistoryList).catch(() => {});
 
       if (onAttemptSubmitted) {
         onAttemptSubmitted();
@@ -186,52 +140,51 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
 
   if (loading) {
     return (
-      <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-6 flex items-center justify-center gap-3 text-slate-400">
+      <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-6 sm:p-8 flex items-center justify-center gap-3 text-slate-400">
         <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
-        <span className="text-xs">Đang tải bộ câu hỏi đánh giá bài học...</span>
+        <span className="text-xs sm:text-sm">Đang tải bộ câu hỏi trắc nghiệm trực tuyến...</span>
       </div>
     );
   }
 
   if (!quiz || !quiz.questions || quiz.questions.length === 0) {
     return (
-      <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-6 text-center text-slate-400">
+      <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-6 sm:p-8 text-center text-slate-400">
         <HelpCircle className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-        <p className="text-xs">Bài học này hiện chưa có bài tập trắc nghiệm đánh giá.</p>
+        <p className="text-xs sm:text-sm">Bài học này hiện chưa có bài tập trắc nghiệm đánh giá.</p>
       </div>
     );
   }
 
+  const totalPages = Math.ceil(quiz.questions.length / QUESTIONS_PER_PAGE);
+  const currentQuestions = quiz.questions.slice(
+    (currentPage - 1) * QUESTIONS_PER_PAGE,
+    currentPage * QUESTIONS_PER_PAGE
+  );
+
   return (
-    <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-5 sm:p-6 shadow-xl space-y-5">
-      {/* Header Đề thi */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-            <Award className="w-5 h-5" />
+    <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-4 sm:p-6 shadow-xl space-y-5">
+      {/* Quiz Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
+            <Award className="w-4 h-4" />
+            <span>Bài Kiểm Tra Đánh Giá Năng Lực</span>
           </div>
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
-              {quiz.title}
-            </h3>
-            <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
-              <span>{quiz.questions.length} câu hỏi</span>
-              <span>•</span>
-              <span>Điểm đạt: {quiz.passScore} điểm</span>
-              <span>•</span>
-              <span className={isOnline ? 'text-emerald-400 font-medium' : 'text-amber-400 font-medium'}>
-                {isOnline ? 'Chấm điểm trực tuyến' : 'Lưu ngoại tuyến'}
-              </span>
-            </div>
-          </div>
+          <h3 className="text-base sm:text-lg font-bold text-white leading-tight">
+            {quiz.title}
+          </h3>
+          <p className="text-xs text-slate-400">
+            Tổng cộng: <strong className="text-white">{quiz.questions.length}</strong> câu hỏi • Điểm chuẩn đạt: <strong className="text-emerald-400">{quiz.passScore} điểm</strong>
+          </p>
         </div>
 
-        {/* Nút Xem lịch sử bài làm */}
+        {/* Nút Xem lịch sử thi */}
         {historyList.length > 0 && (
           <button
             type="button"
             onClick={() => setShowHistory(!showHistory)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10 hover:border-white/20 text-xs text-slate-300 transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer self-start sm:self-auto"
           >
             <History className="w-3.5 h-3.5 text-indigo-400" />
             <span>Lịch sử ({historyList.length})</span>
@@ -239,29 +192,37 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
         )}
       </div>
 
-      {/* Modal / Bảng Lịch sử các lần thi */}
-      {showHistory && (
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-white/10 space-y-2.5">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">Lịch sử đánh giá</h4>
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+      {/* Accordion Lịch sử thi */}
+      {showHistory && historyList.length > 0 && (
+        <div className="p-4 rounded-xl bg-slate-950/70 border border-indigo-500/20 space-y-2">
+          <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <History className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Các lần làm bài trước đó:</span>
+          </h4>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
             {historyList.map((h) => (
               <div
                 key={h.attemptId}
-                className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-white/5 text-xs"
+                className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-900/60 border border-white/5"
               >
                 <div className="flex items-center gap-2">
                   {h.isPassed ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-rose-400" />
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   )}
-                  <span className="font-semibold text-slate-200">{h.score} điểm</span>
+                  <span className="font-semibold text-white">{h.score} điểm</span>
                   <span className="text-[11px] text-slate-400">
-                    ({h.isPassed ? 'Đạt chuẩn' : 'Chưa đạt'})
+                    ({h.totalAnswers} câu trả lời)
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  {new Date(h.submittedAt).toLocaleString('vi-VN')}
+                <span className="text-[10px] text-slate-500">
+                  {new Date(h.submittedAt).toLocaleTimeString('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    day: '2-digit',
+                    month: '2-digit',
+                  })}
                 </span>
               </div>
             ))}
@@ -269,174 +230,196 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
         </div>
       )}
 
-      {/* Thông báo kết quả nộp bài */}
+      {/* Thông báo kết quả chấm điểm */}
       {noticeMessage && (
         <div
-          className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs leading-relaxed ${
-            attemptResult
-              ? attemptResult.isPassed
-                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-              : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+          className={`p-4 rounded-xl border flex items-start gap-3 text-xs leading-relaxed ${
+            attemptResult?.isPassed
+              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+              : attemptResult
+              ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+              : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
           }`}
         >
-          {attemptResult ? (
-            attemptResult.isPassed ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            )
+          {attemptResult?.isPassed ? (
+            <Award className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           ) : (
-            <Inbox className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           )}
-          <span>{noticeMessage}</span>
+          <div className="space-y-1">
+            <p className="font-semibold">{noticeMessage}</p>
+          </div>
         </div>
       )}
 
-      {/* Form danh sách câu hỏi */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {(() => {
-          const totalPages = Math.ceil(quiz.questions.length / QUESTIONS_PER_PAGE);
-          const startIndex = (currentPage - 1) * QUESTIONS_PER_PAGE;
-          const currentQuestions = quiz.questions.slice(startIndex, startIndex + QUESTIONS_PER_PAGE);
+      {/* Danh sách câu hỏi */}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-5">
+          {currentQuestions.map((question, qIdx) => {
+            const actualIndex = (currentPage - 1) * QUESTIONS_PER_PAGE + qIdx + 1;
+            const currentSelected = selectedAnswers[question.id] || [];
+            const isMulti = question.questionType === 2;
 
-          return (
-            <>
-              {currentQuestions.map((question, index) => {
-                const questionNumber = startIndex + index + 1;
-                const selected = selectedAnswers[question.id] || [];
-                const isMultiChoice = question.questionType === 2;
-
-                return (
-                  <div key={question.id} className="space-y-3">
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-6 h-6 rounded-lg bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                        {questionNumber}
-                      </span>
-                      <div className="space-y-1">
-                        <p className="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed">
-                          {question.content}
-                        </p>
-                        <span className="text-[11px] text-slate-400 block">
-                          {isMultiChoice ? 'Chọn nhiều đáp án' : 'Chọn 1 đáp án duy nhất'} • {question.points} điểm
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Danh sách lựa chọn đáp án */}
-                    <div className="space-y-2 pl-8">
-                      {question.options.map((option) => {
-                        const isChecked = selected.includes(option.id);
-
-                        return (
-                          <label
-                            key={option.id}
-                            onClick={() => handleSelectOption(question.id, option.id, isMultiChoice)}
-                            className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none text-xs leading-relaxed ${
-                              isChecked
-                                ? 'bg-indigo-950/60 border-indigo-500/60 text-white shadow-sm'
-                                : 'bg-slate-900/50 border-white/5 hover:border-white/15 text-slate-300'
-                            } ${attemptResult ? 'cursor-not-allowed opacity-80' : ''}`}
-                          >
-                            <div
-                              className={`w-4 h-4 ${
-                                isMultiChoice ? 'rounded-md' : 'rounded-full'
-                              } border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                                isChecked
-                                  ? 'border-indigo-400 bg-indigo-600 text-white'
-                                  : 'border-slate-600 bg-slate-800'
-                              }`}
-                            >
-                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                            </div>
-                            <span className="font-normal">{option.optionText}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    {/* Giải thích đáp án (chỉ hiển thị sau khi đã nộp bài nếu có) */}
-                    {attemptResult && question.explanation && (
-                      <div className="ml-8 p-3 rounded-xl bg-slate-900/80 border border-white/10 text-xs text-slate-300">
-                        <span className="font-semibold text-indigo-400 block mb-0.5">Giải thích:</span>
-                        <p>{question.explanation}</p>
-                      </div>
-                    )}
+            return (
+              <div
+                key={question.id}
+                className="p-4 sm:p-5 rounded-xl bg-slate-900/60 border border-white/5 space-y-3.5 hover:border-white/10 transition-colors"
+              >
+                {/* Tiêu đề câu hỏi */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 flex-1">
+                    <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-950 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold">
+                      Câu hỏi {actualIndex}/{quiz.questions.length} • {question.points} điểm
+                    </span>
+                    <p className="text-xs sm:text-sm font-bold text-white leading-snug">
+                      {question.content}
+                    </p>
                   </div>
-                );
-              })}
-
-              {/* Phân trang khi số lượng câu hỏi > 5 */}
-              {totalPages > 1 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/10 pl-8">
-                  <div className="text-xs text-slate-400">
-                    Trang <span className="font-bold text-white">{currentPage}</span> / {totalPages} (Tổng {quiz.questions.length} câu hỏi)
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      className="p-1.5 rounded-lg border border-white/10 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                      title="Trang trước"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all ${
-                          pageNum === currentPage
-                            ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                            : 'bg-slate-900/80 border border-white/5 text-slate-400 hover:text-white hover:bg-slate-800'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={currentPage === totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      className="p-1.5 rounded-lg border border-white/10 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                      title="Trang tiếp"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {isMulti && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 font-semibold shrink-0">
+                      Nhiều đáp án
+                    </span>
+                  )}
                 </div>
-              )}
-            </>
-          );
-        })()}
 
-        {/* Nút thao tác */}
-        <div className="pt-2 flex flex-wrap items-center gap-3 pl-8">
-          {!attemptResult ? (
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
-            >
-              {submitting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>{isOnline ? 'Nộp bài trực tuyến' : 'Lưu bài làm ngoại tuyến'}</span>
-            </button>
-          ) : (
+                {/* Danh sách các lựa chọn đáp án */}
+                <div className="space-y-2">
+                  {question.options.map((option) => {
+                    const isChecked = currentSelected.includes(option.id);
+
+                    // Xác định màu sắc sau khi chấm điểm
+                    let optionStyle = 'bg-slate-900/80 border-white/5 hover:border-white/20 text-slate-300';
+                    if (attemptResult) {
+                      if (isChecked) {
+                        optionStyle = attemptResult.isPassed
+                          ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                          : 'bg-indigo-950/50 border-indigo-500/50 text-white';
+                      }
+                    } else if (isChecked) {
+                      optionStyle = 'bg-indigo-950/60 border-indigo-500 text-white shadow-sm';
+                    }
+
+                    return (
+                      <div
+                        key={option.id}
+                        onClick={() => handleSelectOption(question.id, option.id, isMulti)}
+                        className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 select-none ${
+                          attemptResult ? 'cursor-default' : 'cursor-pointer active:scale-[0.99]'
+                        } ${optionStyle}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Radio / Checkbox Indicator */}
+                          <div
+                            className={`w-4 h-4 rounded-${
+                              isMulti ? 'md' : 'full'
+                            } border flex items-center justify-center shrink-0 transition-colors ${
+                              isChecked
+                                ? 'bg-cyan-500 border-cyan-400 text-black'
+                                : 'border-slate-600 bg-slate-800'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+
+                          <span className="text-xs font-medium leading-relaxed">
+                            {option.optionText}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Phần giải thích chi tiết đáp án sau khi nộp bài */}
+                {attemptResult && question.explanation && (
+                  <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-500/20 text-[11px] text-indigo-300 flex items-start gap-2 animate-fadeIn">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-white">Giải thích: </span>
+                      <span>{question.explanation}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Thanh Phân Trang Câu Hỏi (nếu đề thi > 5 câu) */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-2">
             <button
               type="button"
-              onClick={handleRetake}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-white/10 transition-all flex items-center gap-2 cursor-pointer"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="p-1.5 rounded-lg bg-slate-900 border border-white/10 disabled:opacity-40 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Làm lại bài kiểm tra</span>
+              <ChevronLeft className="w-4 h-4" />
             </button>
-          )}
+
+            <span className="text-xs text-slate-400 font-semibold px-2">
+              Trang {currentPage} / {totalPages}
+            </span>
+
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="p-1.5 rounded-lg bg-slate-900 border border-white/10 disabled:opacity-40 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Nút Hành Động Submit / Retake */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-white/10">
+          <div className="text-[11px] text-slate-400 text-center sm:text-left">
+            {!attemptResult ? (
+              <span>
+                Đã chọn:{' '}
+                <strong className="text-white">
+                  {Object.keys(selectedAnswers).filter((k) => (selectedAnswers[Number(k)] || []).length > 0).length}
+                </strong>
+                /{quiz.questions.length} câu
+              </span>
+            ) : (
+              <span className="text-emerald-400 font-semibold">
+                Đã hoàn tất đánh giá bài thi
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {attemptResult ? (
+              <button
+                type="button"
+                onClick={handleRetake}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Làm lại đề thi</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Đang chấm điểm...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Nộp bài chấm điểm</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </form>
     </div>

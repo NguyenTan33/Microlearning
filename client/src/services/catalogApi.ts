@@ -29,11 +29,12 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export const catalogApi = {
   /**
-   * Lấy danh sách tất cả các khóa học đã xuất bản
+   * Lấy danh sách các khóa học (mặc định chỉ lấy các khóa đã xuất bản; Studio truyền includeUnpublished=true)
    */
-  async getAllCourses(): Promise<Course[]> {
+  async getAllCourses(includeUnpublished: boolean = false): Promise<Course[]> {
     try {
-      const res = await fetch('/api/courses', {
+      const url = includeUnpublished ? '/api/courses?includeUnpublished=true' : '/api/courses';
+      const res = await fetch(url, {
         headers: getAuthHeaders(),
       });
       const data = await handleResponse<Course[]>(res);
@@ -49,9 +50,10 @@ export const catalogApi = {
   /**
    * Lấy thông tin chi tiết một khóa học kèm danh sách môn học
    */
-  async getCourseById(courseId: number): Promise<CourseDetail> {
+  async getCourseById(courseId: number, includeUnpublished: boolean = false): Promise<CourseDetail> {
     try {
-      const res = await fetch(`/api/courses/${courseId}`, {
+      const url = includeUnpublished ? `/api/courses/${courseId}?includeUnpublished=true` : `/api/courses/${courseId}`;
+      const res = await fetch(url, {
         headers: getAuthHeaders(),
       });
       return await handleResponse<CourseDetail>(res);
@@ -80,9 +82,10 @@ export const catalogApi = {
   /**
    * Lấy danh sách bài học thuộc về một môn học
    */
-  async getLessonsBySubject(subjectId: number): Promise<Lesson[]> {
+  async getLessonsBySubject(subjectId: number, includeUnpublished: boolean = false): Promise<Lesson[]> {
     try {
-      const res = await fetch(`/api/lessons/subject/${subjectId}`, {
+      const url = includeUnpublished ? `/api/lessons/subject/${subjectId}?includeUnpublished=true` : `/api/lessons/subject/${subjectId}`;
+      const res = await fetch(url, {
         headers: getAuthHeaders(),
       });
       return await handleResponse<Lesson[]>(res);
@@ -348,5 +351,44 @@ export const catalogApi = {
       body: JSON.stringify(request),
     });
     return await handleResponse<{ id: number; title: string }>(res);
+  },
+
+  /**
+   * Tải file video lên hệ thống gắn với bài giảng (Teacher & Admin)
+   */
+  async uploadLessonVideo(file: File, lessonId?: number): Promise<{
+    id: number;
+    fileName: string;
+    blobKey: string;
+    streamUrl: string;
+    sizeBytes: number;
+    lessonId?: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (lessonId) {
+      formData.append('lessonId', lessonId.toString());
+    }
+
+    const token = localStorage.getItem('accessToken');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch('/api/media/upload', {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return await handleResponse<{
+      id: number;
+      fileName: string;
+      blobKey: string;
+      streamUrl: string;
+      sizeBytes: number;
+      lessonId?: number;
+    }>(res);
   },
 };
