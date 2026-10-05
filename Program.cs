@@ -32,6 +32,16 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Cấu hình giới hạn kích thước tải tệp tin video lên tới 500 MB cho Kestrel và Form
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 524288000; // 500 MB
+});
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 524288000; // 500 MB
+});
+
 // 1. Add DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));

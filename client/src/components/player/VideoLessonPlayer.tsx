@@ -15,6 +15,8 @@ import {
   BookMarked,
   X,
   Info,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { getVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { progressApi } from '../../services/progressApi';
@@ -52,6 +54,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [videoSrc, setVideoSrc] = useState<string>('');
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [initialSeekDone, setInitialSeekDone] = useState<boolean>(false);
   const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
@@ -69,6 +72,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
     setInitialSeekDone(false);
     setIsPlaying(false);
+    setVideoError(null);
 
     // Kiểm tra xem đã có bản tải ngoại tuyến trong IndexedDB chưa
     getOfflineVideoBlob(mediaId)
@@ -140,6 +144,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       videoRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
+  };
+
+  const handleRetryStream = () => {
+    setVideoError(null);
+    setIsPlaying(false);
+    setVideoSrc(`${getVideoStreamUrl(mediaId)}?retry=${Date.now()}`);
+  };
+
+  const handleUseDemoFallback = () => {
+    setVideoError(null);
+    setIsPlaying(false);
+    setVideoSrc('/videos/test.mp4');
   };
 
   const handleTimeUpdate = () => {
@@ -272,7 +288,37 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {videoSrc ? (
+        {videoError ? (
+          <div className="flex flex-col items-center justify-center p-6 text-center max-w-md space-y-3 z-10 animate-fadeIn">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-white">Không thể phát luồng video bài giảng</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {videoError}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleRetryStream}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-indigo-600/30 active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Thử tải lại</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleUseDemoFallback}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer border border-white/10 active:scale-95"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>Xem video demo (test.mp4)</span>
+              </button>
+            </div>
+          </div>
+        ) : videoSrc ? (
           <video
             ref={videoRef}
             src={videoSrc}
@@ -297,10 +343,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
             }}
             onError={() => {
-              const fallbackUrl = '/videos/test.mp4';
-              if (videoSrc !== fallbackUrl) {
-                setVideoSrc(fallbackUrl);
-              }
+              setIsPlaying(false);
+              setVideoError('Không thể tải luồng video bài giảng. Tệp video chưa được đồng bộ lên kho lưu trữ Azure Blob Storage hoặc kết nối mạng bị gián đoạn.');
             }}
           />
         ) : (
@@ -311,7 +355,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         )}
 
         {/* Nút Play trung tâm lớn khi tạm dừng */}
-        {!isPlaying && (
+        {!isPlaying && !videoError && (
           <button
             onClick={togglePlay}
             aria-label="Phát bài giảng"

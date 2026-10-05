@@ -38,10 +38,16 @@ namespace Microlearning.Areas.Media.Services
         private BlobContainerClient? GetAzureBlobContainerClient()
         {
             var connectionString = _config["AzureBlobStorage:ConnectionString"]
-                                ?? Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
+                                ?? _config["ConnectionStrings:AzureBlobStorage"]
+                                ?? _config["AzureBlobStorage__ConnectionString"]
+                                ?? Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING")
+                                ?? Environment.GetEnvironmentVariable("AzureBlobStorage__ConnectionString")
+                                ?? Environment.GetEnvironmentVariable("CUSTOMCONNSTR_AzureBlobStorage");
             if (string.IsNullOrWhiteSpace(connectionString)) return null;
 
-            var containerName = _config["AzureBlobStorage:ContainerName"] ?? "videos";
+            var containerName = _config["AzureBlobStorage:ContainerName"]
+                             ?? Environment.GetEnvironmentVariable("AzureBlobStorage__ContainerName")
+                             ?? "videos";
             return new BlobContainerClient(connectionString, containerName);
         }
 
@@ -104,16 +110,25 @@ namespace Microlearning.Areas.Media.Services
                 }
             }
 
-            // 5. Dự phòng video test.mp4 nếu có trên máy chủ
-            var fallbackPath = GetFallbackDemoFilePath();
-            if (fallbackPath != null)
+            // 5. CHỈ dự phòng video test.mp4 nếu tệp yêu cầu thực sự là test.mp4 (bài giảng mẫu seeder)
+            if (string.Equals(mediaAsset.FileName, "test.mp4", StringComparison.OrdinalIgnoreCase))
             {
-                var fileInfo = new FileInfo(fallbackPath);
-                var stream = new FileStream(fallbackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                return (stream, "video/mp4", fileInfo.Length, "test.mp4");
+                var fallbackPath = GetFallbackDemoFilePath();
+                if (fallbackPath != null)
+                {
+                    var fileInfo = new FileInfo(fallbackPath);
+                    var stream = new FileStream(fallbackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return (stream, "video/mp4", fileInfo.Length, "test.mp4");
+                }
             }
 
-            throw new BusinessException($"Tệp video không tồn tại trên máy chủ hoặc kho lưu trữ đám mây Azure: {mediaAsset.FileName}");
+            // 6. Đối với video do người dùng hoặc giảng viên tải lên thật sự, không âm thầm tráo sang test.mp4
+            if (containerClient == null)
+            {
+                throw new BusinessException($"Tệp video '{mediaAsset.FileName}' chưa sẵn sàng trên đám mây do máy chủ chưa cấu hình Azure Blob Storage Connection String (chuỗi kết nối rỗng). Video chỉ từng được lưu tạm vào ổ đĩa container cục bộ và đã biến mất khi tái khởi động.");
+            }
+
+            throw new BusinessException($"Tệp video '{mediaAsset.FileName}' không tìm thấy trên kho lưu trữ đám mây Azure Blob Storage. Vui lòng kiểm tra lại container 'videos' trên Azure Portal.");
         }
 
         public async Task<MediaDownloadInfoResponse> GetDownloadInfoAsync(int mediaId, string baseUrl)
@@ -269,6 +284,7 @@ namespace Microlearning.Areas.Media.Services
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi tải video lên Azure Blob Storage: {Message}", ex.Message);
+                    throw new BusinessException($"Không thể lưu trữ tệp video lên kho đám mây Azure Blob Storage: {ex.Message}. Vui lòng kiểm tra quyền hạn của Azure Storage Account hoặc Connection String.");
                 }
             }
             else

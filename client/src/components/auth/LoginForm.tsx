@@ -64,6 +64,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       )}
 
       <PhoneInput
+        id="login-phone-number"
+        name="phoneNumber"
+        autoComplete="tel"
         value={phoneNumber}
         onChange={(val) => {
           setPhoneNumber(val);
@@ -74,6 +77,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       />
 
       <PasswordInput
+        id="login-password"
+        name="password"
+        autoComplete="current-password"
         label="MẬT KHẨU"
         value={password}
         onChange={(val) => {
