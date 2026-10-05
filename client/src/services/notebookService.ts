@@ -7,8 +7,10 @@ import type {
   SearchResult,
 } from '../types/notebook.types';
 
+const AZURE_NOTEBOOK_URL = (import.meta.env.VITE_OPEN_NOTEBOOK_API_URL || 'https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io').replace(/\/$/, '');
 const API_BASE = '/notebook-api';
-const DIRECT_API_BASE = 'http://localhost:5055/api';
+const DIRECT_API_BASE = `${AZURE_NOTEBOOK_URL}/api`;
+const LOCAL_FALLBACK_BASE = 'http://localhost:5055/api';
 const WEB_STUDIO_URL = 'http://localhost:8502';
 
 async function requestWithFallback(endpoint: string, options: RequestInit = {}): Promise<Response> {
@@ -17,6 +19,15 @@ async function requestWithFallback(endpoint: string, options: RequestInit = {}):
     ...(options.headers || {}),
   };
 
+  // 1. Thử gọi trực tiếp Cloud Azure Container App
+  try {
+    const res = await fetch(`${DIRECT_API_BASE}${endpoint}`, { ...options, headers });
+    if (res.ok) return res;
+  } catch {
+    // tiếp tục fallback nếu cloud chưa phản hồi
+  }
+
+  // 2. Thử gọi qua Vite Proxy
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
     if (res.ok) return res;
@@ -25,7 +36,8 @@ async function requestWithFallback(endpoint: string, options: RequestInit = {}):
     }
     return res;
   } catch {
-    return fetch(`${DIRECT_API_BASE}${endpoint}`, { ...options, headers });
+    // 3. Fallback về Local Docker
+    return fetch(`${LOCAL_FALLBACK_BASE}${endpoint}`, { ...options, headers });
   }
 }
 
@@ -35,7 +47,7 @@ export const notebookService = {
   },
 
   /**
-   * Kiểm tra xem Open Notebook Docker container có đang hoạt động không
+   * Kiểm tra xem Open Notebook Docker container có đang hoạt động không (Cloud hoặc Local)
    */
   async checkStatus(): Promise<NotebookStatus> {
     try {
@@ -43,21 +55,21 @@ export const notebookService = {
       if (res.ok) {
         return {
           isOnline: true,
-          apiUrl: 'http://localhost:5055',
+          apiUrl: AZURE_NOTEBOOK_URL,
           webUrl: WEB_STUDIO_URL,
-          modelName: 'AI Trực Tuyến',
+          modelName: 'AI Cloud (Azure Container Apps)',
         };
       }
       return {
         isOnline: false,
-        apiUrl: 'http://localhost:5055',
+        apiUrl: AZURE_NOTEBOOK_URL,
         webUrl: WEB_STUDIO_URL,
         modelName: 'Chưa kết nối',
       };
     } catch {
       return {
         isOnline: false,
-        apiUrl: 'http://localhost:5055',
+        apiUrl: AZURE_NOTEBOOK_URL,
         webUrl: WEB_STUDIO_URL,
         modelName: 'Ngoại tuyến (Offline)',
       };
