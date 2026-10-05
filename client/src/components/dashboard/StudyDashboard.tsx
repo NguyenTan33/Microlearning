@@ -15,6 +15,7 @@ import {
   ListOrdered,
   PlusCircle,
   Bookmark,
+  BookMarked,
   BarChart3,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
@@ -24,6 +25,7 @@ import { AudioTtsPlayer } from '../player/AudioTtsPlayer';
 import { InteractiveQuizCard } from '../quiz/InteractiveQuizCard';
 import { CourseCatalogView } from '../catalog/CourseCatalogView';
 import { BookmarkLibraryView } from '../bookmarks/BookmarkLibraryView';
+import { NotebookHubView } from '../notebook/NotebookHubView';
 import { LessonSidebar } from './LessonSidebar';
 import { CourseManagementModal } from '../management/CourseManagementModal';
 import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
@@ -53,7 +55,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       role: currentUser?.isAdmin ? 'Quản trị viên' : currentUser?.isTeacher ? 'Giáo viên' : 'Học viên',
     })
   );
-  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'BOOKMARKS'>('CATALOG');
+  const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'BOOKMARKS' | 'NOTEBOOK'>('CATALOG');
   const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
   const [initialSeekTimestamp, setInitialSeekTimestamp] = useState<number | null>(null);
   const [totalBookmarksCount, setTotalBookmarksCount] = useState<number>(() =>
@@ -298,6 +300,23 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <span>Phòng học</span>
             </button>
 
+            {/* Nút Sổ tay NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+            <button
+              onClick={() => setCurrentView('NOTEBOOK')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                currentView === 'NOTEBOOK'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30 font-bold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Sổ tay học tập thông minh & Trợ lý hỏi đáp AI (Open Notebook)"
+            >
+              <BookMarked className="w-4 h-4 text-purple-400" />
+              <span>NoteBook</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-purple-400/20 text-purple-300 text-[10px] font-bold">
+                AI
+              </span>
+            </button>
+
             <button
               onClick={() => setCurrentView('BOOKMARKS')}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -453,6 +472,22 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 <span>Phòng học</span>
               </button>
 
+              {/* Nút Sổ tay NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+              <button
+                onClick={() => {
+                  setCurrentView('NOTEBOOK');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
+                  currentView === 'NOTEBOOK'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 border-purple-500 text-white'
+                    : 'bg-slate-900/80 border-white/5 text-slate-300'
+                }`}
+              >
+                <BookMarked className="w-4 h-4 text-purple-400 shrink-0" />
+                <span>NoteBook</span>
+              </button>
+
               <button
                 onClick={() => {
                   setCurrentView('BOOKMARKS');
@@ -523,6 +558,15 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           <BookmarkLibraryView
             onSelectBookmark={handleSelectBookmarkFromLibrary}
             onGoToWorkspace={() => setCurrentView('WORKSPACE')}
+          />
+        )}
+
+        {/* VIEW 3: SỔ TAY AI NOTEBOOK & TRỢ LÝ RAG */}
+        {currentView === 'NOTEBOOK' && (
+          <NotebookHubView
+            currentCourse={effectiveCourse}
+            activeLesson={effectiveLesson}
+            onBackToWorkspace={() => setCurrentView('WORKSPACE')}
           />
         )}
 
@@ -600,6 +644,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     courseId={effectiveCourse?.id}
                     courseTitle={effectiveCourse?.title}
                     initialSeekTime={initialSeekTimestamp}
+                    onOpenNotebookView={() => setCurrentView('NOTEBOOK')}
                     onOpenBookmarksView={() => setCurrentView('BOOKMARKS')}
                     onProgressSaved={handleLessonCompleted}
                   />
@@ -695,6 +740,20 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         >
           <BookOpen className={`w-5 h-5 ${currentView === 'WORKSPACE' ? 'stroke-[2.5]' : ''}`} />
           <span className="text-[10px] mt-0.5">Phòng học</span>
+        </button>
+
+        {/* Sổ tay NoteBook AI (Đứng phía trước Mục cờ) */}
+        <button
+          type="button"
+          onClick={() => setCurrentView('NOTEBOOK')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+            currentView === 'NOTEBOOK'
+              ? 'text-purple-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookMarked className={`w-5 h-5 ${currentView === 'NOTEBOOK' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">NoteBook</span>
         </button>
 
         {/* 3. Mục cắm cờ đánh dấu */}
