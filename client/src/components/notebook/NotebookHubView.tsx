@@ -107,7 +107,8 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   // Podcast form states
   const [newPodcastName, setNewPodcastName] = useState<string>('');
   const [newPodcastProfile, setNewPodcastProfile] = useState<string>('solo_expert');
-  const [newPodcastSpeaker, setNewPodcastSpeaker] = useState<string>('speaker_profile:w0svyiocc4areyhjebj8');
+  const [newPodcastContent, setNewPodcastContent] = useState<string>('');
+  const [podcastTargetNbId, setPodcastTargetNbId] = useState<string>('');
 
   // Search & Ask states
   const [searchQueryInput, setSearchQueryInput] = useState<string>('');
@@ -191,8 +192,27 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
           setIsNewModalOpen(false);
         }
       } else if (modalType === 'PODCAST' && newPodcastName.trim()) {
-        await createPodcast(newPodcastName.trim(), newPodcastProfile, newPodcastSpeaker);
+        const selectedProfile = episodeProfiles.find((p) => p.name === newPodcastProfile);
+        const resolvedSpeaker =
+          selectedProfile?.speaker_config_name || selectedProfile?.speaker_config || 'solo_expert';
+
+        let contentToUse = newPodcastContent.trim();
+        if (!contentToUse && activeLesson) {
+          contentToUse = `Bài giảng: ${activeLesson.title}. Nội dung cốt lõi: ${activeLesson.description || ''}`;
+        }
+        if (!contentToUse && !podcastTargetNbId && !activeNotebook) {
+          contentToUse = `Tập podcast thảo luận chuyên sâu về chủ đề: ${newPodcastName.trim()}. Trình bày các kiến thức cốt lõi, ví dụ áp dụng thực tế và đúc kết kinh nghiệm quan trọng.`;
+        }
+
+        await createPodcast(
+          newPodcastName.trim(),
+          newPodcastProfile,
+          resolvedSpeaker,
+          contentToUse || undefined,
+          podcastTargetNbId || activeNotebook?.id || undefined
+        );
         setNewPodcastName('');
+        setNewPodcastContent('');
         setIsNewModalOpen(false);
       }
     } catch {
@@ -1061,46 +1081,63 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {podcasts.map((ep) => (
-                    <div
-                      key={ep.id}
-                      className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-pink-500/40 transition-all flex flex-col justify-between"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-bold text-white">{ep.name}</h3>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300">
-                            {ep.episode_profile || 'AI Audio'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 font-mono">ID: {ep.id}</p>
-                      </div>
+                  {podcasts.map((ep) => {
+                    const profileLabel =
+                      typeof ep.episode_profile === 'object' && ep.episode_profile !== null
+                        ? ep.episode_profile.name || 'AI Audio'
+                        : ep.episode_profile || 'AI Audio';
+                    const isJobRunning = ep.job_status === 'running' || ep.job_status === 'submitted';
 
-                      <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between">
-                        <button
-                          onClick={() => {
-                            setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all"
-                        >
-                          {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                          <span>{playingPodcastId === ep.id ? 'Dừng phát' : 'Nghe Podcast'}</span>
-                        </button>
-                      </div>
-
-                      {/* Trình phát âm thanh khi bấm play */}
-                      {playingPodcastId === ep.id && (
-                        <div className="mt-3 pt-2">
-                          <audio
-                            src={notebookService.getPodcastAudioUrl(ep.id)}
-                            controls
-                            autoPlay
-                            className="w-full h-8"
-                          />
+                    return (
+                      <div
+                        key={ep.id}
+                        className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-pink-500/40 transition-all flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-xs font-bold text-white truncate" title={ep.name}>
+                              {ep.name}
+                            </h3>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 shrink-0">
+                              {profileLabel}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 font-mono">ID: {ep.id}</p>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between">
+                          {isJobRunning ? (
+                            <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-950/40 px-3 py-1.5 rounded-xl border border-amber-500/30">
+                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                              <span>Đang tổng hợp âm thanh...</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-pink-600/20"
+                            >
+                              {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                              <span>{playingPodcastId === ep.id ? 'Dừng phát' : 'Nghe Podcast'}</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Trình phát âm thanh khi bấm play */}
+                        {playingPodcastId === ep.id && !isJobRunning && (
+                          <div className="mt-3 pt-2">
+                            <audio
+                              src={notebookService.getPodcastAudioUrl(ep.id)}
+                              controls
+                              autoPlay
+                              className="w-full h-8"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1358,7 +1395,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       type="text"
                       value={newPodcastName}
                       onChange={(e) => setNewPodcastName(e.target.value)}
-                      placeholder="Ví dụ: Thảo luận về Async Await..."
+                      placeholder="Ví dụ: Thảo luận về Kiến trúc React và State..."
                       className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
                       required
                       autoFocus
@@ -1373,12 +1410,51 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       onChange={(e) => setNewPodcastProfile(e.target.value)}
                       className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
                     >
-                      {episodeProfiles.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name} - {p.description}
+                      {episodeProfiles.length > 0 ? (
+                        episodeProfiles.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name} - {p.description}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="solo_expert">solo_expert - Chuyên gia đơn thoại giải thích</option>
+                          <option value="tech_discussion">tech_discussion - Hai chuyên gia công nghệ đàm đạo</option>
+                          <option value="business_analysis">business_analysis - Ban chuyên gia phân tích</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Lấy tài liệu từ Sổ tay (Tùy chọn)
+                    </label>
+                    <select
+                      value={podcastTargetNbId}
+                      onChange={(e) => setPodcastTargetNbId(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
+                    >
+                      <option value="">{activeNotebook ? `Mặc định Sổ tay: ${activeNotebook.name}` : 'Tất cả tài liệu / Nhập riêng bên dưới'}</option>
+                      {notebooks.map((nb) => (
+                        <option key={nb.id} value={nb.id}>
+                          {nb.name} ({nb.source_count || 0} tài liệu)
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Ghi chú / Chủ đề thảo luận (Tùy chọn)
+                    </label>
+                    <textarea
+                      value={newPodcastContent}
+                      onChange={(e) => setNewPodcastContent(e.target.value)}
+                      placeholder={activeLesson ? `Mặc định sẽ lấy nội dung bài giảng: "${activeLesson.title}"...` : 'Nhập trọng tâm để AI biên soạn hội thoại...'}
+                      rows={3}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400 placeholder-slate-500"
+                    />
                   </div>
                 </>
               )}
