@@ -445,5 +445,166 @@ namespace Microlearning.Areas.Media.Services
                 CompletedAt = job.CompletedAt
             };
         }
+
+        public async Task<LessonMediaInfoResponse> LinkExternalMediaAsync(LinkExternalMediaRequest request, string baseUrl, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(request.Url))
+            {
+                throw new BusinessException("Vui lòng nhập đường dẫn URL video hợp lệ.");
+            }
+
+            var cleanUrl = request.Url.Trim();
+            if (!Uri.TryCreate(cleanUrl, UriKind.Absolute, out var uriResult) ||
+                (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new BusinessException("Đường dẫn URL video không hợp lệ. Vui lòng nhập link đầy đủ bắt đầu bằng http:// hoặc https://.");
+            }
+
+            var lesson = await _dbContext.Lessons.FindAsync(new object[] { request.LessonId }, cancellationToken);
+            if (lesson == null)
+            {
+                throw new BusinessException($"Không tìm thấy bài học với ID = {request.LessonId}.");
+            }
+
+            var (sourceType, embedUrl, contentType) = ParseVideoSource(cleanUrl);
+
+            var title = !string.IsNullOrWhiteSpace(request.Title)
+                ? request.Title.Trim()
+                : $"Liên kết {sourceType.ToUpperInvariant()} - {lesson.Title}";
+
+            var mediaAsset = new MediaAsset
+            {
+                LessonId = lesson.Id,
+                MediaType = MediaType.Video,
+                FileName = title,
+                BlobKey = cleanUrl,
+                ContentType = contentType,
+                SizeBytes = 0,
+                DurationSeconds = request.DurationSeconds ?? (lesson.DurationSeconds > 0 ? lesson.DurationSeconds : 180),
+                Status = MediaAssetStatus.Ready,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (request.DurationSeconds.HasValue && request.DurationSeconds.Value > 0)
+            {
+                lesson.DurationSeconds = request.DurationSeconds.Value;
+            }
+
+            _dbContext.MediaAssets.Add(mediaAsset);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var streamUrl = sourceType == "direct_url" ? cleanUrl : $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lesson.Id}/stream";
+
+            return new LessonMediaInfoResponse(
+                lesson.Id,
+                mediaAsset.Id,
+                sourceType,
+                streamUrl,
+                cleanUrl,
+                embedUrl,
+                contentType,
+                0
+            );
+        }
+
+        public async Task<LessonMediaInfoResponse> GetLessonMediaInfoAsync(int lessonId, string baseUrl)
+        {
+            var mediaAsset = await _dbContext.MediaAssets
+                .AsNoTracking()
+                .Where(m => m.LessonId == lessonId)
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (mediaAsset == null)
+            {
+                var demoUrl = $"{baseUrl.TrimEnd('/')}/videos/test.mp4";
+                return new LessonMediaInfoResponse(
+                    lessonId,
+                    null,
+                    "demo",
+                    demoUrl,
+                    null,
+                    null,
+                    "video/mp4",
+                    17979812
+                );
+            }
+
+            if (mediaAsset.BlobKey.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                mediaAsset.BlobKey.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                var (sourceType, embedUrl, contentType) = ParseVideoSource(mediaAsset.BlobKey);
+                var streamUrl = sourceType == "direct_url" ? mediaAsset.BlobKey : $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lessonId}/stream";
+
+                return new LessonMediaInfoResponse(
+                    lessonId,
+                    mediaAsset.Id,
+                    sourceType,
+                    streamUrl,
+                    mediaAsset.BlobKey,
+                    embedUrl,
+                    contentType,
+                    mediaAsset.SizeBytes
+                );
+            }
+
+            return new LessonMediaInfoResponse(
+                lessonId,
+                mediaAsset.Id,
+                "azure",
+                $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lessonId}/stream",
+                null,
+                null,
+                string.IsNullOrWhiteSpace(mediaAsset.ContentType) ? "video/mp4" : mediaAsset.ContentType,
+                mediaAsset.SizeBytes
+            );
+        }
+
+        private static (string sourceType, string? embedUrl, string contentType) ParseVideoSource(string rawUrl)
+        {
+            if (string.IsNullOrWhiteSpace(rawUrl))
+            {
+                return ("demo", null, "video/mp4");
+            }
+
+            var url = rawUrl.Trim();
+
+            // 1. YouTube
+            var ytMatch = System.Text.RegularExpressions.Regex.Match(
+                url,
+                @"(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+            if (ytMatch.Success)
+            {
+                var videoId = ytMatch.Groups[1].Value;
+                return ("youtube", $"https://www.youtube.com/embed/{videoId}?enablejsapi=1&rel=0&modestbranding=1", "video/youtube");
+            }
+
+            // 2. Vimeo
+            var vimeoMatch = System.Text.RegularExpressions.Regex.Match(
+                url,
+                @"vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+            if (vimeoMatch.Success)
+            {
+                var videoId = vimeoMatch.Groups[3].Value;
+                return ("vimeo", $"https://player.vimeo.com/video/{videoId}?badge=0&autopause=0", "video/vimeo");
+            }
+
+            // 3. Direct URL / MP4 / WebM
+            var lower = url.ToLowerInvariant();
+            if (lower.EndsWith(".webm"))
+            {
+                return ("direct_url", null, "video/webm");
+            }
+            if (lower.EndsWith(".mov"))
+            {
+                return ("direct_url", null, "video/quicktime");
+            }
+
+            return ("direct_url", null, "video/mp4");
+        }
     }
 }

@@ -63,4 +63,24 @@ namespace Microlearning.Areas.Media.DTOs
         string StreamUrl,
         string DownloadUrl
     );
+
+    // DTO yêu cầu gắn liên kết video ngoài cho bài học (YouTube, Vimeo, Direct URL)
+    public record LinkExternalMediaRequest(
+        int LessonId,
+        string Url,
+        string? Title = null,
+        int? DurationSeconds = null
+    );
+
+    // DTO phản hồi thông tin nguồn phát video của bài học
+    public record LessonMediaInfoResponse(
+        int LessonId,
+        int? MediaId,
+        string SourceType,
+        string StreamUrl,
+        string? ExternalUrl,
+        string? EmbedUrl,
+        string ContentType,
+        long FileSizeBytes
+    );
 }

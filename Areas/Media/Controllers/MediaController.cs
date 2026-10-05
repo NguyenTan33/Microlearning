@@ -84,6 +84,30 @@ namespace Microlearning.Areas.Media.Controllers
         }
 
         /// <summary>
+        /// API Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc URL video trực tiếp) cho bài học.
+        /// </summary>
+        [HttpPost("link-external")]
+        public async Task<IActionResult> LinkExternalMedia(
+            [FromBody] LinkExternalMediaRequest request,
+            CancellationToken cancellationToken)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var result = await _mediaService.LinkExternalMediaAsync(request, baseUrl, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// API Lấy thông tin nguồn phát video chi tiết của bài học (xác định Azure, YouTube, Vimeo, hay Direct URL).
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/info")]
+        public async Task<IActionResult> GetLessonMediaInfo(int lessonId)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var result = await _mediaService.GetLessonMediaInfoAsync(lessonId, baseUrl);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// API Thử nghiệm sinh giọng đọc AI (Text-To-Speech) từ văn bản tiếng Việt.
         /// </summary>
         [HttpPost("tts/test")]

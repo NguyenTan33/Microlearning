@@ -38,5 +38,15 @@ namespace Microlearning.Areas.Media.Interfaces
         /// Đăng tải tệp video bài giảng mới và lưu trữ vào wwwroot/Videos
         /// </summary>
         Task<UploadMediaResponse> UploadVideoAsync(Microsoft.AspNetCore.Http.IFormFile file, int? lessonId, string baseUrl, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc URL video trực tiếp) cho bài học.
+        /// </summary>
+        Task<LessonMediaInfoResponse> LinkExternalMediaAsync(LinkExternalMediaRequest request, string baseUrl, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Lấy thông tin nguồn phát video chi tiết của bài học (xác định là Azure Blob, YouTube, Vimeo hay Direct URL).
+        /// </summary>
+        Task<LessonMediaInfoResponse> GetLessonMediaInfoAsync(int lessonId, string baseUrl);
     }
 }
