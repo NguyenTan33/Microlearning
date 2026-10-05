@@ -47,6 +47,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
       )}
 
       <PhoneInput
+        id="forgot-phone-number"
         value={phoneNumber}
         onChange={(val) => {
           setPhoneNumber(val);
