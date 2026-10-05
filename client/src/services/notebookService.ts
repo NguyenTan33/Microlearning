@@ -6,6 +6,7 @@ import type {
   EpisodeProfile,
   SearchResult,
 } from '../types/notebook.types';
+import { callGeminiDirect, generatePodcastScript } from './geminiClient';
 
 const AZURE_NOTEBOOK_URL = (import.meta.env.VITE_OPEN_NOTEBOOK_API_URL || 'https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io').replace(/\/$/, '');
 const API_BASE = '/notebook-api';
