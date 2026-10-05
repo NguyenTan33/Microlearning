@@ -333,7 +333,7 @@ export function useNotebook(initialCourseName?: string) {
     [activeNotebook]
   );
 
-  // Hỏi đáp AI với Gemini 3.5 Flash-Lite (Ask RAG)
+  // Hỏi đáp AI Tri Thức (Ask RAG)
   const askQuestion = useCallback(
     async (questionText: string) => {
       if (!activeNotebook) {
@@ -387,22 +387,39 @@ export function useNotebook(initialCourseName?: string) {
     async (
       episodeName: string,
       episodeProfile: string,
-      speakerProfile: string,
-      content?: string
+      speakerProfile?: string,
+      content?: string,
+      customNotebookId?: string
     ) => {
       setIsGeneratingPodcast(true);
       setError(null);
       try {
+        const ep = episodeProfiles.find((p) => p.name === episodeProfile);
+        const resolvedSpeaker =
+          speakerProfile || ep?.speaker_config_name || ep?.speaker_config || 'solo_expert';
+        const targetNbId = customNotebookId || activeNotebook?.id;
+
         await notebookService.generatePodcast(
           episodeName,
           episodeProfile,
-          speakerProfile,
-          activeNotebook?.id,
+          resolvedSpeaker,
+          targetNbId,
           content
         );
+
         // Refresh danh sách podcasts
         const updatedList = await notebookService.getPodcastEpisodes();
         setPodcasts(updatedList);
+
+        // Đợi 2s để worker ghi nhận và cập nhật lại
+        setTimeout(async () => {
+          try {
+            const latest = await notebookService.getPodcastEpisodes();
+            setPodcasts(latest);
+          } catch {
+            // ignore
+          }
+        }, 2000);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Tạo Podcast thất bại';
         setError(msg);
@@ -411,7 +428,7 @@ export function useNotebook(initialCourseName?: string) {
         setIsGeneratingPodcast(false);
       }
     },
-    [activeNotebook]
+    [activeNotebook, episodeProfiles]
   );
 
   return {

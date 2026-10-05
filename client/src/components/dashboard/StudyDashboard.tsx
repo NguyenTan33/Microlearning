@@ -26,6 +26,7 @@ import { InteractiveQuizCard } from '../quiz/InteractiveQuizCard';
 import { CourseCatalogView } from '../catalog/CourseCatalogView';
 import { BookmarkLibraryView } from '../bookmarks/BookmarkLibraryView';
 import { NotebookHubView } from '../notebook/NotebookHubView';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 import { LessonSidebar } from './LessonSidebar';
 import { CourseManagementModal } from '../management/CourseManagementModal';
 import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
@@ -568,12 +569,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
         {/* VIEW 3: SỔ TAY AI NOTEBOOK & TRỢ LÝ RAG */}
         {currentView === 'NOTEBOOK' && (
-          <NotebookHubView
-            currentCourse={effectiveCourse}
-            activeLesson={effectiveLesson}
-            onBackToWorkspace={() => setCurrentView('WORKSPACE')}
-            currentUser={currentUser}
-          />
+          <ErrorBoundary fallbackTitle="Không thể tải giao diện Sổ tay AI">
+            <NotebookHubView
+              currentCourse={effectiveCourse}
+              activeLesson={effectiveLesson}
+              onBackToWorkspace={() => setCurrentView('WORKSPACE')}
+              currentUser={currentUser}
+            />
+          </ErrorBoundary>
         )}
 
         {/* VIEW 2: PHÒNG HỌC TRỰC TUYẾN (WORKSPACE) */}

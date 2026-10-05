@@ -29,11 +29,13 @@ export interface NotebookSource {
 export interface PodcastEpisode {
   id: string;
   name: string;
-  episode_profile?: string;
-  speaker_profile?: string;
+  episode_profile?: string | { name?: string; id?: string };
+  speaker_profile?: string | { name?: string; id?: string };
   audio_url?: string;
-  transcript?: string;
-  created: string;
+  transcript?: any;
+  outline?: any;
+  created?: string;
+  job_status?: string;
   status?: string;
 }
 

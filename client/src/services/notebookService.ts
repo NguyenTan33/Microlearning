@@ -45,7 +45,7 @@ export const notebookService = {
           isOnline: true,
           apiUrl: 'http://localhost:5055',
           webUrl: WEB_STUDIO_URL,
-          modelName: 'Gemini 3.5 Flash-Lite (Siêu nhanh & Ổn định)',
+          modelName: 'AI Trực Tuyến',
         };
       }
       return {
@@ -271,7 +271,7 @@ export const notebookService = {
     if (!chatRes.ok) {
       const err = await chatRes.text();
       if (err.includes('Rate limit')) {
-        throw new Error('Tần suất gọi Gemini AI đang quá nhanh. Vui lòng đợi vài giây rồi thử lại nhé!');
+        throw new Error('Tần suất gọi AI đang quá nhanh. Vui lòng đợi vài giây rồi thử lại nhé!');
       }
       throw new Error(err || 'AI gặp trục trặc khi tạo câu trả lời');
     }
