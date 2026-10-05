@@ -323,10 +323,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             {currentUser && (
               <div
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-slate-900/80 border-white/10 text-slate-300"
-                title={`Tài khoản: ${currentUser.displayName}`}
+                title={`Tài khoản: ${currentUser.displayName} (${currentUser.isAdmin ? 'Quản trị viên' : currentUser.isTeacher ? 'Giáo viên' : 'Học viên'})`}
               >
                 <Shield className="w-3 h-3 text-cyan-400" />
-                <span className="truncate max-w-[100px]">{currentUser.displayName}</span>
+                <span className="truncate max-w-[140px] sm:max-w-[180px]">{currentUser.displayName}</span>
               </div>
             )}
 

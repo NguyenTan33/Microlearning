@@ -89,6 +89,15 @@ namespace Microlearning.Areas.Auth.Services
                 // Assign default "User" role
                 await _userManager.AddToRoleAsync(account, "User");
             }
+            else
+            {
+                // Đồng bộ FullName từ tài khoản Google nếu FullName trong DB đang rỗng hoặc là mã oauth
+                if ((string.IsNullOrWhiteSpace(account.FullName) || account.FullName.StartsWith("gg_")) && !string.IsNullOrWhiteSpace(fullName))
+                {
+                    account.FullName = fullName;
+                    await _userManager.UpdateAsync(account);
+                }
+            }
 
             // 6. Generate Access Token (JWT) via TokenService
             var accessToken = await _tokenService.GenerateAccessTokenAsync(account);
