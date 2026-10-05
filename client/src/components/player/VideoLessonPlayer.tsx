@@ -17,8 +17,12 @@ import {
   Info,
   AlertTriangle,
   RefreshCw,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
 import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
+import { catalogApi } from '../../services/catalogApi';
+import type { LessonMediaInfo } from '../../types/media.types';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -55,6 +59,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [mediaInfo, setMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [initialSeekDone, setInitialSeekDone] = useState<boolean>(false);
   const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
@@ -76,21 +81,36 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
     const streamTargetId = lessonId || mediaId;
 
-    // Kiểm tra xem đã có bản tải ngoại tuyến trong IndexedDB chưa
-    getOfflineVideoBlob(streamTargetId)
-      .then((blob) => {
+    // Lấy thông tin nguồn video chi tiết (Azure, YouTube, Vimeo, Direct URL)
+    catalogApi.getLessonMediaInfo(streamTargetId)
+      .then((info) => {
         if (isCancelled) return;
-        if (blob) {
-          objectUrl = URL.createObjectURL(blob);
-          setVideoSrc(objectUrl);
+        setMediaInfo(info);
+        if (info.sourceType === 'youtube' || info.sourceType === 'vimeo') {
+          setVideoSrc(''); // Iframe sẽ tự phát
+        } else if (info.sourceType === 'direct_url' && info.externalUrl) {
+          setVideoSrc(info.externalUrl);
         } else {
-          setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
+          setVideoSrc(info.streamUrl || getLessonVideoStreamUrl(streamTargetId));
         }
       })
       .catch(() => {
-        if (!isCancelled) {
-          setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
-        }
+        // Dự phòng kiểm tra Offline Blob nếu có trong IndexedDB
+        getOfflineVideoBlob(streamTargetId)
+          .then((blob) => {
+            if (isCancelled) return;
+            if (blob) {
+              objectUrl = URL.createObjectURL(blob);
+              setVideoSrc(objectUrl);
+            } else {
+              setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
+            }
+          })
+          .catch(() => {
+            if (!isCancelled) {
+              setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
+            }
+          });
       });
 
     setBookmarks(mediaBookmarkService.getBookmarks(lessonId));
@@ -291,7 +311,33 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {videoError ? (
+        {mediaInfo && (mediaInfo.sourceType === 'youtube' || mediaInfo.sourceType === 'vimeo') && mediaInfo.embedUrl ? (
+          <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
+            <iframe
+              src={mediaInfo.embedUrl}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+            {/* Badge hiển thị nguồn nhúng ngoài */}
+            <div className="absolute top-3 right-3 pointer-events-none z-10">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
+                {mediaInfo.sourceType === 'youtube' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span>YouTube Video</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>Vimeo Video</span>
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+        ) : videoError ? (
           <div className="flex flex-col items-center justify-center p-6 text-center max-w-md space-y-3 z-10 animate-fadeIn">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
               <AlertTriangle className="w-6 h-6" />
@@ -362,7 +408,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         )}
 
         {/* Nút Play trung tâm lớn khi tạm dừng */}
-        {!isPlaying && !videoError && (
+        {!isPlaying && !videoError && (!mediaInfo || (mediaInfo.sourceType !== 'youtube' && mediaInfo.sourceType !== 'vimeo')) && (
           <button
             onClick={togglePlay}
             aria-label="Phát bài giảng"
