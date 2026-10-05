@@ -13,11 +13,17 @@ import {
   ArrowLeft,
   Bot,
   User,
-  Layers,
+  Search,
+  Mic,
   HelpCircle,
-  Maximize2,
+  Play,
+  Pause,
+  X,
+  Volume2,
+  FolderOpen,
 } from 'lucide-react';
-import { useNotebook } from '../../hooks/useNotebook';
+import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
+import { notebookService } from '../../services/notebookService';
 import type { Course, Lesson } from '../../types/catalog.types';
 
 interface NotebookHubViewProps {
@@ -31,71 +37,88 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   activeLesson,
   onBackToWorkspace,
 }) => {
-  const [activeTab, setActiveTab] = useState<'RAG_CHAT' | 'STUDIO_IFRAME'>('RAG_CHAT');
-  const [newNotebookName, setNewNotebookName] = useState<string>('');
-  const [questionInput, setQuestionInput] = useState<string>('');
-  const [isCreatingNew, setIsCreatingNew] = useState<boolean>(false);
-
   const {
+    currentTab,
+    setCurrentTab,
     notebooks,
     activeNotebook,
+    allSources,
+    selectedSourceDetail,
+    setSelectedSourceDetail,
     sources,
     messages,
+    searchResults,
+    podcasts,
+    episodeProfiles,
     status,
     isLoading,
     isAsking,
     isSyncing,
+    isSearching,
+    isGeneratingPodcast,
     error,
-    refreshNotebooks,
+    refreshAll,
     selectNotebook,
     createNotebook,
     removeNotebook,
     syncLessonSource,
+    removeSource,
+    viewSourceDetail,
+    searchKnowledge,
     askQuestion,
+    createPodcast,
   } = useNotebook(currentCourse?.title);
 
-  // Xử lý tạo Notebook thủ công
-  const handleCreateNotebook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNotebookName.trim()) return;
-    try {
-      await createNotebook(newNotebookName.trim(), `Sổ tay tạo từ bài giảng Microlearning`);
-      setNewNotebookName('');
-      setIsCreatingNew(false);
-    } catch {
-      // Error handled by hook
-    }
-  };
+  // States cho Modals & Forms
+  const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
+  const [modalType, setModalType] = useState<'NOTEBOOK' | 'SOURCE' | 'PODCAST'>('NOTEBOOK');
+  const [newNotebookTitle, setNewNotebookTitle] = useState<string>('');
+  const [newNotebookDesc, setNewNotebookDesc] = useState<string>('');
+  const [newSourceTitle, setNewSourceTitle] = useState<string>('');
+  const [newSourceContent, setNewSourceContent] = useState<string>('');
+  const [newPodcastName, setNewPodcastName] = useState<string>('');
+  const [newPodcastProfile, setNewPodcastProfile] = useState<string>('solo_expert');
+  const [newPodcastSpeaker, setNewPodcastSpeaker] = useState<string>('speaker_profile:w0svyiocc4areyhjebj8');
 
-  // Tạo nhanh notebook từ khóa học hiện tại
-  const handleQuickCreateFromCourse = async () => {
-    if (!currentCourse) return;
-    try {
-      await createNotebook(
-        `Khóa học: ${currentCourse.title}`,
-        currentCourse.description || `Sổ tay tự động đồng bộ từ ${currentCourse.title}`
-      );
-    } catch {
-      // Error handled by hook
-    }
-  };
+  // Search & Ask states
+  const [searchQueryInput, setSearchQueryInput] = useState<string>('');
+  const [askQuestionInput, setAskQuestionInput] = useState<string>('');
+  const [searchFilterType, setSearchFilterType] = useState<'text' | 'vector'>('text');
 
-  // Đồng bộ bài giảng hiện tại làm nguồn tri thức (Source)
-  const handleSyncCurrentLesson = async () => {
+  // Audio Podcast Player
+  const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
+
+  // Xử lý nạp nhanh bài giảng Microlearning hiện tại
+  const handleQuickSyncCurrentLesson = async () => {
     if (!activeLesson) return;
-    const lessonTitle = `Bài giảng: ${activeLesson.title}`;
     const durationMin = Math.round((activeLesson.durationSeconds || 0) / 60);
+    const lessonTitle = `Bài giảng: ${activeLesson.title}`;
     const lessonContent = `Khóa học: ${currentCourse?.title || 'Chưa phân loại'}\nBài học: ${activeLesson.title}\nMô tả nội dung: ${activeLesson.description || 'Nội dung cốt lõi của bài học.'}\nThời lượng: ${durationMin} phút.`;
-    
     await syncLessonSource(lessonTitle, lessonContent);
   };
 
-  // Gửi câu hỏi cho AI
-  const handleSendQuestion = async (textToSend?: string) => {
-    const text = textToSend || questionInput;
-    if (!text.trim() || isAsking) return;
-    setQuestionInput('');
-    await askQuestion(text.trim());
+  // Xử lý tạo mới từ Modal
+  const handleModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (modalType === 'NOTEBOOK' && newNotebookTitle.trim()) {
+        await createNotebook(newNotebookTitle.trim(), newNotebookDesc.trim());
+        setNewNotebookTitle('');
+        setNewNotebookDesc('');
+        setIsNewModalOpen(false);
+      } else if (modalType === 'SOURCE' && newSourceTitle.trim() && newSourceContent.trim()) {
+        await syncLessonSource(newSourceTitle.trim(), newSourceContent.trim());
+        setNewSourceTitle('');
+        setNewSourceContent('');
+        setIsNewModalOpen(false);
+      } else if (modalType === 'PODCAST' && newPodcastName.trim()) {
+        await createPodcast(newPodcastName.trim(), newPodcastProfile, newPodcastSpeaker);
+        setNewPodcastName('');
+        setIsNewModalOpen(false);
+      }
+    } catch {
+      // Error handled by hook
+    }
   };
 
   const QUICK_PROMPTS = [
@@ -107,425 +130,821 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   return (
     <div className="flex-1 flex flex-col bg-[#070b18] text-slate-100 min-h-0">
       {/* =========================================================================
-          TOP HEADER BAR
+          TOP ACTION BAR
       ========================================================================= */}
-      <header className="px-4 sm:px-6 py-3.5 bg-slate-900/90 backdrop-blur-md border-b border-indigo-500/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <header className="px-4 sm:px-6 py-3 bg-slate-900/95 backdrop-blur-md border-b border-indigo-500/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
           {onBackToWorkspace && (
             <button
               onClick={onBackToWorkspace}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer flex items-center gap-1 text-xs"
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
               title="Quay lại Phòng học"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Phòng học</span>
+              <ArrowLeft className="w-4 h-4 text-cyan-400" />
+              <span>Phòng học</span>
             </button>
           )}
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-600/30">
-              <BookMarked className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-white flex items-center gap-1.5">
-                  Open Notebook AI
-                </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5 text-purple-300" />
-                  Gemini RAG
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Sổ tay học tập thông minh & Trợ lý hỏi đáp bài giảng chuyên sâu
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold text-white">
+              {activeNotebook ? activeNotebook.name : 'Chưa chọn Sổ tay'}
+            </span>
+            {activeNotebook && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">
+                {sources.length} tài liệu
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Trạng thái kết nối & Tabs chuyển đổi */}
-        <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-          {/* Badge trạng thái Server */}
+        {/* Trạng thái Server & Mở Web Studio rời */}
+        <div className="flex items-center gap-3 ml-auto">
           <div
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
               status.isOnline
                 ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-400'
                 : 'bg-rose-950/60 border-rose-500/30 text-rose-400'
             }`}
-            title={status.isOnline ? 'Open Notebook Docker đang chạy tốt' : 'Docker chưa chạy hoặc đang khởi động'}
           >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                status.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-              }`}
-            />
-            <span className="text-[11px] hidden sm:inline">
-              {status.isOnline ? 'Docker Online' : 'Docker Offline'}
-            </span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px]">{status.modelName}</span>
           </div>
 
-          {/* Toggle Chế độ xem */}
-          <div className="flex items-center p-1 rounded-xl bg-slate-950/80 border border-white/10 text-xs">
-            <button
-              onClick={() => setActiveTab('RAG_CHAT')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'RAG_CHAT'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span>Sổ tay & Chat</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('STUDIO_IFRAME')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'STUDIO_IFRAME'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span>Web Studio</span>
-            </button>
-          </div>
+          <button
+            onClick={() => refreshAll()}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-white/10"
+            title="Làm mới toàn bộ dữ liệu"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
 
-          {/* Mở tab mới tới cổng 8502 */}
+          {/* Mở Web Studio rời ra tab riêng */}
           <a
             href={status.webUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-white/10"
-            title="Mở toàn bộ giao diện Open Notebook trên tab mới (Port 8502)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-white/10 transition-all shadow-sm"
+            title="Mở toàn bộ giao diện Open Notebook gốc trên tab riêng biệt (Port 8502)"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Web Studio (Port 8502)</span>
+            <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
           </a>
         </div>
       </header>
 
       {/* =========================================================================
-          TAB 1: GIAO DIỆN SỔ TAY NATIVE & CHAT RAG HỎI ĐÁP BÀI HỌC
+          MAIN LAYOUT: SIDEBAR (4 MỤC) + MAIN CONTENT
       ========================================================================= */}
-      {activeTab === 'RAG_CHAT' && (
-        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
-          {/* CỘT BÊN TRÁI: DANH SÁCH NOTEBOOK & NGUỒN TÀI LIỆU (SOURCES) */}
-          <aside className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-indigo-500/20 bg-slate-950/60 flex flex-col shrink-0 min-h-0">
-            {/* Header Sidebar: Nút tạo Notebook */}
-            <div className="p-4 border-b border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-purple-400" />
-                  Danh Sách Sổ Tay ({notebooks.length})
-                </span>
-                <button
-                  onClick={() => refreshNotebooks()}
-                  className="p-1 hover:bg-white/5 rounded text-slate-400 hover:text-white transition-colors"
-                  title="Làm mới danh sách"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                </button>
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+        {/* =========================================================================
+            SIDEBAR THEO CHUẨN OPEN NOTEBOOK (NHƯ TRONG ẢNH)
+        ========================================================================= */}
+        <aside className="w-full md:w-64 bg-[#0d121f] border-b md:border-b-0 md:border-r border-indigo-500/20 flex flex-col shrink-0 min-h-0">
+          {/* Header macOS Dots + Logo */}
+          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
+                <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
+                <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
               </div>
+              <span className="font-bold text-sm text-white ml-1.5 flex items-center gap-1.5">
+                Open Notebook
+              </span>
+            </div>
+          </div>
 
-              {/* Quick action: Tạo notebook từ khóa học hiện tại */}
-              {currentCourse && (
-                <button
-                  onClick={handleQuickCreateFromCourse}
-                  className="w-full py-2 px-3 rounded-xl bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/30 text-purple-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 shadow-sm"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-                  <span>Tạo Notebook cho: {currentCourse.title.substring(0, 20)}...</span>
-                </button>
-              )}
+          {/* Nút to màu xanh lá "+ New" y hệt ảnh */}
+          <div className="p-3">
+            <button
+              onClick={() => {
+                setModalType('NOTEBOOK');
+                setIsNewModalOpen(true);
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-600/20 active:scale-98"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span className="text-sm">New</span>
+            </button>
+          </div>
 
-              {/* Form tạo notebook mới */}
-              {isCreatingNew ? (
-                <form onSubmit={handleCreateNotebook} className="space-y-2 pt-1">
-                  <input
-                    type="text"
-                    value={newNotebookName}
-                    onChange={(e) => setNewNotebookName(e.target.value)}
-                    placeholder="Nhập tên sổ tay mới..."
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-purple-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={!newNotebookName.trim()}
-                      className="flex-1 py-1 px-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white transition-all disabled:opacity-50"
-                    >
-                      Tạo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsCreatingNew(false)}
-                      className="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-all"
-                    >
-                      Hủy
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <button
-                  onClick={() => setIsCreatingNew(true)}
-                  className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-300 hover:text-white flex items-center justify-center gap-1.5 transition-all border border-white/5"
-                >
-                  <Plus className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Tạo sổ tay mới</span>
-                </button>
-              )}
+          {/* Menu Navigation 4 Chức Năng Chuẩn */}
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-5 custom-scrollbar">
+            {/* 1. COLLECT */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-1.5">
+                COLLECT
+              </p>
+              <button
+                onClick={() => setCurrentTab('SOURCES')}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
+                  currentTab === 'SOURCES'
+                    ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <FileText className={`w-4 h-4 ${currentTab === 'SOURCES' ? 'text-emerald-400' : 'text-slate-500'}`} />
+                <span>Sources</span>
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400">
+                  {allSources.length}
+                </span>
+              </button>
             </div>
 
-            {/* Danh sách Notebooks (Cuộn dọc) */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar min-h-[140px] md:min-h-0">
-              {notebooks.length === 0 ? (
-                <div className="p-6 text-center text-slate-500 text-xs">
-                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  Chưa có sổ tay nào. Hãy bấm "Tạo sổ tay mới" ở trên để bắt đầu!
+            {/* 2. PROCESS */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-1.5">
+                PROCESS
+              </p>
+              <div className="space-y-1">
+                <button
+                  onClick={() => setCurrentTab('NOTEBOOKS')}
+                  className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
+                    currentTab === 'NOTEBOOKS'
+                      ? 'bg-purple-950/70 border border-purple-500/40 text-purple-300 shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <BookMarked className={`w-4 h-4 ${currentTab === 'NOTEBOOKS' ? 'text-purple-400' : 'text-slate-500'}`} />
+                  <span>Notebooks</span>
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400">
+                    {notebooks.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentTab('ASK_SEARCH')}
+                  className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
+                    currentTab === 'ASK_SEARCH'
+                      ? 'bg-indigo-950/70 border border-indigo-500/40 text-indigo-300 shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Search className={`w-4 h-4 ${currentTab === 'ASK_SEARCH' ? 'text-cyan-400' : 'text-slate-500'}`} />
+                  <span>Ask and Search</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 3. CREATE */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-1.5">
+                CREATE
+              </p>
+              <button
+                onClick={() => setCurrentTab('PODCASTS')}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
+                  currentTab === 'PODCASTS'
+                    ? 'bg-pink-950/70 border border-pink-500/40 text-pink-300 shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Mic className={`w-4 h-4 ${currentTab === 'PODCASTS' ? 'text-pink-400' : 'text-slate-500'}`} />
+                <span>Podcasts</span>
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-slate-400">
+                  {podcasts.length}
+                </span>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* =========================================================================
+            MAIN CONTENT AREA CHO 4 CHỨC NĂNG
+        ========================================================================= */}
+        <main className="flex-1 flex flex-col bg-[#050814] min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6">
+          {error && (
+            <div className="mb-4 px-3.5 py-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 shrink-0">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* =====================================================================
+              VIEW 1: SOURCES (QUẢN LÝ TÀI LIỆU & NGUỒN TRI THỨC)
+          ===================================================================== */}
+          {currentTab === 'SOURCES' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-emerald-400" />
+                    Quản Lý Nguồn Tri Thức (Sources)
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Toàn bộ tài liệu, slide, văn bản bài giảng đã được nạp để AI học và trích dẫn.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {activeLesson && (
+                    <button
+                      onClick={handleQuickSyncCurrentLesson}
+                      disabled={isSyncing}
+                      className="px-3 py-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                      title="Nạp bài giảng đang xem vào nguồn tài liệu"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>{isSyncing ? 'Đang nạp...' : 'Nạp bài giảng hiện tại'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setModalType('SOURCE');
+                      setIsNewModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-emerald-600/30"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Thêm tài liệu</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid danh sách Sources */}
+              {allSources.length === 0 ? (
+                <div className="p-12 text-center text-slate-500">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">Chưa có nguồn tài liệu nào</p>
+                  <p className="text-xs mt-1">Bấm "Nạp bài giảng hiện tại" hoặc "Thêm tài liệu" để bắt đầu nạp kiến thức cho AI.</p>
                 </div>
               ) : (
-                notebooks.map((nb) => {
-                  const isSelected = activeNotebook?.id === nb.id;
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {allSources.map((source) => (
+                    <div
+                      key={source.id}
+                      className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-emerald-500/40 transition-all flex flex-col justify-between group"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-xs font-bold text-white line-clamp-2">
+                            {source.title}
+                          </h3>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                              source.embedded
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-400'
+                            }`}
+                          >
+                            {source.embedded ? 'Đã vector hóa' : 'Đang xử lý'}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          ID: {source.id}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5">
+                        <button
+                          onClick={() => viewSourceDetail(source.id)}
+                          className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
+                        >
+                          <FolderOpen className="w-3.5 h-3.5" />
+                          <span>Xem toàn văn</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (confirm(`Bạn có chắc muốn xóa tài liệu "${source.title}"?`)) {
+                              removeSource(source.id);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
+                          title="Xóa tài liệu này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =====================================================================
+              VIEW 2: NOTEBOOKS (QUẢN LÝ SỔ TAY BÀI HỌC)
+          ===================================================================== */}
+          {currentTab === 'NOTEBOOKS' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <BookMarked className="w-5 h-5 text-purple-400" />
+                    Quản Lý Sổ Tay Bài Học (Notebooks)
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Mỗi sổ tay là một không gian tri thức chứa tài liệu và lịch sử hỏi đáp của từng môn học.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {currentCourse && (
+                    <button
+                      onClick={async () => {
+                        await createNotebook(`Khóa học: ${currentCourse.title}`, currentCourse.description);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
+                    >
+                      <Sparkles className="w-4 h-4 text-purple-300" />
+                      <span>Tạo từ Khóa học này</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setModalType('NOTEBOOK');
+                      setIsNewModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-purple-600/30"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tạo Sổ tay mới</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid danh sách Notebooks */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {notebooks.map((nb) => {
+                  const isCurrent = activeNotebook?.id === nb.id;
                   return (
                     <div
                       key={nb.id}
                       onClick={() => selectNotebook(nb)}
-                      className={`group p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                        isSelected
-                          ? 'bg-purple-950/60 border-purple-500/50 text-white shadow-md shadow-purple-900/20'
-                          : 'bg-slate-900/50 hover:bg-slate-900 border-white/5 text-slate-300 hover:text-white'
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
+                        isCurrent
+                          ? 'bg-purple-950/60 border-purple-500/60 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/30'
+                          : 'bg-slate-900/60 hover:bg-slate-900 border-white/10 text-slate-300 hover:text-white'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                        <BookMarked
-                          className={`w-4 h-4 shrink-0 ${
-                            isSelected ? 'text-purple-400' : 'text-slate-500'
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold truncate">{nb.name}</p>
-                          <p className="text-[10px] text-slate-400">
-                            {nb.source_count || 0} tài liệu bài học
-                          </p>
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-xs font-bold truncate">
+                            {nb.name}
+                          </h3>
+                          {isCurrent && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Đang dùng
+                            </span>
+                          )}
                         </div>
+
+                        <p className="text-[11px] text-slate-400 line-clamp-2">
+                          {nb.description || 'Không có mô tả'}
+                        </p>
                       </div>
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(`Bạn có chắc muốn xóa sổ tay "${nb.name}"?`)) {
-                            removeNotebook(nb.id);
-                          }
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-rose-950 hover:text-rose-400 rounded text-slate-500 transition-all"
-                        title="Xóa sổ tay"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5 text-[11px] text-slate-400">
+                        <span>{nb.source_count || 0} tài liệu</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Bạn có chắc muốn xóa sổ tay "${nb.name}"?`)) {
+                              removeNotebook(nb.id);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all"
+                          title="Xóa sổ tay này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
-                })
-              )}
-            </div>
-
-            {/* NGUỒN TÀI LIỆU ĐÃ NẠP (SOURCES) CHO NOTEBOOK ĐANG CHỌN */}
-            {activeNotebook && (
-              <div className="p-3 border-t border-white/10 bg-slate-900/40">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <FileText className="w-3 h-3 text-cyan-400" />
-                    Tài liệu đã nạp ({sources.length})
-                  </span>
-                  {activeLesson && (
-                    <button
-                      onClick={handleSyncCurrentLesson}
-                      disabled={isSyncing}
-                      className="px-2 py-0.5 rounded-md bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-[10px] font-semibold flex items-center gap-1 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                      title="Nạp bài giảng đang xem vào sổ tay này để AI đọc"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>{isSyncing ? 'Đang nạp...' : 'Nạp bài giảng này'}</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="max-h-36 overflow-y-auto space-y-1 custom-scrollbar text-xs">
-                  {sources.length === 0 ? (
-                    <p className="text-[11px] text-slate-500 italic py-1">
-                      Chưa có tài liệu. Bấm "Nạp bài giảng này" để AI đọc kiến thức bài học!
-                    </p>
-                  ) : (
-                    sources.map((s) => (
-                      <div
-                        key={s.id}
-                        className="px-2 py-1.5 rounded-lg bg-slate-950/50 border border-white/5 flex items-center justify-between text-[11px]"
-                      >
-                        <span className="truncate pr-2 text-slate-300">{s.title}</span>
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </aside>
-
-          {/* CỘT BÊN PHẢI: KHUNG CHAT TRỢ LÝ AI HỎI ĐÁP RAG */}
-          <main className="flex-1 flex flex-col bg-[#050814] min-h-0">
-            {/* Thanh hiển thị Notebook hiện tại */}
-            <div className="px-5 py-3 border-b border-indigo-500/10 bg-slate-900/30 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Bot className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-bold text-white">
-                  {activeNotebook ? activeNotebook.name : 'Vui lòng chọn sổ tay để hỏi đáp'}
-                </span>
-                {activeNotebook && (
-                  <span className="text-[10px] text-slate-400">
-                    ({sources.length} nguồn bài giảng)
-                  </span>
-                )}
+                })}
               </div>
             </div>
+          )}
 
-            {/* Khung tin nhắn trò chuyện (Cuộn mượt) */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 custom-scrollbar min-h-0">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600/30 to-indigo-600/30 border border-purple-500/30 flex items-center justify-center mb-3">
-                    <Sparkles className="w-6 h-6 text-purple-300 animate-pulse" />
+          {/* =====================================================================
+              VIEW 3: ASK AND SEARCH (HỎI ĐÁP & TÌM KIẾM THÔNG MINH RAG)
+          ===================================================================== */}
+          {currentTab === 'ASK_SEARCH' && (
+            <div className="flex-1 flex flex-col min-h-[500px]">
+              {/* Tab con: Tìm kiếm kiến thức VS Hỏi đáp RAG */}
+              <div className="mb-4 pb-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Search className="w-5 h-5 text-indigo-400" />
+                  <h2 className="text-lg font-bold text-white">
+                    Hỏi Đáp & Tìm Kiếm Tri Thức (Ask and Search)
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Tìm kiếm nhanh */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchQueryInput}
+                      onChange={(e) => setSearchQueryInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          searchKnowledge(searchQueryInput, searchFilterType);
+                        }
+                      }}
+                      placeholder="Tìm từ khóa trong tài liệu..."
+                      className="w-48 sm:w-64 px-3 py-1.5 pl-8 rounded-xl bg-slate-900 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                   </div>
-                  <h3 className="text-sm sm:text-base font-bold text-white mb-1">
-                    Trợ lý Gemini RAG Sẵn Sàng
-                  </h3>
-                  <p className="text-xs text-slate-400 mb-5">
-                    Đặt bất kỳ câu hỏi nào về nội dung bài học. AI sẽ trả lời dựa trên chính xác các tài liệu bạn đã nạp vào sổ tay!
-                  </p>
+                  <button
+                    onClick={() => searchKnowledge(searchQueryInput, searchFilterType)}
+                    disabled={isSearching}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                  >
+                    {isSearching ? 'Tìm...' : 'Tìm'}
+                  </button>
+                </div>
+              </div>
 
-                  {/* Gợi ý câu hỏi nhanh */}
-                  <div className="w-full space-y-2">
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-left">
-                      Gợi ý câu hỏi nhanh:
-                    </p>
-                    {QUICK_PROMPTS.map((prompt, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleSendQuestion(prompt)}
-                        className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-purple-500/40 text-left text-xs text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-between group"
-                      >
-                        <span>{prompt}</span>
-                        <HelpCircle className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 shrink-0" />
-                      </button>
+              {/* Nếu có kết quả tìm kiếm, hiển thị bảng kết quả */}
+              {searchResults.length > 0 && (
+                <div className="mb-6 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-300">
+                      Kết quả tìm kiếm ({searchResults.length})
+                    </span>
+                    <button
+                      onClick={() => searchKnowledge('')}
+                      className="text-[11px] text-slate-400 hover:text-white"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {searchResults.map((r) => (
+                      <div key={r.id} className="p-2 rounded-xl bg-slate-900/60 text-xs flex items-center justify-between">
+                        <span className="font-semibold text-white">{r.title}</span>
+                        <span className="text-[10px] text-emerald-400 font-mono">Độ khớp: {Math.round(r.relevance)}%</span>
+                      </div>
                     ))}
                   </div>
                 </div>
-              ) : (
-                messages.map((m) => {
-                  const isUser = m.sender === 'user';
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex gap-3 max-w-3xl ${
-                        isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
-                      }`}
-                    >
-                      <div
-                        className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs ${
-                          isUser
-                            ? 'bg-indigo-600 text-white'
-                            : m.isError
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-purple-600 text-white'
-                        }`}
-                      >
-                        {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                      </div>
+              )}
 
-                      <div
-                        className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
-                          isUser
-                            ? 'bg-indigo-600/90 text-white rounded-tr-none'
-                            : m.isError
-                            ? 'bg-rose-950/80 border border-rose-500/40 text-rose-200 rounded-tl-none'
-                            : 'bg-slate-900/90 border border-indigo-500/20 text-slate-200 rounded-tl-none shadow-sm'
-                        }`}
-                      >
-                        <div className="whitespace-pre-wrap">{m.text}</div>
-                        <span className="block text-[10px] text-slate-400 mt-1.5 text-right font-mono">
-                          {m.timestamp}
-                        </span>
+              {/* Khung Chat RAG với Gemini 3.5 Flash-Lite */}
+              <div className="flex-1 flex flex-col bg-slate-900/40 rounded-2xl border border-white/10 min-h-0">
+                {/* Tin nhắn */}
+                <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 custom-scrollbar min-h-0">
+                  {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600/30 to-purple-600/30 border border-indigo-500/30 flex items-center justify-center mb-3">
+                        <Sparkles className="w-6 h-6 text-indigo-300 animate-pulse" />
+                      </div>
+                      <h3 className="text-base font-bold text-white mb-1">
+                        Gemini 3.5 Flash-Lite RAG Sẵn Sàng
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-5">
+                        Tốc độ phản hồi ~2 giây! Đặt câu hỏi để AI tra cứu tài liệu bài học và trả lời chính xác.
+                      </p>
+
+                      <div className="w-full space-y-2">
+                        {QUICK_PROMPTS.map((p, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              askQuestion(p);
+                            }}
+                            className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/5 hover:border-indigo-500/40 text-left text-xs text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-between"
+                          >
+                            <span>{p}</span>
+                            <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  ) : (
+                    messages.map((m) => {
+                      const isUser = m.sender === 'user';
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex gap-3 max-w-3xl ${
+                            isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                          }`}
+                        >
+                          <div
+                            className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs ${
+                              isUser ? 'bg-indigo-600 text-white' : 'bg-purple-600 text-white'
+                            }`}
+                          >
+                            {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                          </div>
 
-              {/* Loading khi AI đang trả lời */}
-              {isAsking && (
-                <div className="flex gap-3 max-w-xl mr-auto">
-                  <div className="w-7 h-7 rounded-lg bg-purple-600 text-white shrink-0 flex items-center justify-center">
-                    <Bot className="w-3.5 h-3.5 animate-spin" />
-                  </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-purple-500/30 text-xs text-purple-300 rounded-tl-none flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                    <span>Gemini AI đang tra cứu tài liệu bài học và suy nghĩ...</span>
-                  </div>
+                          <div
+                            className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                              isUser
+                                ? 'bg-indigo-600 text-white rounded-tr-none'
+                                : 'bg-slate-900/90 border border-indigo-500/20 text-slate-200 rounded-tl-none shadow-sm'
+                            }`}
+                          >
+                            <div className="whitespace-pre-wrap">{m.text}</div>
+                            <span className="block text-[10px] text-slate-400 mt-1.5 text-right font-mono">
+                              {m.timestamp}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {isAsking && (
+                    <div className="flex gap-3 max-w-xl mr-auto">
+                      <div className="w-7 h-7 rounded-lg bg-purple-600 text-white shrink-0 flex items-center justify-center">
+                        <Bot className="w-3.5 h-3.5 animate-spin" />
+                      </div>
+                      <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-purple-500/30 text-xs text-purple-300 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                        <span>Gemini 3.5 Flash-Lite đang đọc tài liệu và phân tích...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input gửi câu hỏi */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (askQuestionInput.trim()) {
+                      askQuestion(askQuestionInput.trim());
+                      setAskQuestionInput('');
+                    }
+                  }}
+                  className="p-3 sm:p-4 border-t border-white/10 flex items-center gap-2 bg-slate-900/80"
+                >
+                  <input
+                    type="text"
+                    value={askQuestionInput}
+                    onChange={(e) => setAskQuestionInput(e.target.value)}
+                    placeholder="Hỏi bất kỳ điều gì về bài học này..."
+                    disabled={!activeNotebook || isAsking}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950/90 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!askQuestionInput.trim() || isAsking || !activeNotebook}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Gửi</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              VIEW 4: PODCASTS (TẠO & PHÁT PODCAST AI BÀI HỌC)
+          ===================================================================== */}
+          {currentTab === 'PODCASTS' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Mic className="w-5 h-5 text-pink-400" />
+                    Podcast Âm Thanh Bài Giảng AI (Podcasts)
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Chuyển đổi bài học thành tập Podcast đối thoại âm thanh sống động để học mọi lúc mọi nơi.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setModalType('PODCAST');
+                    setIsNewModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-pink-600/30"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tạo Podcast mới</span>
+                </button>
+              </div>
+
+              {/* Danh sách Podcasts */}
+              {podcasts.length === 0 ? (
+                <div className="p-12 text-center text-slate-500">
+                  <Mic className="w-12 h-12 mx-auto mb-3 opacity-30 text-pink-400" />
+                  <p className="text-sm font-semibold">Chưa có tập Podcast nào</p>
+                  <p className="text-xs mt-1">Bấm "Tạo Podcast mới" để AI tự động biên soạn kịch bản và sinh giọng nói bài giảng.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {podcasts.map((ep) => (
+                    <div
+                      key={ep.id}
+                      className="p-4 rounded-2xl bg-slate-900/60 border border-white/10 hover:border-pink-500/40 transition-all flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-xs font-bold text-white">{ep.name}</h3>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300">
+                            {ep.episode_profile || 'AI Audio'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono">ID: {ep.id}</p>
+                      </div>
+
+                      <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between">
+                        <button
+                          onClick={() => {
+                            setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all"
+                        >
+                          {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                          <span>{playingPodcastId === ep.id ? 'Dừng phát' : 'Nghe Podcast'}</span>
+                        </button>
+                      </div>
+
+                      {/* Trình phát âm thanh khi bấm play */}
+                      {playingPodcastId === ep.id && (
+                        <div className="mt-3 pt-2">
+                          <audio
+                            src={notebookService.getPodcastAudioUrl(ep.id)}
+                            controls
+                            autoPlay
+                            className="w-full h-8"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
+          )}
+        </main>
+      </div>
 
-            {/* Input Bar: Nhập câu hỏi */}
-            <div className="p-3 sm:p-4 border-t border-indigo-500/20 bg-slate-900/80">
-              {error && (
-                <div className="mb-2 px-3 py-1.5 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
+      {/* =========================================================================
+          MODAL TẠO MỚI (NOTEBOOK / SOURCE / PODCAST)
+      ========================================================================= */}
+      {isNewModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0f1423] border border-white/10 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                {modalType === 'NOTEBOOK' && 'Tạo Sổ Tay Mới'}
+                {modalType === 'SOURCE' && 'Thêm Nguồn Tài Liệu'}
+                {modalType === 'PODCAST' && 'Tạo Podcast Bài Học'}
+              </h3>
+              <button
+                onClick={() => setIsNewModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleModalSubmit} className="space-y-3.5">
+              {modalType === 'NOTEBOOK' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Tên Sổ tay *
+                    </label>
+                    <input
+                      type="text"
+                      value={newNotebookTitle}
+                      onChange={(e) => setNewNotebookTitle(e.target.value)}
+                      placeholder="Ví dụ: Lập trình C# nâng cao..."
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Mô tả (Tùy chọn)
+                    </label>
+                    <textarea
+                      value={newNotebookDesc}
+                      onChange={(e) => setNewNotebookDesc(e.target.value)}
+                      placeholder="Ghi chú thêm về sổ tay..."
+                      rows={2}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                  </div>
+                </>
               )}
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendQuestion();
-                }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={questionInput}
-                  onChange={(e) => setQuestionInput(e.target.value)}
-                  placeholder={
-                    activeNotebook
-                      ? 'Hỏi bất kỳ điều gì về bài học này...'
-                      : 'Vui lòng chọn hoặc tạo sổ tay trước...'
-                  }
-                  disabled={!activeNotebook || isAsking}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950/90 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 disabled:opacity-50"
-                />
+              {modalType === 'SOURCE' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Tiêu đề tài liệu *
+                    </label>
+                    <input
+                      type="text"
+                      value={newSourceTitle}
+                      onChange={(e) => setNewSourceTitle(e.target.value)}
+                      placeholder="Ví dụ: Tóm tắt bài 1..."
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Nội dung văn bản tài liệu *
+                    </label>
+                    <textarea
+                      value={newSourceContent}
+                      onChange={(e) => setNewSourceContent(e.target.value)}
+                      placeholder="Dán nội dung lý thuyết, bài giảng hoặc ghi chú vào đây..."
+                      rows={4}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
+              {modalType === 'PODCAST' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Tên tập Podcast *
+                    </label>
+                    <input
+                      type="text"
+                      value={newPodcastName}
+                      onChange={(e) => setNewPodcastName(e.target.value)}
+                      placeholder="Ví dụ: Thảo luận về Async Await..."
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Kịch bản Podcast
+                    </label>
+                    <select
+                      value={newPodcastProfile}
+                      onChange={(e) => setNewPodcastProfile(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
+                    >
+                      {episodeProfiles.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name} - {p.description}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  disabled={!questionInput.trim() || isAsking || !activeNotebook}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-purple-600/30 active:scale-95 disabled:opacity-50"
+                  disabled={isLoading || isGeneratingPodcast}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition-all disabled:opacity-50"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Gửi</span>
+                  {isGeneratingPodcast ? 'Đang tạo...' : 'Xác nhận tạo'}
                 </button>
-              </form>
-            </div>
-          </main>
+                <button
+                  type="button"
+                  onClick={() => setIsNewModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-all"
+                >
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
       {/* =========================================================================
-          TAB 2: TOÀN BỘ GIAO DIỆN OPEN NOTEBOOK STUDIO (NHÚNG IFRAME PORT 8502)
+          MODAL XEM TOÀN VĂN TÀI LIỆU (SOURCE DETAIL)
       ========================================================================= */}
-      {activeTab === 'STUDIO_IFRAME' && (
-        <div className="flex-1 flex flex-col min-h-0 bg-slate-950 relative">
-          <iframe
-            src={`${status.webUrl}/notebooks`}
-            title="Open Notebook Studio Full"
-            className="w-full h-full border-none min-h-[600px] flex-1"
-            allow="clipboard-read; clipboard-write"
-          />
+      {selectedSourceDetail && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0f1423] border border-white/10 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2 truncate">
+                <FileText className="w-4 h-4 text-emerald-400" />
+                {selectedSourceDetail.title}
+              </h3>
+              <button
+                onClick={() => setSelectedSourceDetail(null)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 rounded-xl bg-slate-950/80 border border-white/5 text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+              {selectedSourceDetail.full_text || 'Không có văn bản chi tiết'}
+            </div>
+          </div>
         </div>
       )}
     </div>
