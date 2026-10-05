@@ -12,6 +12,7 @@ import {
   Sparkles,
   Flag,
   Bookmark,
+  BookMarked,
   X,
   Info,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ interface VideoLessonPlayerProps {
   courseId?: number;
   courseTitle?: string;
   initialSeekTime?: number | null;
+  onOpenNotebookView?: () => void;
   onOpenBookmarksView?: () => void;
   onProgressSaved?: () => void;
 }
@@ -38,6 +40,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   courseId,
   courseTitle,
   initialSeekTime,
+  onOpenNotebookView,
   onOpenBookmarksView,
   onProgressSaved,
 }) => {
@@ -398,6 +401,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               <Flag className="w-3.5 h-3.5 fill-white" />
               <span className="hidden sm:inline">Cắm cờ ({formatBookmarkTime(currentTime)})</span>
             </button>
+
+            {/* Nút Xem NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+            {onOpenNotebookView && (
+              <button
+                onClick={onOpenNotebookView}
+                title="Mở Sổ tay AI NoteBook của bài giảng này"
+                className="p-1.5 sm:p-2 rounded-xl bg-gradient-to-r from-purple-900/80 to-indigo-900/80 hover:from-purple-800 hover:to-indigo-800 border border-purple-500/40 text-purple-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-[11px] font-semibold shrink-0 shadow-sm active:scale-95"
+              >
+                <BookMarked className="w-3.5 h-3.5 text-purple-300" />
+                <span className="hidden md:inline">NoteBook</span>
+              </button>
+            )}
 
             {/* Nút Xem Mục Đánh Dấu Toàn Bộ */}
             {onOpenBookmarksView && (
