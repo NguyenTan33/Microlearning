@@ -7,6 +7,7 @@ import type {
   SearchResult,
 } from '../types/notebook.types';
 import { callGeminiDirect, generatePodcastScript } from './geminiClient';
+import { ttsApi } from './ttsApi';
 
 const AZURE_NOTEBOOK_URL = (import.meta.env.VITE_OPEN_NOTEBOOK_API_URL || 'https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io').replace(/\/$/, '');
 const API_BASE = '/notebook-api';
@@ -667,7 +668,8 @@ export const notebookService = {
     episodeProfile: string,
     speakerProfile: string,
     notebookId?: string,
-    content?: string
+    content?: string,
+    voiceName: string = 'vi-VN-HoaiMyNeural'
   ): Promise<{ job_id: string; message: string }> {
     // 1. Sinh kịch bản thoại sinh động với AI Gemini
     let script = '';
@@ -677,7 +679,33 @@ export const notebookService = {
       script = `### Kịch bản Podcast: ${episodeName}\n\n**Host:** Chào mừng các bạn đến với tập Podcast hôm nay!\n**Chuyên gia:** Cùng nhau điểm qua các kiến thức quan trọng nhất của bài học nhé!`;
     }
 
-    // 2. Tạo tập podcast và lưu trữ vĩnh viễn vào LocalStorage
+    // 2. Tự động sinh tệp giọng đọc Edge-TTS tiếng Việt nếu chọn giọng Azure Neural
+    let audioUrl = '/audio/podcast_demo.mp3';
+    if (voiceName.startsWith('vi-VN-')) {
+      try {
+        const cleanText = script
+          .replace(/^#{1,6}\s+.*$/gm, '')
+          .replace(/\[.*?\]/g, '')
+          .replace(/\*\*(.*?)\*\*/g, '$1')
+          .replace(/\*(.*?)\*/g, '$1')
+          .replace(/__(.*?)__/g, '$1')
+          .replace(/_(.*?)_/g, '$1')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+
+        const textToSynthesize = cleanText.length > 1900 ? cleanText.slice(0, 1900) : cleanText;
+        if (textToSynthesize) {
+          const ttsRes = await ttsApi.synthesizeSpeech(textToSynthesize, voiceName);
+          if (ttsRes?.audioUrl) {
+            audioUrl = ttsRes.audioUrl;
+          }
+        }
+      } catch (err) {
+        console.warn('Tạo file Edge-TTS lúc sinh podcast không thành công, dùng audio mặc định:', err);
+      }
+    }
+
+    // 3. Tạo tập podcast và lưu trữ vĩnh viễn vào LocalStorage
     const newEpisode: PodcastEpisode = {
       id: `pod-${Date.now()}`,
       name: episodeName,
@@ -685,7 +713,7 @@ export const notebookService = {
       speaker_profile: speakerProfile,
       status: 'completed',
       created: new Date().toISOString(),
-      audio_url: '/audio/podcast_demo.mp3',
+      audio_url: audioUrl,
       transcript: script,
     };
 
@@ -693,7 +721,7 @@ export const notebookService = {
     const updated = [newEpisode, ...currentList.filter((p) => p.id !== newEpisode.id)];
     saveLocalPodcasts(updated);
 
-    // 3. Gửi đồng bộ lên Cloud container (chạy ngầm, không block UI)
+    // 4. Gửi đồng bộ lên Cloud container (chạy ngầm, không block UI)
     try {
       await requestWithFallback(
         '/podcasts/generate',
@@ -715,8 +743,19 @@ export const notebookService = {
 
     return {
       job_id: newEpisode.id,
-      message: 'Tập Podcast và kịch bản thoại AI đã được khởi tạo thành công!',
+      message: 'Tập Podcast và kịch bản thoại AI tiếng Việt đã được khởi tạo thành công!',
     };
+  },
+
+  async updatePodcastAudio(episodeId: string, audioUrl: string): Promise<boolean> {
+    const list = getLocalPodcasts();
+    const ep = list.find((p) => p.id === episodeId);
+    if (ep) {
+      ep.audio_url = audioUrl;
+      saveLocalPodcasts(list);
+      return true;
+    }
+    return false;
   },
 
   async deletePodcastEpisode(episodeId: string): Promise<boolean> {
