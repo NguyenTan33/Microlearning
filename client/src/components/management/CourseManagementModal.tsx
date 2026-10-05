@@ -545,25 +545,71 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
       <div className="relative w-full max-w-6xl max-h-[92vh] bg-[#0A0F1F] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         
         {/* Header Modal */}
-        <div className="px-6 py-4.5 border-b border-white/10 flex items-center justify-between gap-4 bg-[#0D1429]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Layers className="w-5 h-5" />
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4.5 border-b border-white/10 bg-[#0D1429] flex flex-col gap-2.5 sm:gap-3">
+          {/* Hàng 1 (Top Row): Logo/Icon + Tiêu đề + Badge bên trái, Nút đóng [X] & Nút Desktop bên phải */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                <Layers className="w-4.5 sm:w-5 h-4.5 sm:h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight">
+                    Studio Quản Lý Khóa Học & Bài Giảng
+                  </h2>
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 whitespace-nowrap">
+                    TEACHER & ADMIN
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden sm:block">
+                  Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                Studio Quản Lý Khóa Học & Bài Giảng
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300">
-                  TEACHER & ADMIN
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
-              </p>
+
+            {/* Desktop Actions & Nút đóng [X] */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="hidden sm:flex items-center gap-2">
+                {!selectedCourseDetail ? (
+                  <button
+                    onClick={() => {
+                      setEditingCourse(null);
+                      setCourseForm({ title: '', description: '', thumbnailUrl: '' });
+                      setShowCourseModal(true);
+                    }}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo Khóa Học Mới</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setSelectedCourseDetail(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Danh sách khóa học</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Đóng Studio"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Hàng 2 (Mô tả chi tiết nằm riêng biệt trên Mobile) */}
+          <p className="text-[11px] text-slate-400 sm:hidden leading-relaxed">
+            Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+          </p>
+
+          {/* Hàng 3 (Nút hành động nằm riêng thành 1 hàng bên dưới trên Mobile để không bị bể chữ) */}
+          <div className="sm:hidden flex items-center gap-2 pt-1 border-t border-white/5">
             {!selectedCourseDetail ? (
               <button
                 onClick={() => {
@@ -571,7 +617,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   setCourseForm({ title: '', description: '', thumbnailUrl: '' });
                   setShowCourseModal(true);
                 }}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tạo Khóa Học Mới</span>
@@ -579,19 +625,12 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
             ) : (
               <button
                 onClick={() => setSelectedCourseDetail(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Danh sách khóa học</span>
+                <span>Quay lại danh sách khóa học</span>
               </button>
             )}
-
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
