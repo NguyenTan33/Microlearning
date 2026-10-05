@@ -8,9 +8,19 @@ import {
 
 /**
  * Trả về URL phát video trực tuyến (HTTP 206 Range Stream).
+ * Tự động ánh xạ sang Azure Backend khi chạy ở môi trường Production.
  */
 export function getVideoStreamUrl(mediaId: number): string {
-  return `/api/media/${mediaId}/stream`;
+  if (!mediaId || mediaId <= 0) {
+    return '/videos/test.mp4';
+  }
+
+  const BACKEND_BASE = (
+    import.meta.env.VITE_BACKEND_URL ||
+    (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
+  ).replace(/\/$/, '');
+
+  return `${BACKEND_BASE}/api/media/${mediaId}/stream`;
 }
 
 /**
