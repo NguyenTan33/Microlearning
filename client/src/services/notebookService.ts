@@ -199,6 +199,41 @@ function saveLocalSources(sources: NotebookSource[]) {
   } catch {}
 }
 
+const LOCAL_STORAGE_PODCASTS_KEY = 'microlearning_podcasts_store';
+
+function getLocalPodcasts(): PodcastEpisode[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_PODCASTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+
+  const defaults: PodcastEpisode[] = [
+    {
+      id: 'pod-demo-01',
+      name: 'Podcast Tóm tắt: Hàm VLOOKUP và XLOOKUP trong 3 phút',
+      episode_profile: 'Chuyên gia Độc thoại (Solo Expert)',
+      created: new Date().toISOString(),
+      status: 'completed',
+      audio_url: '/videos/test.mp4',
+      transcript:
+        'Host (Tuấn): Chào mừng các bạn đến với MicroLearning Audio Podcast! Hôm nay chúng ta sẽ cùng tìm hiểu về sự khác biệt cốt lõi giữa hàm VLOOKUP và XLOOKUP trong Excel.\n\n' +
+        'Chuyên gia (Hà): Chào Tuấn và các bạn học viên! Điểm khác biệt lớn nhất là XLOOKUP khắc phục hoàn toàn nhược điểm của VLOOKUP: nó có thể dò tìm cả sang trái lẫn sang phải, mặc định tìm kiếm chính xác tuyệt đối mà không cần nhập số 0, và đặc biệt là không bị lỗi khi người dùng chèn thêm cột mới trong bảng dữ liệu.\n\n' +
+        'Host (Tuấn): Cảm ơn chị Hà! Tóm lại, nếu dùng Excel 365 hoặc phiên bản mới, hãy ưu tiên dùng XLOOKUP để bảng tính gọn gàng và ổn định nhất!',
+    },
+  ];
+  saveLocalPodcasts(defaults);
+  return defaults;
+}
+
+function saveLocalPodcasts(podcasts: PodcastEpisode[]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_PODCASTS_KEY, JSON.stringify(podcasts));
+  } catch {}
+}
+
 export const notebookService = {
   getWebStudioUrl(): string {
     return WEB_STUDIO_URL;
