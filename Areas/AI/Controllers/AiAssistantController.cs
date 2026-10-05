@@ -119,7 +119,7 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
                 }
                 if (string.IsNullOrWhiteSpace(geminiKey))
                 {
-                    geminiKey = "AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA";
+                    geminiKey = "AQ.Ab8RN6IU__S0xb738vmhz5jiEwfwoH1j-MQShkz18FQAWkavig";
                 }
 
                 var answer = await CallGeminiAsync(systemPrompt, userPrompt.ToString(), geminiKey, cancellationToken);
@@ -194,7 +194,7 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
         {
             var keysToTry = new List<string>();
             if (!string.IsNullOrWhiteSpace(apiKey)) keysToTry.Add(apiKey.Trim());
-            const string fallbackKey = "AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA";
+            const string fallbackKey = "AQ.Ab8RN6IU__S0xb738vmhz5jiEwfwoH1j-MQShkz18FQAWkavig";
             if (!keysToTry.Contains(fallbackKey)) keysToTry.Add(fallbackKey);
 
             // Danh sách model ưu tiên theo tốc độ và độ ổn định cao nhất (đã xác thực khả dụng)

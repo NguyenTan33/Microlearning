@@ -3,7 +3,7 @@
  * Cung cấp khả năng gọi AI siêu tốc (0.8s), không phụ thuộc trung gian, hỗ trợ CORS hoàn hảo.
  */
 
-const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6K3X9xVsjXxx0TGUlH5V29wnwSoEywmlKI6502-KeebbA';
+const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6IU__S0xb738vmhz5jiEwfwoH1j-MQShkz18FQAWkavig';
 
 // Danh sách model Google Gemini tối ưu, có tốc độ phản hồi nhanh và quota dồi dào
 const FAST_GEMINI_MODELS = [

@@ -217,7 +217,7 @@ function getLocalPodcasts(): PodcastEpisode[] {
       episode_profile: 'Chuyên gia Độc thoại (Solo Expert)',
       created: new Date().toISOString(),
       status: 'completed',
-      audio_url: '/videos/test.mp4',
+      audio_url: '/audio/podcast_demo.mp3',
       transcript:
         'Host (Tuấn): Chào mừng các bạn đến với MicroLearning Audio Podcast! Hôm nay chúng ta sẽ cùng tìm hiểu về sự khác biệt cốt lõi giữa hàm VLOOKUP và XLOOKUP trong Excel.\n\n' +
         'Chuyên gia (Hà): Chào Tuấn và các bạn học viên! Điểm khác biệt lớn nhất là XLOOKUP khắc phục hoàn toàn nhược điểm của VLOOKUP: nó có thể dò tìm cả sang trái lẫn sang phải, mặc định tìm kiếm chính xác tuyệt đối mà không cần nhập số 0, và đặc biệt là không bị lỗi khi người dùng chèn thêm cột mới trong bảng dữ liệu.\n\n' +
@@ -685,7 +685,7 @@ export const notebookService = {
       speaker_profile: speakerProfile,
       status: 'completed',
       created: new Date().toISOString(),
-      audio_url: '/videos/test.mp4',
+      audio_url: '/audio/podcast_demo.mp3',
       transcript: script,
     };
 
@@ -729,8 +729,8 @@ export const notebookService = {
   getPodcastAudioUrl(episodeId: string): string {
     const list = getLocalPodcasts();
     const ep = list.find((p) => p.id === episodeId);
-    if (ep?.audio_url) return ep.audio_url;
-    return '/videos/test.mp4';
+    if (ep?.audio_url && ep.audio_url.endsWith('.mp3')) return ep.audio_url;
+    return '/audio/podcast_demo.mp3';
   },
 };
 
