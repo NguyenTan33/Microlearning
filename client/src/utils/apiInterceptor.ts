@@ -5,7 +5,7 @@
 export function setupApiInterceptor() {
   const BACKEND_BASE = (
     import.meta.env.VITE_BACKEND_URL ||
-    (import.meta.env.PROD ? 'https://microlearning-backend.azurewebsites.net' : '')
+    (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
   ).replace(/\/$/, '');
 
   if (!BACKEND_BASE) return;
