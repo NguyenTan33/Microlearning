@@ -391,4 +391,32 @@ export const catalogApi = {
       lessonId?: number;
     }>(res);
   },
+
+  /**
+   * Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc Direct URL) cho bài giảng
+   */
+  async linkExternalLessonVideo(request: {
+    lessonId: number;
+    url: string;
+    title?: string;
+    durationSeconds?: number;
+  }): Promise<import('../types/media.types').LessonMediaInfo> {
+    const res = await fetch('/api/media/link-external', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return await handleResponse<import('../types/media.types').LessonMediaInfo>(res);
+  },
+
+  /**
+   * Lấy thông tin nguồn phát video chi tiết của bài giảng (Azure, YouTube, Vimeo, Direct URL)
+   */
+  async getLessonMediaInfo(lessonId: number): Promise<import('../types/media.types').LessonMediaInfo> {
+    const res = await fetch(`/api/media/lesson/${lessonId}/info`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<import('../types/media.types').LessonMediaInfo>(res);
+  },
 };
