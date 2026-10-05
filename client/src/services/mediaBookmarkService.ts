@@ -20,12 +20,12 @@ export function formatBookmarkTime(secs: number): string {
 }
 
 /**
- * Service quản lý mốc cắm cờ (Flag Points / Media Bookmarks) lưu trữ theo từng bài học.
- * Theo yêu cầu nghiệp vụ: Chỉ hỗ trợ Thêm, Tìm kiếm theo mốc, và Xóa; KHÔNG có tính năng Sửa.
+ * Service quản lý mốc cắm cờ (Flag Points / Media Bookmarks) lưu trữ theo từng bài học và toàn hệ thống.
+ * Theo yêu cầu nghiệp vụ: Chỉ hỗ trợ Thêm, Xem tất cả, Nhảy tới mốc, và Xóa; KHÔNG có tính năng Sửa.
  */
 export const mediaBookmarkService = {
   /**
-   * Lấy danh sách toàn bộ các điểm đánh dấu của một bài học (đã sắp xếp theo thời gian tăng dần).
+   * Lấy danh sách toàn bộ các điểm đánh dấu của một bài học cụ thể (sắp xếp theo timeline video).
    */
   getBookmarks(lessonId: number): MediaBookmark[] {
     try {
@@ -33,11 +33,42 @@ export const mediaBookmarkService = {
       if (!raw) return [];
       const items: MediaBookmark[] = JSON.parse(raw);
       if (!Array.isArray(items)) return [];
-      // Sắp xếp tăng dần theo mốc giây trên video
       return items.sort((a, b) => a.timestamp - b.timestamp);
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Lấy toàn bộ các điểm đánh dấu trên tất cả các khóa học & bài học trong hệ thống.
+   */
+  getAllBookmarks(): MediaBookmark[] {
+    try {
+      const all: MediaBookmark[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(STORAGE_PREFIX)) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const list: MediaBookmark[] = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              all.push(...list);
+            }
+          }
+        }
+      }
+      // Sắp xếp mới nhất lên đầu
+      return all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Đếm tổng số điểm đánh dấu hiện có trên toàn hệ thống.
+   */
+  getAllBookmarksCount(): number {
+    return this.getAllBookmarks().length;
   },
 
   /**
@@ -55,6 +86,9 @@ export const mediaBookmarkService = {
       id: newId,
       lessonId: payload.lessonId,
       mediaId: payload.mediaId,
+      courseId: payload.courseId,
+      courseTitle: payload.courseTitle,
+      lessonTitle: payload.lessonTitle,
       timestamp: Number(payload.timestamp.toFixed(1)),
       formattedTime,
       title: payload.title?.trim() || `Mốc đánh dấu lúc ${formattedTime}`,
@@ -79,9 +113,23 @@ export const mediaBookmarkService = {
   },
 
   /**
-   * Xóa toàn bộ các điểm đánh dấu của bài học.
+   * Xóa toàn bộ điểm đánh dấu của một bài học.
    */
   clearBookmarks(lessonId: number): void {
     localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
+  },
+
+  /**
+   * Xóa toàn bộ điểm đánh dấu trong hệ thống.
+   */
+  clearAllBookmarks(): void {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
   },
 };
