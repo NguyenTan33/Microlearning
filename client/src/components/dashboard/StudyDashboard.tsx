@@ -189,9 +189,6 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 <span className="text-base sm:text-lg font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
                   MicroLearn
                 </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/40 text-indigo-300">
-                  Online
-                </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
                 Hệ thống Học tập &amp; Đánh giá Năng lực Trực tuyến
