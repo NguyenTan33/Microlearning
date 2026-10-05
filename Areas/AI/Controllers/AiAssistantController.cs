@@ -171,7 +171,7 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
             {
                 status = "Online",
                 service = "MicroLearning AI Gateway",
-                model = "Google Gemini 1.5 Flash + Open Notebook Knowledge Base",
+                model = "Google Gemini 3.5 Flash-Lite (Siêu tốc)",
                 openNotebookContainerUrl = openNotebookUrl,
                 timestamp = DateTime.UtcNow
             });
@@ -185,49 +185,61 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
         {
             if (string.IsNullOrWhiteSpace(apiKey)) return null;
 
-            try
-            {
-                var client = _httpClientFactory.CreateClient();
-                var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
+            // Danh sách model ưu tiên theo tốc độ và độ ổn định cao nhất
+            var modelsToTry = new[] { "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.8-flash" };
 
-                var payload = new
+            foreach (var model in modelsToTry)
+            {
+                try
                 {
-                    system_instruction = new
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    cts.CancelAfter(TimeSpan.FromSeconds(7));
+
+                    var client = _httpClientFactory.CreateClient();
+                    var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+
+                    var payload = new
                     {
-                        parts = new[] { new { text = systemInstruction } }
-                    },
-                    contents = new[]
-                    {
-                        new
+                        system_instruction = new
                         {
-                            role = "user",
-                            parts = new[] { new { text = userText } }
+                            parts = new[] { new { text = systemInstruction } }
+                        },
+                        contents = new[]
+                        {
+                            new
+                            {
+                                role = "user",
+                                parts = new[] { new { text = userText } }
+                            }
+                        },
+                        generationConfig = new
+                        {
+                            temperature = 0.7,
+                            maxOutputTokens = 1500
                         }
-                    },
-                    generationConfig = new
+                    };
+
+                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await client.PostAsync(endpoint, content, cts.Token);
+
+                    if (response.IsSuccessStatusCode)
                     {
-                        temperature = 0.7,
-                        maxOutputTokens = 1500
+                        var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
+                        var node = JsonNode.Parse(responseJson);
+                        var text = node?["candidates"]?[0]?["content"]?[0]?["parts"]?[0]?["text"]?.ToString()
+                                   ?? node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            return text;
+                        }
                     }
-                };
 
-                var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(endpoint, content, ct);
-
-                if (response.IsOk())
-                {
-                    var responseJson = await response.Content.ReadAsStringAsync(ct);
-                    var node = JsonNode.Parse(responseJson);
-                    var text = node?["candidates"]?[0]?["content"]?[0]?["parts"]?[0]?["text"]?.ToString()
-                               ?? node?["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
-                    return text;
+                    _logger.LogWarning("Gemini API ({Model}) trả về mã {StatusCode}", model, response.StatusCode);
                 }
-
-                _logger.LogWarning("Gemini API returned status {StatusCode}", response.StatusCode);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("CallGeminiAsync exception: {Message}", ex.Message);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("CallGeminiAsync ({Model}) gặp ngoại lệ: {Message}", model, ex.Message);
+                }
             }
 
             return null;
@@ -237,8 +249,11 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
         {
             try
             {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(3)); // Giới hạn tối đa 3 giây để tránh làm đơ hệ thống nếu container bị treo
+
                 var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(25);
+                client.Timeout = TimeSpan.FromSeconds(3);
                 var endpoint = $"{baseUrl.TrimEnd('/')}/api/ask";
 
                 var payload = new
@@ -248,11 +263,11 @@ Nếu có thông tin bài học được cung cấp, hãy ưu tiên bám sát n�
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(endpoint, content, ct);
+                var response = await client.PostAsync(endpoint, content, cts.Token);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseJson = await response.Content.ReadAsStringAsync(ct);
+                    var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
                     var node = JsonNode.Parse(responseJson);
                     return node?["answer"]?.ToString() ?? node?["response"]?.ToString();
                 }
