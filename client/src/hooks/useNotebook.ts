@@ -333,7 +333,7 @@ export function useNotebook(initialCourseName?: string) {
     [activeNotebook]
   );
 
-  // Hỏi đáp AI với Gemini 3.5 Flash-Lite (Ask RAG)
+  // Hỏi đáp AI Tri Thức (Ask RAG)
   const askQuestion = useCallback(
     async (questionText: string) => {
       if (!activeNotebook) {
