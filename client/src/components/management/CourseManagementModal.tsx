@@ -1656,7 +1656,7 @@ D. Chỉ học lý thuyết`}
                     }}
                     className="px-2.5 py-1 rounded-lg bg-purple-950 border border-purple-500/30 text-purple-300 hover:bg-purple-900 text-[11px] font-semibold cursor-pointer"
                   >
-                    + Thêm câu hỏi thủ công
+                    + Thêm câu hỏi
                   </button>
                 </div>
 
