@@ -44,7 +44,7 @@ export const notebookService = {
           isOnline: true,
           apiUrl: 'http://localhost:5055',
           webUrl: WEB_STUDIO_URL,
-          modelName: 'Gemini 3.8 Flash (RAG Active)',
+          modelName: 'Gemini 3.5 Flash-Lite (Siêu nhanh & Ổn định)',
         };
       }
       return {
