@@ -81,6 +81,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     searchKnowledge,
     askQuestion,
     createPodcast,
+    removePodcast,
   } = useNotebook(currentCourse?.title);
 
   // States cho Modals & Forms
@@ -115,8 +116,9 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   const [askQuestionInput, setAskQuestionInput] = useState<string>('');
   const [searchFilterType, setSearchFilterType] = useState<'text' | 'vector'>('text');
 
-  // Audio Podcast Player
+  // Audio Podcast Player & Transcript view
   const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
+  const [viewingTranscriptId, setViewingTranscriptId] = useState<string | null>(null);
 
   // Mở modal thêm Source có chỉ định trước Sổ tay đích
   const openAddSourceModal = (initialNotebookId?: string, defaultMode: 'UPLOAD' | 'TEXT' | 'LESSON' = 'UPLOAD') => {
@@ -1124,34 +1126,90 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                           <p className="text-[11px] text-slate-400 font-mono">ID: {ep.id}</p>
                         </div>
 
-                        <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between">
+                        <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between gap-2">
                           {isJobRunning ? (
                             <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-950/40 px-3 py-1.5 rounded-xl border border-amber-500/30">
                               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                               <span>Đang tổng hợp âm thanh...</span>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => {
-                                setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-pink-600/20"
-                            >
-                              {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                              <span>{playingPodcastId === ep.id ? 'Dừng phát' : 'Nghe Podcast'}</span>
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setPlayingPodcastId(playingPodcastId === ep.id ? null : ep.id);
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-pink-600/80 hover:bg-pink-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-pink-600/20"
+                              >
+                                {playingPodcastId === ep.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                <span>{playingPodcastId === ep.id ? 'Dừng phát' : 'Nghe Podcast'}</span>
+                              </button>
+
+                              {ep.transcript && (
+                                <button
+                                  onClick={() => {
+                                    setViewingTranscriptId(viewingTranscriptId === ep.id ? null : ep.id);
+                                  }}
+                                  className={`p-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                                    viewingTranscriptId === ep.id
+                                      ? 'bg-purple-900/50 border-purple-500/50 text-purple-200'
+                                      : 'bg-slate-800 hover:bg-slate-700 border-white/10 text-slate-300'
+                                  }`}
+                                  title="Xem kịch bản thoại AI"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Kịch bản</span>
+                                </button>
+                              )}
+                            </div>
                           )}
+
+                          <button
+                            onClick={() => {
+                              if (confirm(`Bạn có chắc muốn xóa tập Podcast "${ep.name}"?`)) {
+                                removePodcast(ep.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
+                            title="Xóa tập Podcast này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
 
                         {/* Trình phát âm thanh khi bấm play */}
                         {playingPodcastId === ep.id && !isJobRunning && (
-                          <div className="mt-3 pt-2">
+                          <div className="mt-3 pt-2 border-t border-white/5 space-y-1.5">
                             <audio
                               src={notebookService.getPodcastAudioUrl(ep.id)}
                               controls
                               autoPlay
-                              className="w-full h-8"
+                              className="w-full h-8 rounded-lg"
                             />
+                            <p className="text-[10px] text-slate-400 italic text-center">
+                              Đang phát tóm tắt âm thanh bài giảng AI
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Kịch bản đối thoại chi tiết (Transcript) */}
+                        {viewingTranscriptId === ep.id && ep.transcript && (
+                          <div className="mt-3 p-3 rounded-xl bg-slate-950/80 border border-purple-500/30 text-xs text-slate-200 space-y-2 max-h-56 overflow-y-auto animate-fadeIn">
+                            <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                              <span className="font-semibold text-purple-300 text-[11px] flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" /> Kịch bản thoại AI
+                              </span>
+                              <button
+                                onClick={() => setViewingTranscriptId(null)}
+                                className="text-slate-400 hover:text-white text-[10px]"
+                              >
+                                Đóng
+                              </button>
+                            </div>
+                            <div className="text-[11px] leading-relaxed whitespace-pre-line text-slate-300">
+                              {typeof ep.transcript === 'string'
+                                ? ep.transcript
+                                : JSON.stringify(ep.transcript, null, 2)}
+                            </div>
                           </div>
                         )}
                       </div>
