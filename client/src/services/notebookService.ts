@@ -16,6 +16,27 @@ const WEB_STUDIO_URL = 'http://localhost:8502';
 const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
 /**
+ * Kiểm tra xem phản hồi mạng có thực sự là dữ liệu JSON hay không
+ * (Tránh trường hợp Azure Static Web Apps trả về HTML của index.html gây lỗi JSON.parse)
+ */
+function isJsonResponse(res: Response): boolean {
+  const ct = res.headers.get('content-type') || '';
+  return ct.toLowerCase().includes('application/json');
+}
+
+/**
+ * Helper parse JSON an toàn tuyệt đối, không bao giờ ném ngoại lệ JSON.parse làm sập UI
+ */
+async function safeJson<T>(res: Response, fallback: T): Promise<T> {
+  try {
+    if (!isJsonResponse(res)) return fallback;
+    return await res.json();
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Helper gọi fetch có timeout an toàn, tuyệt đối không để trình duyệt bị treo
  */
 async function timeoutFetch(url: string, options: RequestInit = {}, timeoutMs: number = 3000): Promise<Response> {
@@ -29,7 +50,7 @@ async function timeoutFetch(url: string, options: RequestInit = {}, timeoutMs: n
 }
 
 /**
- * Gọi container Open Notebook có timeout 2.5s; không bao giờ gọi http://localhost khi chạy trên HTTPS Production
+ * Gọi container Open Notebook có timeout 2.5s; bảo đảm chỉ chấp nhận phản hồi JSON thật
  */
 async function requestWithFallback(endpoint: string, options: RequestInit = {}, timeoutMs: number = 2500): Promise<Response> {
   const headers = {
@@ -40,30 +61,32 @@ async function requestWithFallback(endpoint: string, options: RequestInit = {}, 
   // 1. Thử gọi trực tiếp Cloud Azure Container App với timeout ngắn
   try {
     const res = await timeoutFetch(`${DIRECT_API_BASE}${endpoint}`, { ...options, headers }, timeoutMs);
-    if (res.ok) return res;
+    if (res.ok && isJsonResponse(res)) return res;
   } catch {
     // tiếp tục fallback nếu cloud chưa phản hồi hoặc timeout
   }
 
-  // 2. Thử gọi qua Vite Proxy (khi chạy local dev)
-  try {
-    const res = await timeoutFetch(`${API_BASE}${endpoint}`, { ...options, headers }, 2000);
-    if (res.ok) return res;
-  } catch {
-    // tiếp tục
+  // 2. CHỈ thử gọi qua Vite Proxy khi ở môi trường Local Development (import.meta.env.DEV)
+  if (import.meta.env.DEV) {
+    try {
+      const res = await timeoutFetch(`${API_BASE}${endpoint}`, { ...options, headers }, 2000);
+      if (res.ok && isJsonResponse(res)) return res;
+    } catch {
+      // tiếp tục
+    }
   }
 
-  // 3. Fallback về Local Docker CHỈ khi không ở môi trường HTTPS Production
-  if (!isHttps) {
+  // 3. Fallback về Local Docker CHỈ khi ở môi trường DEV và không dùng HTTPS
+  if (import.meta.env.DEV && !isHttps) {
     try {
       const res = await timeoutFetch(`${LOCAL_FALLBACK_BASE}${endpoint}`, { ...options, headers }, 2000);
-      if (res.ok) return res;
+      if (res.ok && isJsonResponse(res)) return res;
     } catch {
       // bỏ qua
     }
   }
 
-  throw new Error(`Dịch vụ Container không phản hồi cho endpoint ${endpoint}`);
+  throw new Error(`Dịch vụ Container không phản hồi JSON hợp lệ cho endpoint ${endpoint}`);
 }
 
 // =========================================================================
@@ -75,7 +98,10 @@ const LOCAL_STORAGE_SOURCES_KEY = 'microlearning_sources_store';
 function getLocalNotebooks(): Notebook[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_NOTEBOOKS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
   } catch {}
 
   const defaults: Notebook[] = [
@@ -122,7 +148,10 @@ function saveLocalNotebooks(notebooks: Notebook[]) {
 function getLocalSources(): NotebookSource[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_SOURCES_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
   } catch {}
 
   const defaults: NotebookSource[] = [
@@ -181,7 +210,7 @@ export const notebookService = {
     // 1. Kiểm tra nhanh Container App (timeout 2s)
     try {
       const res = await requestWithFallback('/config', { method: 'GET' }, 2000);
-      if (res.ok) {
+      if (res.ok && isJsonResponse(res)) {
         return {
           isOnline: true,
           apiUrl: AZURE_NOTEBOOK_URL,
@@ -193,11 +222,16 @@ export const notebookService = {
 
     // 2. Fallback sang Cổng AI Gateway Backend Azure (.NET 8)
     try {
-      const res = await timeoutFetch('/api/AiAssistant/status', { method: 'GET' }, 2500);
-      if (res.ok) {
+      const BACKEND_BASE = (
+        import.meta.env.VITE_BACKEND_URL ||
+        (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
+      ).replace(/\/$/, '');
+
+      const res = await timeoutFetch(`${BACKEND_BASE}/api/AiAssistant/status`, { method: 'GET' }, 2500);
+      if (res.ok && isJsonResponse(res)) {
         return {
           isOnline: true,
-          apiUrl: '/api/AiAssistant',
+          apiUrl: `${BACKEND_BASE}/api/AiAssistant`,
           webUrl: WEB_STUDIO_URL,
           modelName: 'Google Gemini 3.5 Flash-Lite (Siêu tốc)',
         };
@@ -219,8 +253,8 @@ export const notebookService = {
   async getNotebooks(): Promise<Notebook[]> {
     try {
       const res = await requestWithFallback('/notebooks', { method: 'GET' }, 2000);
-      if (res.ok) {
-        const data = await res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<Notebook[]>(res, []);
         if (Array.isArray(data) && data.length > 0) {
           saveLocalNotebooks(data);
           return data;
@@ -237,15 +271,16 @@ export const notebookService = {
         method: 'POST',
         body: JSON.stringify({ name, description }),
       }, 2500);
-      if (res.ok) {
-        const nb = await res.json();
-        const current = getLocalNotebooks();
-        saveLocalNotebooks([nb, ...current]);
-        return nb;
+      if (res.ok && isJsonResponse(res)) {
+        const nb = await safeJson<Notebook | null>(res, null);
+        if (nb && nb.id) {
+          const current = getLocalNotebooks();
+          saveLocalNotebooks([nb, ...current]);
+          return nb;
+        }
       }
     } catch {}
 
-    // Lưu cục bộ nếu cloud không phản hồi
     const newNb: Notebook = {
       id: `nb-${Date.now()}`,
       name,
@@ -272,10 +307,12 @@ export const notebookService = {
   async getSourcesByNotebook(notebookId: string): Promise<NotebookSource[]> {
     try {
       const res = await requestWithFallback(`/sources?notebook_id=${encodeURIComponent(notebookId)}`, { method: 'GET' }, 2000);
-      if (res.ok) return res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<NotebookSource[]>(res, []);
+        if (Array.isArray(data)) return data;
+      }
     } catch {}
 
-    // Lấy nguồn cục bộ
     return getLocalSources();
   },
 
@@ -315,9 +352,11 @@ export const notebookService = {
         requestWithFallback(`/notebooks/${notebookId}`, { method: 'GET' }, 2000),
         this.getSourcesByNotebook(notebookId).catch(() => [] as NotebookSource[]),
       ]);
-      if (nbRes.ok) {
-        const notebook = await nbRes.json();
-        return { notebook, sources };
+      if (nbRes.ok && isJsonResponse(nbRes)) {
+        const notebook = await safeJson<Notebook | null>(nbRes, null);
+        if (notebook) {
+          return { notebook, sources };
+        }
       }
     } catch {}
 
@@ -334,8 +373,8 @@ export const notebookService = {
   async getAllSources(): Promise<NotebookSource[]> {
     try {
       const res = await requestWithFallback('/sources', { method: 'GET' }, 2000);
-      if (res.ok) {
-        const data = await res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<NotebookSource[]>(res, []);
         if (Array.isArray(data) && data.length > 0) {
           saveLocalSources(data);
           return data;
@@ -349,7 +388,10 @@ export const notebookService = {
   async getSourceDetail(sourceId: string): Promise<NotebookSource> {
     try {
       const res = await requestWithFallback(`/sources/${sourceId}`, { method: 'GET' }, 2000);
-      if (res.ok) return res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<NotebookSource | null>(res, null);
+        if (data) return data;
+      }
     } catch {}
 
     const sources = getLocalSources();
@@ -384,11 +426,13 @@ export const notebookService = {
         method: 'POST',
         body: JSON.stringify(body),
       }, 2500);
-      if (res.ok) {
-        const src = await res.json();
-        const current = getLocalSources();
-        saveLocalSources([src, ...current]);
-        return src;
+      if (res.ok && isJsonResponse(res)) {
+        const src = await safeJson<NotebookSource | null>(res, null);
+        if (src) {
+          const current = getLocalSources();
+          saveLocalSources([src, ...current]);
+          return src;
+        }
       }
     } catch {}
 
@@ -446,9 +490,9 @@ export const notebookService = {
         }),
       }, 2500);
 
-      if (res.ok) {
-        const data = await res.json();
-        return data.results || [];
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<{ results?: SearchResult[] }>(res, {});
+        if (Array.isArray(data.results)) return data.results;
       }
     } catch {}
 
@@ -478,43 +522,50 @@ export const notebookService = {
         }),
       }, 2500);
 
-      if (sessionRes.ok) {
-        const session = await sessionRes.json();
-        const chatRes = await requestWithFallback('/chat/execute', {
-          method: 'POST',
-          body: JSON.stringify({
-            session_id: session.id,
-            message: question,
-            context: {},
-          }),
-        }, 5000);
+      if (sessionRes.ok && isJsonResponse(sessionRes)) {
+        const session = await safeJson<{ id?: string }>(sessionRes, {});
+        if (session.id) {
+          const chatRes = await requestWithFallback('/chat/execute', {
+            method: 'POST',
+            body: JSON.stringify({
+              session_id: session.id,
+              message: question,
+              context: {},
+            }),
+          }, 5000);
 
-        if (chatRes.ok) {
-          const chatData = await chatRes.json();
-          const assistantMsg = chatData.messages?.find((m: { type: string; content: string }) => m.type === 'ai');
-          if (assistantMsg?.content) return assistantMsg.content;
+          if (chatRes.ok && isJsonResponse(chatRes)) {
+            const chatData = await safeJson<{ messages?: Array<{ type: string; content: string }> }>(chatRes, {});
+            const assistantMsg = chatData.messages?.find((m) => m.type === 'ai');
+            if (assistantMsg?.content) return assistantMsg.content;
+          }
         }
       }
     } catch {}
 
-    // 2. Tự động chuyển tiếp câu hỏi sang Backend AI Gateway (Google Gemini 3.5 Flash-Lite - 1.1 giây)
+    // 2. Chuyển tiếp câu hỏi sang Backend AI Gateway (Google Gemini 3.5 Flash-Lite - 1.1s)
     try {
       const localSources = getLocalSources();
       const contextText = localSources
         .map((s) => `[Tài liệu: ${s.title}]\n${s.full_text || ''}`)
         .join('\n\n');
 
-      const res = await timeoutFetch('/api/AiAssistant/ask', {
+      const BACKEND_BASE = (
+        import.meta.env.VITE_BACKEND_URL ||
+        (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
+      ).replace(/\/$/, '');
+
+      const res = await timeoutFetch(`${BACKEND_BASE}/api/AiAssistant/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
           customContext: contextText.length > 0 ? contextText : undefined,
         }),
-      }, 8000);
+      }, 9000);
 
-      if (res.ok) {
-        const data = await res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<{ answer?: string }>(res, {});
         if (data.answer) {
           return data.answer;
         }
@@ -534,7 +585,10 @@ export const notebookService = {
   async getPodcastEpisodes(): Promise<PodcastEpisode[]> {
     try {
       const res = await requestWithFallback('/podcasts/episodes', { method: 'GET' }, 2000);
-      if (res.ok) return res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<PodcastEpisode[]>(res, []);
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch {}
 
     return [
@@ -551,7 +605,10 @@ export const notebookService = {
   async getEpisodeProfiles(): Promise<EpisodeProfile[]> {
     try {
       const res = await requestWithFallback('/episode-profiles', { method: 'GET' }, 2000);
-      if (res.ok) return res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<EpisodeProfile[]>(res, []);
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch {}
 
     return [
@@ -591,8 +648,9 @@ export const notebookService = {
         }),
       }, 5000);
 
-      if (res.ok) {
-        return res.json();
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<{ job_id?: string; message?: string }>(res, {});
+        if (data.job_id) return data as { job_id: string; message: string };
       }
     } catch {}
 
