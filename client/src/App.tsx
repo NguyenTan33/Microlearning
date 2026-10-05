@@ -45,16 +45,16 @@ const App: React.FC = () => {
       </div>
 
       {/* Main Container - 1440px layout */}
-      <main className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-4 lg:py-8 flex-1 flex items-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 xl:gap-14 w-full items-center">
-          {/* Left Column: Education Hero & Interactive Tablet Showcase (~60%) */}
-          <div className="lg:col-span-7 xl:col-span-7 h-full">
-            <MicrolearningHeroShowcase />
+      <main className="relative z-10 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-2 sm:py-4 lg:py-8 flex-1 flex items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10 xl:gap-14 w-full items-center">
+          {/* Right Column: Clean Dark Academic Auth Card (~40%) - Hiển thị lên ĐẦU TIÊN trên Mobile (order-1) */}
+          <div className="order-1 lg:order-2 lg:col-span-5 xl:col-span-5 w-full flex justify-center">
+            <AuthActionCard />
           </div>
 
-          {/* Right Column: Clean Dark Academic Auth Card (~40%) */}
-          <div className="lg:col-span-5 xl:col-span-5 w-full flex justify-center">
-            <AuthActionCard />
+          {/* Left Column: Education Hero & Interactive Tablet Showcase (~60%) - Hiển thị sau trên Mobile (order-2) */}
+          <div className="order-2 lg:order-1 lg:col-span-7 xl:col-span-7 h-full">
+            <MicrolearningHeroShowcase />
           </div>
         </div>
       </main>
