@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Exceptions;
@@ -16,16 +18,31 @@ namespace Microlearning.Areas.Media.Services
         private readonly ApplicationDbContext _dbContext;
         private readonly IWebHostEnvironment _env;
         private readonly IValidationFactory _validationFactory;
+        private readonly IConfiguration _config;
+        private readonly ILogger<MediaService> _logger;
 
-        // Inject thêm IValidationFactory vào Constructor
         public MediaService(
             ApplicationDbContext context,
             IWebHostEnvironment env,
-            IValidationFactory validationFactory)
+            IValidationFactory validationFactory,
+            IConfiguration config,
+            ILogger<MediaService> logger)
         {
             _dbContext = context;
             _env = env;
             _validationFactory = validationFactory;
+            _config = config;
+            _logger = logger;
+        }
+
+        private BlobContainerClient? GetAzureBlobContainerClient()
+        {
+            var connectionString = _config["AzureBlobStorage:ConnectionString"]
+                                ?? Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
+            if (string.IsNullOrWhiteSpace(connectionString)) return null;
+
+            var containerName = _config["AzureBlobStorage:ContainerName"] ?? "videos";
+            return new BlobContainerClient(connectionString, containerName);
         }
 
         public async Task<(Stream stream, string contentType, long fileLength, string fileName)> GetVideoStreamAsync(int mediaId)
@@ -33,30 +50,70 @@ namespace Microlearning.Areas.Media.Services
             // 1. Gửi qua nhà máy Validation để kiểm tra MediaId
             await _validationFactory.ValidateAsync(new GetMediaStreamRequest(mediaId));
 
-            // 2. Tìm thông tin media asset trong DB
+            // 2. Tìm thông tin media asset trong DB (hỗ trợ cả tìm theo mediaId hoặc lessonId)
             var mediaAsset = await _dbContext.MediaAssets
                 .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.Id == mediaId);
+                .Where(m => m.Id == mediaId || m.LessonId == mediaId)
+                .OrderByDescending(m => m.Id == mediaId)
+                .ThenByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
 
             if (mediaAsset == null)
             {
+                // Dự phòng tệp demo mặc định nếu có
+                var fallbackDemo = GetFallbackDemoFilePath();
+                if (fallbackDemo != null)
+                {
+                    var fileInfo = new FileInfo(fallbackDemo);
+                    var stream = new FileStream(fallbackDemo, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return (stream, "video/mp4", fileInfo.Length, "test.mp4");
+                }
                 throw new BusinessException($"Không tìm thấy tệp video với ID = {mediaId}.");
             }
-
-            var filePath = GetPhysicalFilePath(mediaAsset.FileName);
-            if (!File.Exists(filePath))
-            {
-                throw new BusinessException($"Tệp video vật lý không tồn tại trên máy chủ: {mediaAsset.FileName}");
-            }
-
-            var fileInfo = new FileInfo(filePath);
-            var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
 
             var contentType = string.IsNullOrWhiteSpace(mediaAsset.ContentType)
                 ? "video/mp4"
                 : mediaAsset.ContentType;
 
-            return (stream, contentType, fileInfo.Length, mediaAsset.FileName);
+            // 3. Kiểm tra tệp vật lý cục bộ chính xác trên đĩa trước (nếu có cache trên máy)
+            var filePath = GetPhysicalFilePath(mediaAsset.FileName);
+            if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            {
+                var fileInfo = new FileInfo(filePath);
+                var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return (stream, contentType, fileInfo.Length, mediaAsset.FileName);
+            }
+
+            // 4. Nếu không có trên đĩa cứng máy chủ (môi trường Cloud/App Service), lấy trực tiếp từ Azure Blob Storage
+            var containerClient = GetAzureBlobContainerClient();
+            if (containerClient != null)
+            {
+                try
+                {
+                    var blobClient = containerClient.GetBlobClient(mediaAsset.FileName);
+                    if (await blobClient.ExistsAsync())
+                    {
+                        var properties = await blobClient.GetPropertiesAsync();
+                        var blobStream = await blobClient.OpenReadAsync(new BlobOpenReadOptions(allowModifications: false));
+                        return (blobStream, contentType, properties.Value.ContentLength, mediaAsset.FileName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Không thể đọc trực tiếp từ Azure Blob Storage: {Message}", ex.Message);
+                }
+            }
+
+            // 5. Dự phòng video test.mp4 nếu có trên máy chủ
+            var fallbackPath = GetFallbackDemoFilePath();
+            if (fallbackPath != null)
+            {
+                var fileInfo = new FileInfo(fallbackPath);
+                var stream = new FileStream(fallbackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return (stream, "video/mp4", fileInfo.Length, "test.mp4");
+            }
+
+            throw new BusinessException($"Tệp video không tồn tại trên máy chủ hoặc kho lưu trữ đám mây Azure: {mediaAsset.FileName}");
         }
 
         public async Task<MediaDownloadInfoResponse> GetDownloadInfoAsync(int mediaId, string baseUrl)
@@ -64,9 +121,12 @@ namespace Microlearning.Areas.Media.Services
             // 1. Gửi qua nhà máy Validation để kiểm tra MediaId và BaseUrl
             await _validationFactory.ValidateAsync(new GetMediaDownloadInfoRequest(mediaId, baseUrl));
 
-            // 2. Tìm thông tin trong DB
+            // 2. Tìm thông tin trong DB (hỗ trợ cả tìm theo mediaId hoặc lessonId)
             var mediaAsset = await _dbContext.MediaAssets
-                .FirstOrDefaultAsync(m => m.Id == mediaId);
+                .Where(m => m.Id == mediaId || m.LessonId == mediaId)
+                .OrderByDescending(m => m.Id == mediaId)
+                .ThenByDescending(m => m.CreatedAt)
+                .FirstOrDefaultAsync();
 
             if (mediaAsset == null)
             {
@@ -74,42 +134,67 @@ namespace Microlearning.Areas.Media.Services
             }
 
             var filePath = GetPhysicalFilePath(mediaAsset.FileName);
-            if (!File.Exists(filePath))
+            long actualSize = mediaAsset.SizeBytes;
+
+            if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
-                throw new BusinessException($"Tệp video vật lý không tồn tại: {mediaAsset.FileName}");
+                var fileInfo = new FileInfo(filePath);
+                actualSize = fileInfo.Length;
+
+                // Tự động tính mã băm SHA-256 và kích thước nếu chưa có
+                if (string.IsNullOrWhiteSpace(mediaAsset.Checksum) || mediaAsset.SizeBytes != actualSize)
+                {
+                    mediaAsset.Checksum = await CalculateSha256Async(filePath);
+                    mediaAsset.SizeBytes = actualSize;
+                    mediaAsset.UpdatedAt = DateTime.UtcNow;
+                    await _dbContext.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // Kiểm tra kích thước từ Azure Blob Storage nếu file không còn trên đĩa
+                var containerClient = GetAzureBlobContainerClient();
+                if (containerClient != null)
+                {
+                    try
+                    {
+                        var blobClient = containerClient.GetBlobClient(mediaAsset.FileName);
+                        if (await blobClient.ExistsAsync())
+                        {
+                            var properties = await blobClient.GetPropertiesAsync();
+                            actualSize = properties.Value.ContentLength;
+                            if (mediaAsset.SizeBytes != actualSize)
+                            {
+                                mediaAsset.SizeBytes = actualSize;
+                                mediaAsset.UpdatedAt = DateTime.UtcNow;
+                                await _dbContext.SaveChangesAsync();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Không thể lấy thông tin từ Azure Blob: {Message}", ex.Message);
+                    }
+                }
             }
 
-            var fileInfo = new FileInfo(filePath);
-            var actualSize = fileInfo.Length;
-
-            // 3. Tự động tính mã băm SHA-256 và kích thước nếu chưa có
-            if (string.IsNullOrWhiteSpace(mediaAsset.Checksum) || mediaAsset.SizeBytes != actualSize)
-            {
-                mediaAsset.Checksum = await CalculateSha256Async(filePath);
-                mediaAsset.SizeBytes = actualSize;
-                mediaAsset.UpdatedAt = DateTime.UtcNow;
-
-                await _dbContext.SaveChangesAsync();
-            }
-
-            var downloadUrl = $"{baseUrl.TrimEnd('/')}/api/media/{mediaId}/download";
+            var downloadUrl = $"{baseUrl.TrimEnd('/')}/api/media/{mediaAsset.Id}/download";
 
             return new MediaDownloadInfoResponse
             {
                 MediaId = mediaAsset.Id,
                 FileName = mediaAsset.FileName,
                 ContentType = string.IsNullOrWhiteSpace(mediaAsset.ContentType) ? "video/mp4" : mediaAsset.ContentType,
-                FileSizeBytes = mediaAsset.SizeBytes,
+                FileSizeBytes = actualSize,
                 Checksum = mediaAsset.Checksum,
                 DownloadUrl = downloadUrl
             };
         }
 
-        private string GetPhysicalFilePath(string fileName)
+        private string? GetPhysicalFilePath(string fileName)
         {
             var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 
-            // 1. Kiểm tra chính xác tệp fileName trên đĩa
             var target = Path.Combine(rootPath, "Videos", fileName);
             if (File.Exists(target))
             {
@@ -121,7 +206,13 @@ namespace Microlearning.Areas.Media.Services
                 return targetLower;
             }
 
-            // 2. Dự phòng dùng video demo test.mp4 nếu tệp chưa có
+            return null;
+        }
+
+        private string? GetFallbackDemoFilePath()
+        {
+            var rootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+
             var testMp4 = Path.Combine(rootPath, "Videos", "test.mp4");
             if (File.Exists(testMp4))
             {
@@ -133,7 +224,7 @@ namespace Microlearning.Areas.Media.Services
                 return testMp4Lower;
             }
 
-            return target;
+            return null;
         }
 
         public async Task<UploadMediaResponse> UploadVideoAsync(IFormFile file, int? lessonId, string baseUrl, CancellationToken cancellationToken = default)
@@ -155,20 +246,62 @@ namespace Microlearning.Areas.Media.Services
             var uniqueFileName = $"video_{Guid.NewGuid():N}{fileExt}";
             var physicalPath = Path.Combine(videosDir, uniqueFileName);
 
-            using (var stream = new FileStream(physicalPath, FileMode.Create))
+            // 1. Tải lên kho lưu trữ đám mây Azure Blob Storage (Lưu vĩnh viễn không bao giờ mất)
+            string blobKey = $"videos/{uniqueFileName}";
+            var containerClient = GetAzureBlobContainerClient();
+            if (containerClient != null)
             {
-                await file.CopyToAsync(stream, cancellationToken);
+                try
+                {
+                    // Tự động tạo container nếu chưa có
+                    await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+                    var blobClient = containerClient.GetBlobClient(uniqueFileName);
+                    using (var uploadStream = file.OpenReadStream())
+                    {
+                        await blobClient.UploadAsync(uploadStream, new BlobHttpHeaders
+                        {
+                            ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType
+                        }, cancellationToken: cancellationToken);
+                    }
+                    blobKey = blobClient.Uri.ToString();
+                    _logger.LogInformation("Đã tải video lên Azure Blob Storage vĩnh viễn: {BlobKey}", blobKey);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi tải video lên Azure Blob Storage: {Message}", ex.Message);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Chưa cấu hình Azure Blob Storage Connection String! Video chỉ được lưu tạm trên đĩa cứng máy chủ.");
             }
 
-            // Tính mã băm SHA-256
-            var checksum = await CalculateSha256Async(physicalPath);
+            // 2. Lưu bản sao vật lý trên máy chủ cục bộ (để đệm tốc độ)
+            try
+            {
+                using (var stream = new FileStream(physicalPath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Không thể lưu tệp video vật lý trên ổ đĩa máy chủ: {Message}", ex.Message);
+            }
+
+            // 3. Tính mã băm SHA-256
+            string checksum = string.Empty;
+            if (File.Exists(physicalPath))
+            {
+                checksum = await CalculateSha256Async(physicalPath);
+            }
 
             var mediaAsset = new MediaAsset
             {
                 LessonId = lessonId ?? 0,
                 MediaType = MediaType.Video,
                 FileName = uniqueFileName,
-                BlobKey = $"videos/{uniqueFileName}",
+                BlobKey = blobKey,
                 ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType,
                 SizeBytes = file.Length,
                 Checksum = checksum,
