@@ -40,7 +40,8 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
 
   // Xóa một mốc cắm cờ
   const handleDelete = (bm: MediaBookmark) => {
-    if (confirm(`Bạn có chắc muốn xóa mốc cắm cờ "${bm.title}" lúc ${bm.formattedTime}?`)) {
+    const label = bm.lessonTitle || bm.title;
+    if (confirm(`Bạn có chắc muốn xóa điểm đánh dấu "${label}" lúc ${bm.formattedTime}?`)) {
       mediaBookmarkService.deleteBookmark(bm.lessonId, bm.id);
       refreshBookmarks();
     }
@@ -144,7 +145,7 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
               onChange={(e) => setSelectedLessonFilter(e.target.value)}
               className="px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50 cursor-pointer max-w-[200px]"
             >
-              <option value="ALL">Tất cả bài giảng ({bookmarks.length})</option>
+              <option value="ALL">Tất cả bài học ({bookmarks.length})</option>
               {lessonOptions.map((opt) => (
                 <option key={opt.id} value={String(opt.id)}>
                   {opt.title}
@@ -201,55 +202,63 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
               className="p-4 rounded-2xl bg-[#090D1A] border border-white/10 hover:border-cyan-500/40 transition-all flex flex-col justify-between group shadow-lg space-y-3"
             >
               <div className="space-y-2.5">
-                {/* Header Card: Bài học & Nút phát nhanh mốc */}
+                {/* Header Card: Tên Khóa Học & Nút Xóa */}
                 <div className="flex items-start justify-between gap-2 border-b border-white/5 pb-2.5">
-                  <div className="space-y-0.5 min-w-0">
-                    {bm.courseTitle && (
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider truncate block">
-                        {bm.courseTitle}
-                      </span>
-                    )}
-                    <h4 className="text-xs font-semibold text-slate-300 truncate" title={bm.lessonTitle}>
-                      {bm.lessonTitle || `Bài giảng #${bm.lessonId}`}
-                    </h4>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <GraduationCap className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span
+                      className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider truncate block"
+                      title={bm.courseTitle || 'Khóa học MicroLearn'}
+                    >
+                      {bm.courseTitle || 'Khóa học MicroLearn'}
+                    </span>
                   </div>
 
-                  {/* Nút Xóa (Không có nút sửa) */}
+                  {/* Nút Xóa */}
                   <button
                     type="button"
                     onClick={() => handleDelete(bm)}
                     className="p-1.5 rounded-lg hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-                    title="Xóa mốc cắm cờ này"
+                    title="Xóa điểm đánh dấu này"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                {/* Tiêu đề & Ghi chú mốc cắm cờ */}
-                <div>
-                  <h3
-                    onClick={() => onSelectBookmark(bm)}
-                    className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors cursor-pointer line-clamp-1"
-                    title="Bấm để chuyển tới mốc video này"
-                  >
-                    {bm.title}
-                  </h3>
-                  {bm.note && (
-                    <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                {/* Thân Card: Tên Bài Học & Ghi chú bổ sung */}
+                <div className="space-y-1.5">
+                  <div className="flex items-start gap-2">
+                    <BookOpen className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <h3
+                      onClick={() => onSelectBookmark(bm)}
+                      className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors cursor-pointer line-clamp-2"
+                      title={`Chuyển tới bài học: ${bm.lessonTitle || `Bài học #${bm.lessonId}`}`}
+                    >
+                      {bm.lessonTitle || `Bài học #${bm.lessonId}`}
+                    </h3>
+                  </div>
+
+                  {/* Ghi chú hoặc nội dung cắm cờ bổ sung */}
+                  {bm.note ? (
+                    <p className="text-xs text-slate-400 pl-6 line-clamp-2 leading-relaxed">
                       {bm.note}
                     </p>
-                  )}
+                  ) : (bm.title && !bm.title.toLowerCase().startsWith('mốc đánh dấu') && !bm.title.toLowerCase().startsWith('mốc quan trọng') && bm.title !== bm.lessonTitle) ? (
+                    <p className="text-xs text-slate-400 pl-6 line-clamp-2 leading-relaxed">
+                      {bm.title}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Footer Card: Mốc giây & Nút phát */}
+              {/* Footer Card: Thời gian lưu & Nút phát tới mốc thời gian */}
               <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
                   <Clock className="w-3.5 h-3.5 text-slate-500" />
                   <span>{new Date(bm.createdAt).toLocaleDateString('vi-VN')}</span>
                 </div>
 
-                {/* Nút Nhảy tới mốc phát */}
+                {/* Nút Nhảy tới mốc phát (thời gian được hiển thị trực tiếp tại nút) */}
                 <button
                   type="button"
                   onClick={() => onSelectBookmark(bm)}

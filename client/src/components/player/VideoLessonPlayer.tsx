@@ -190,7 +190,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleOpenAddFlagModal = () => {
     const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
     setFlagTimestamp(curTime);
-    setFlagTitleInput(`Mốc đánh dấu lúc ${formatBookmarkTime(curTime)}`);
+    setFlagTitleInput(lessonTitle || 'Mốc ghi nhớ');
     setFlagNoteInput('');
     setIsAddFlagModalOpen(true);
   };
@@ -461,11 +461,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
           <form onSubmit={handleConfirmSaveFlag} className="space-y-3 text-xs">
             <div>
-              <label className="block text-slate-300 mb-1 font-medium">Tiêu đề mốc đánh dấu *</label>
+              <label className="block text-slate-300 mb-1 font-medium">Tên bài học hoặc ghi chú mốc đánh dấu *</label>
               <input
                 type="text"
                 required
-                placeholder="Ví dụ: Đoạn giải thích kiến thức quan trọng"
+                placeholder="Ví dụ: Đoạn giải thích trọng tâm, bài học..."
                 value={flagTitleInput}
                 onChange={(e) => setFlagTitleInput(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"
