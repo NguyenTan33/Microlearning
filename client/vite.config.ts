@@ -27,6 +27,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/notebook-api': {
+        target: 'http://localhost:5055',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/notebook-api/, '/api'),
+      },
     },
   },
 })

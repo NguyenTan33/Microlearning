@@ -1,9 +1,16 @@
 import type { TtsSynthesizeResponse } from '../types/catalog.types';
 
+const BACKEND_BASE = (
+  import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.PROD
+    ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net'
+    : 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net')
+).replace(/\/$/, '');
+
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('accessToken');
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -22,10 +29,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export const ttsApi = {
   /**
-   * Tạo tệp âm thanh đọc tự động bằng trí tuệ nhân tạo (Edge-TTS)
+   * Tạo tệp âm thanh đọc tự động bằng trí tuệ nhân tạo (Edge-TTS) tiếng Việt
    */
   async synthesizeSpeech(text: string, voiceName: string = 'vi-VN-HoaiMyNeural'): Promise<TtsSynthesizeResponse> {
-    const res = await fetch('/api/media/tts/test', {
+    const url = BACKEND_BASE ? `${BACKEND_BASE}/api/media/tts/test` : '/api/media/tts/test';
+    const res = await fetch(url, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({

@@ -60,6 +60,9 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
       )}
 
       <PasswordInput
+        id="reset-new-password"
+        name="newPassword"
+        autoComplete="new-password"
         label="Mật khẩu mới"
         value={newPassword}
         onChange={(val) => {
@@ -72,6 +75,9 @@ export const ResetPasswordForm: React.FC<ResetPasswordFormProps> = ({
       />
 
       <PasswordInput
+        id="reset-confirm-new-password"
+        name="confirmNewPassword"
+        autoComplete="new-password"
         label="Xác nhận mật khẩu mới"
         value={confirmNewPassword}
         onChange={(val) => {

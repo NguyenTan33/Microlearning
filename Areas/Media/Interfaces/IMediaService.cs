@@ -11,6 +11,12 @@ namespace Microlearning.Areas.Media.Interfaces
         /// <returns>Tuple chứa (FileStream, ContentType, FileLength, FileName)</returns>
         Task<(Stream stream, string contentType, long fileLength, string fileName)> GetVideoStreamAsync(int mediaId);
 
+        /// <summary>
+        /// Mở luồng đọc video của một bài học cụ thể (tự động lấy video mới nhất của bài học, nếu chưa có video sẽ phát test.mp4 dự phòng).
+        /// </summary>
+        /// <param name="lessonId">ID của bài học (LessonId)</param>
+        Task<(Stream stream, string contentType, long fileLength, string fileName)> GetLessonVideoStreamAsync(int lessonId);
+
 
         /// <summary>
         /// Lấy thông tin tệp tải về kèm mã băm SHA-256 để Client xác thực toàn vẹn dữ liệu khi tải offline.
@@ -32,5 +38,15 @@ namespace Microlearning.Areas.Media.Interfaces
         /// Đăng tải tệp video bài giảng mới và lưu trữ vào wwwroot/Videos
         /// </summary>
         Task<UploadMediaResponse> UploadVideoAsync(Microsoft.AspNetCore.Http.IFormFile file, int? lessonId, string baseUrl, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc URL video trực tiếp) cho bài học.
+        /// </summary>
+        Task<LessonMediaInfoResponse> LinkExternalMediaAsync(LinkExternalMediaRequest request, string baseUrl, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Lấy thông tin nguồn phát video chi tiết của bài học (xác định là Azure Blob, YouTube, Vimeo hay Direct URL).
+        /// </summary>
+        Task<LessonMediaInfoResponse> GetLessonMediaInfoAsync(int lessonId, string baseUrl);
     }
 }

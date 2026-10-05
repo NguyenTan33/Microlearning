@@ -7,10 +7,27 @@ import {
 } from './indexedDbService';
 
 /**
- * Trả về URL phát video trực tuyến (HTTP 206 Range Stream).
+ * Trả về URL phát video trực tuyến của một bài học (HTTP 206 Range Stream).
+ * Tự động ánh xạ sang Azure Backend khi chạy ở môi trường Production.
  */
-export function getVideoStreamUrl(mediaId: number): string {
-  return `/api/media/${mediaId}/stream`;
+export function getLessonVideoStreamUrl(lessonId: number): string {
+  if (!lessonId || lessonId <= 0) {
+    return '/videos/test.mp4';
+  }
+
+  const BACKEND_BASE = (
+    import.meta.env.VITE_BACKEND_URL ||
+    (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
+  ).replace(/\/$/, '');
+
+  return `${BACKEND_BASE}/api/media/lesson/${lessonId}/stream`;
+}
+
+/**
+ * Trả về URL phát video trực tuyến (tương thích cả ID bài học và ID media).
+ */
+export function getVideoStreamUrl(id: number): string {
+  return getLessonVideoStreamUrl(id);
 }
 
 /**

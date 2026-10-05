@@ -38,6 +38,16 @@ namespace Microlearning.Areas.Media.Controllers
         }
 
         /// <summary>
+        /// API Stream Video bài giảng theo LessonId (Tự động lấy video mới nhất của bài học, nếu chưa có sẽ phát test.mp4).
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/stream")]
+        public async Task<IActionResult> StreamLessonVideo(int lessonId)
+        {
+            var (stream, contentType, _, _) = await _mediaService.GetLessonVideoStreamAsync(lessonId);
+            return File(stream, contentType, enableRangeProcessing: true);
+        }
+
+        /// <summary>
         /// API Lấy thông tin tệp tải về và mã Checksum SHA256 phục vụ kiểm tra toàn vẹn khi tải Offline.
         /// </summary>
         [HttpGet("{id}/download-info")]
@@ -70,6 +80,30 @@ namespace Microlearning.Areas.Media.Controllers
         {
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var result = await _mediaService.UploadVideoAsync(file, lessonId, baseUrl, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// API Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc URL video trực tiếp) cho bài học.
+        /// </summary>
+        [HttpPost("link-external")]
+        public async Task<IActionResult> LinkExternalMedia(
+            [FromBody] LinkExternalMediaRequest request,
+            CancellationToken cancellationToken)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var result = await _mediaService.LinkExternalMediaAsync(request, baseUrl, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// API Lấy thông tin nguồn phát video chi tiết của bài học (xác định Azure, YouTube, Vimeo, hay Direct URL).
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/info")]
+        public async Task<IActionResult> GetLessonMediaInfo(int lessonId)
+        {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var result = await _mediaService.GetLessonMediaInfoAsync(lessonId, baseUrl);
             return Ok(result);
         }
 

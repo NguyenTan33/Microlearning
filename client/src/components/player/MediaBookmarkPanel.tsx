@@ -38,7 +38,7 @@ export const MediaBookmarkPanel: React.FC<MediaBookmarkPanelProps> = ({
   const handleOpenAddModal = () => {
     const time = currentTime;
     setTargetTimestamp(time);
-    setBookmarkTitle(`Mốc quan trọng lúc ${formatBookmarkTime(time)}`);
+    setBookmarkTitle('');
     setBookmarkNote('');
     setIsAddModalOpen(true);
   };
@@ -46,7 +46,7 @@ export const MediaBookmarkPanel: React.FC<MediaBookmarkPanelProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     onAddBookmark(
-      bookmarkTitle.trim() || `Mốc đánh dấu lúc ${formatBookmarkTime(targetTimestamp)}`,
+      bookmarkTitle.trim() || 'Mốc ghi nhớ',
       bookmarkNote.trim() || undefined
     );
     setIsAddModalOpen(false);
@@ -55,7 +55,8 @@ export const MediaBookmarkPanel: React.FC<MediaBookmarkPanelProps> = ({
   };
 
   const handleDelete = (bm: MediaBookmark) => {
-    if (confirm(`Bạn có chắc muốn xóa điểm cờ "${bm.title}" lúc ${bm.formattedTime}?`)) {
+    const label = bm.lessonTitle || bm.title;
+    if (confirm(`Bạn có chắc muốn xóa điểm cờ "${label}" lúc ${bm.formattedTime}?`)) {
       onDeleteBookmark(bm.id);
     }
   };
@@ -135,21 +136,25 @@ export const MediaBookmarkPanel: React.FC<MediaBookmarkPanelProps> = ({
                   </button>
                 </div>
 
-                {/* Tiêu đề mốc cắm cờ (Click để nhảy tới) */}
+                {/* Tiêu đề bài học / mốc cắm cờ (Click để nhảy tới) */}
                 <h4
                   onClick={() => onSeekTo(bm.timestamp)}
                   className="font-bold text-white text-xs hover:text-cyan-300 transition-colors cursor-pointer line-clamp-1 mt-1"
                   title="Nhấp để phát video từ mốc này"
                 >
-                  {bm.title}
+                  {bm.lessonTitle || bm.title}
                 </h4>
 
-                {/* Ghi chú nếu có */}
-                {bm.note && (
+                {/* Ghi chú hoặc nội dung thêm */}
+                {bm.note ? (
                   <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
                     {bm.note}
                   </p>
-                )}
+                ) : (bm.title && !bm.title.toLowerCase().startsWith('mốc') && bm.title !== bm.lessonTitle) ? (
+                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                    {bm.title}
+                  </p>
+                ) : null}
               </div>
 
               {/* Ngày tạo */}

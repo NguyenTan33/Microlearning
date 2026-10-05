@@ -5,6 +5,8 @@ import { AuthActionCard } from './components/auth/AuthActionCard';
 import { StudyDashboard } from './components/dashboard/StudyDashboard';
 import { GraduationCap } from 'lucide-react';
 
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return Boolean(localStorage.getItem('accessToken'));
@@ -18,7 +20,11 @@ const App: React.FC = () => {
 
   // 1. Nếu đã đăng nhập: Hiển thị ngay màn hình học tập và đồng bộ Offline-First (StudyDashboard)
   if (isAuthenticated) {
-    return <StudyDashboard onLogout={handleLogout} />;
+    return (
+      <ErrorBoundary fallbackTitle="Không thể tải bảng điều khiển học tập">
+        <StudyDashboard onLogout={handleLogout} />
+      </ErrorBoundary>
+    );
   }
 
   // 2. Nếu chưa đăng nhập: Hiển thị trang giới thiệu và khung Đăng nhập / Đăng ký

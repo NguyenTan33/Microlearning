@@ -49,6 +49,9 @@ namespace Microlearning.Areas.Catalog.Services
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
                     .ThenInclude(s => s.Lessons.Where(l => includeUnpublished || l.IsPublished).OrderBy(l => l.SortOrder))
                         .ThenInclude(l => l.Quiz)
+                .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
+                    .ThenInclude(s => s.Lessons.Where(l => includeUnpublished || l.IsPublished).OrderBy(l => l.SortOrder))
+                        .ThenInclude(l => l.MediaAssets)
                 .FirstOrDefaultAsync(c => c.Id == courseId);
 
             if (course == null)

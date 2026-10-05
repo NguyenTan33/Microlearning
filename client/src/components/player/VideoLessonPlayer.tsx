@@ -10,13 +10,19 @@ import {
   Gauge,
   CheckCircle,
   Sparkles,
-  Tv,
   Flag,
   Bookmark,
+  BookMarked,
   X,
   Info,
+  AlertTriangle,
+  RefreshCw,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
-import { getVideoStreamUrl } from '../../services/mediaService';
+import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
+import { catalogApi } from '../../services/catalogApi';
+import type { LessonMediaInfo } from '../../types/media.types';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -28,6 +34,7 @@ interface VideoLessonPlayerProps {
   courseId?: number;
   courseTitle?: string;
   initialSeekTime?: number | null;
+  onOpenNotebookView?: () => void;
   onOpenBookmarksView?: () => void;
   onProgressSaved?: () => void;
 }
@@ -39,6 +46,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   courseId,
   courseTitle,
   initialSeekTime,
+  onOpenNotebookView,
   onOpenBookmarksView,
   onProgressSaved,
 }) => {
@@ -50,6 +58,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [videoSrc, setVideoSrc] = useState<string>('');
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [mediaInfo, setMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [initialSeekDone, setInitialSeekDone] = useState<boolean>(false);
   const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
@@ -60,11 +70,49 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   const lastSavedPercentRef = useRef<number>(0);
 
-  // 1. Tải URL phát trực tuyến HTTP 206 & nạp danh sách cắm cờ
+  // 1. Tải URL phát trực tuyến HTTP 206 (hoặc phát từ Offline Blob) & nạp danh sách cắm cờ
   useEffect(() => {
+    let objectUrl: string | null = null;
+    let isCancelled = false;
+
     setInitialSeekDone(false);
     setIsPlaying(false);
-    setVideoSrc(getVideoStreamUrl(mediaId));
+    setVideoError(null);
+
+    const streamTargetId = lessonId || mediaId;
+
+    // Lấy thông tin nguồn video chi tiết (Azure, YouTube, Vimeo, Direct URL)
+    catalogApi.getLessonMediaInfo(streamTargetId)
+      .then((info) => {
+        if (isCancelled) return;
+        setMediaInfo(info);
+        if (info.sourceType === 'youtube' || info.sourceType === 'vimeo') {
+          setVideoSrc(''); // Iframe sẽ tự phát
+        } else if (info.sourceType === 'direct_url' && info.externalUrl) {
+          setVideoSrc(info.externalUrl);
+        } else {
+          setVideoSrc(info.streamUrl || getLessonVideoStreamUrl(streamTargetId));
+        }
+      })
+      .catch(() => {
+        // Dự phòng kiểm tra Offline Blob nếu có trong IndexedDB
+        getOfflineVideoBlob(streamTargetId)
+          .then((blob) => {
+            if (isCancelled) return;
+            if (blob) {
+              objectUrl = URL.createObjectURL(blob);
+              setVideoSrc(objectUrl);
+            } else {
+              setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
+            }
+          })
+          .catch(() => {
+            if (!isCancelled) {
+              setVideoSrc(getLessonVideoStreamUrl(streamTargetId));
+            }
+          });
+      });
+
     setBookmarks(mediaBookmarkService.getBookmarks(lessonId));
 
     // Khôi phục mốc thời gian học viên đã học trước đó
@@ -76,6 +124,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         }
       })
       .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [mediaId, lessonId]);
 
   // 2. Lưu tiến độ trực tuyến lên hệ thống
@@ -111,6 +166,19 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       videoRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
+  };
+
+  const handleRetryStream = () => {
+    setVideoError(null);
+    setIsPlaying(false);
+    const streamTargetId = lessonId || mediaId;
+    setVideoSrc(`${getLessonVideoStreamUrl(streamTargetId)}?retry=${Date.now()}`);
+  };
+
+  const handleUseDemoFallback = () => {
+    setVideoError(null);
+    setIsPlaying(false);
+    setVideoSrc('/videos/test.mp4');
   };
 
   const handleTimeUpdate = () => {
@@ -191,7 +259,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleOpenAddFlagModal = () => {
     const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
     setFlagTimestamp(curTime);
-    setFlagTitleInput(`Mốc đánh dấu lúc ${formatBookmarkTime(curTime)}`);
+    setFlagTitleInput(lessonTitle || 'Mốc ghi nhớ');
     setFlagNoteInput('');
     setIsAddFlagModalOpen(true);
   };
@@ -231,24 +299,75 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         ref={containerRef}
         className="w-full rounded-2xl bg-[#090D1A] border border-white/10 overflow-hidden shadow-2xl relative group select-none"
       >
-      {/* Badge trạng thái phát & Thông báo lưu */}
-      <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
-        <span className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[11px] sm:text-xs font-semibold backdrop-blur-md shadow-lg">
-          <Tv className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-cyan-400" />
-          <span>Trực tuyến HD • HTTP 206</span>
-        </span>
-
-        {saveNotice && (
+      {/* Thông báo lưu / chuyển mốc đánh dấu */}
+      {saveNotice && (
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 pointer-events-none">
           <span className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-indigo-950/90 border border-indigo-500/50 text-indigo-300 text-[11px] sm:text-xs font-medium backdrop-blur-md shadow-lg animate-fadeIn">
             <CheckCircle className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-indigo-400" />
             <span>{saveNotice}</span>
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {videoSrc ? (
+        {mediaInfo && (mediaInfo.sourceType === 'youtube' || mediaInfo.sourceType === 'vimeo') && mediaInfo.embedUrl ? (
+          <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
+            <iframe
+              src={mediaInfo.embedUrl}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+            {/* Badge hiển thị nguồn nhúng ngoài */}
+            <div className="absolute top-3 right-3 pointer-events-none z-10">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
+                {mediaInfo.sourceType === 'youtube' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span>YouTube Video</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>Vimeo Video</span>
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+        ) : videoError ? (
+          <div className="flex flex-col items-center justify-center p-6 text-center max-w-md space-y-3 z-10 animate-fadeIn">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-white">Không thể phát luồng video bài giảng</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {videoError}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleRetryStream}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-indigo-600/30 active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Thử tải lại</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleUseDemoFallback}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer border border-white/10 active:scale-95"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>Xem video demo (test.mp4)</span>
+              </button>
+            </div>
+          </div>
+        ) : videoSrc ? (
           <video
             ref={videoRef}
             src={videoSrc}
@@ -273,9 +392,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
             }}
             onError={() => {
-              const fallbackUrl = '/videos/test.mp4';
-              if (videoSrc !== fallbackUrl) {
-                setVideoSrc(fallbackUrl);
+              if (videoSrc && !videoSrc.includes('test.mp4')) {
+                setVideoSrc('/videos/test.mp4');
+              } else {
+                setIsPlaying(false);
+                setVideoError('Không thể tải luồng video bài giảng. Vui lòng kiểm tra lại kết nối mạng.');
               }
             }}
           />
@@ -287,7 +408,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         )}
 
         {/* Nút Play trung tâm lớn khi tạm dừng */}
-        {!isPlaying && (
+        {!isPlaying && !videoError && (!mediaInfo || (mediaInfo.sourceType !== 'youtube' && mediaInfo.sourceType !== 'vimeo')) && (
           <button
             onClick={togglePlay}
             aria-label="Phát bài giảng"
@@ -405,6 +526,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               <span className="hidden sm:inline">Cắm cờ ({formatBookmarkTime(currentTime)})</span>
             </button>
 
+            {/* Nút Xem NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+            {onOpenNotebookView && (
+              <button
+                onClick={onOpenNotebookView}
+                title="Mở Sổ tay AI NoteBook của bài giảng này"
+                className="p-1.5 sm:p-2 rounded-xl bg-gradient-to-r from-purple-900/80 to-indigo-900/80 hover:from-purple-800 hover:to-indigo-800 border border-purple-500/40 text-purple-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-[11px] font-semibold shrink-0 shadow-sm active:scale-95"
+              >
+                <BookMarked className="w-3.5 h-3.5 text-purple-300" />
+                <span className="hidden md:inline">NoteBook</span>
+              </button>
+            )}
+
             {/* Nút Xem Mục Đánh Dấu Toàn Bộ */}
             {onOpenBookmarksView && (
               <button
@@ -467,11 +600,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
           <form onSubmit={handleConfirmSaveFlag} className="space-y-3 text-xs">
             <div>
-              <label className="block text-slate-300 mb-1 font-medium">Tiêu đề mốc đánh dấu *</label>
+              <label className="block text-slate-300 mb-1 font-medium">Tên bài học hoặc ghi chú mốc đánh dấu *</label>
               <input
                 type="text"
                 required
-                placeholder="Ví dụ: Đoạn giải thích kiến thức quan trọng"
+                placeholder="Ví dụ: Đoạn giải thích trọng tâm, bài học..."
                 value={flagTitleInput}
                 onChange={(e) => setFlagTitleInput(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-cyan-500/50"

@@ -7,7 +7,7 @@
 .env
 
 # Configuration files
-appsettings.json
+# appsettings.json
 
 # User-specific files
 *.rsuser
@@ -497,4 +497,5 @@ wwwroot/Videos/*.mp4
 client/public/**/*.mp4
 client/public/*.mp4
 *.mp3
+!client/public/audio/*.mp3
 

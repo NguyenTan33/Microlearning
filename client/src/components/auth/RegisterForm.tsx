@@ -76,21 +76,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       )}
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+        <label htmlFor="register-full-name" className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
           Họ và tên
         </label>
         <div
-          className={`relative flex items-center rounded-xl bg-slate-900/70 border transition-all duration-200 focus-within:ring-2 ${
+          className={`relative flex items-center rounded-xl bg-slate-900 border overflow-hidden transition-all duration-200 focus-within:ring-2 ${
             errors.fullName
               ? 'border-rose-500/80 focus-within:ring-rose-500/20 focus-within:border-rose-500'
               : 'border-white/10 focus-within:border-indigo-500 focus-within:ring-indigo-500/20'
           }`}
         >
-          <div className="pl-3.5 text-slate-500">
+          <div className="pl-3.5 text-slate-500 shrink-0 bg-slate-900">
             <User className="w-4 h-4" />
           </div>
           <input
+            id="register-full-name"
+            name="fullName"
             type="text"
+            autoComplete="name"
             value={fullName}
             onChange={(e) => {
               setFullName(e.target.value);
@@ -105,6 +108,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       </div>
 
       <PhoneInput
+        id="register-phone-number"
         value={phoneNumber}
         onChange={(val) => {
           setPhoneNumber(val);
@@ -115,6 +119,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       />
 
       <PasswordInput
+        id="register-password"
+        name="password"
+        autoComplete="new-password"
         label="Mật khẩu"
         value={password}
         onChange={(val) => {
@@ -127,6 +134,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       />
 
       <PasswordInput
+        id="register-confirm-password"
+        name="confirmPassword"
+        autoComplete="new-password"
         label="Xác nhận mật khẩu"
         value={confirmPassword}
         onChange={(val) => {

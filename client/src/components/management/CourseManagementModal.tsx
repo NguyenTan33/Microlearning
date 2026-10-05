@@ -26,9 +26,13 @@ import {
   Download,
   FileCheck,
   Info,
+  Link2,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
+import { parseVideoUrl } from '../../types/media.types';
 import { parseDocxQuizFile, parseQuizText, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
 
 interface CourseManagementModalProps {
@@ -74,12 +78,16 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   });
   const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
 
-  // Dedicated Video Upload Modal
+  // Dedicated Video Upload / Embed Modal
   const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
+  const [videoTab, setVideoTab] = useState<'upload' | 'embed'>('upload');
   const [targetLessonForVideo, setTargetLessonForVideo] = useState<Lesson | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [uploadingVideo, setUploadingVideo] = useState<boolean>(false);
+  const [externalVideoUrl, setExternalVideoUrl] = useState<string>('');
+  const [externalVideoTitle, setExternalVideoTitle] = useState<string>('');
+  const [linkingExternalVideo, setLinkingExternalVideo] = useState<boolean>(false);
 
   // Quiz Builder Modal
   const [showQuizModal, setShowQuizModal] = useState<boolean>(false);
@@ -343,10 +351,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
-  // =================== DEDICATED VIDEO UPLOAD ===================
+  // =================== DEDICATED VIDEO UPLOAD & EMBED ===================
   const handleOpenVideoUpload = (lesson: Lesson) => {
     setTargetLessonForVideo(lesson);
+    setVideoTab('upload');
     setVideoFile(null);
+    setExternalVideoUrl('');
+    setExternalVideoTitle('');
     if (videoPreviewUrl) {
       URL.revokeObjectURL(videoPreviewUrl);
       setVideoPreviewUrl(null);
@@ -394,6 +405,42 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi tải video lên hệ thống.');
     } finally {
       setUploadingVideo(false);
+    }
+  };
+
+  const handleLinkExternalVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetLessonForVideo || !externalVideoUrl.trim()) {
+      showToast('error', 'Vui lòng dán liên kết URL video.');
+      return;
+    }
+
+    const parsed = parseVideoUrl(externalVideoUrl.trim());
+    if (parsed.sourceType === 'unknown') {
+      showToast('error', 'Đường dẫn URL không hợp lệ. Vui lòng nhập link YouTube, Vimeo, hoặc file video trực tiếp (http/https).');
+      return;
+    }
+
+    setLinkingExternalVideo(true);
+    try {
+      await catalogApi.linkExternalLessonVideo({
+        lessonId: targetLessonForVideo.id,
+        url: externalVideoUrl.trim(),
+        title: externalVideoTitle.trim() || undefined,
+      });
+
+      showToast('success', `Đã gắn liên kết ${parsed.platformName} cho bài giảng thành công!`);
+      setShowVideoModal(false);
+      setExternalVideoUrl('');
+      setExternalVideoTitle('');
+      if (selectedCourseDetail) {
+        await loadCourseDetail(selectedCourseDetail.id);
+      }
+      if (onDataChanged) onDataChanged();
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi gắn liên kết video.');
+    } finally {
+      setLinkingExternalVideo(false);
     }
   };
 
@@ -658,26 +705,6 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
           {/* VIEW 1: DANH SÁCH KHÓA HỌC */}
           {!selectedCourseDetail ? (
             <div className="space-y-4">
-              {/* Notice Banner giải thích rõ tính năng Ẩn/Hiện */}
-              <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2.5 text-slate-300">
-                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300">
-                    <EyeOff className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="font-semibold text-white">Chế độ quản lý xuất bản: </span>
-                    <span className="text-slate-400">
-                      Khóa học ở trạng thái <strong>Đang ẩn (Bản nháp)</strong> sẽ bị ẩn khỏi học viên trên trang chủ nhưng <strong>luôn được lưu giữ đầy đủ trong Studio</strong> để bạn chỉnh sửa hoặc mở lại bất kỳ lúc nào.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0 text-[11px] text-slate-400">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Tổng {courses.length} khóa học</span>
-                </div>
-              </div>
-
               {/* Filter Tabs & Search Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/50 p-2 rounded-2xl border border-white/5">
                 <div className="flex items-center gap-1.5 overflow-x-auto">
@@ -1405,17 +1432,17 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
         </div>
       )}
 
-      {/* DIALOG D: TẢI VIDEO RIÊNG BIỆT (DEDICATED VIDEO UPLOAD) */}
+      {/* DIALOG D: TẢI VIDEO & NHÚNG LIÊN KẾT (DEDICATED VIDEO UPLOAD & EMBED) */}
       {showVideoModal && targetLessonForVideo && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-lg bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col space-y-4 text-slate-100">
+          <div className="w-full max-w-lg bg-[#0D1429] border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col space-y-4 text-slate-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
                   <Video className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Đăng Tải Video Bài Giảng</h3>
+                  <h3 className="text-sm font-bold text-white">Quản Lý Video Bài Giảng</h3>
                   <p className="text-xs text-slate-400 line-clamp-1">{targetLessonForVideo.title}</p>
                 </div>
               </div>
@@ -1423,18 +1450,50 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 onClick={() => {
                   setShowVideoModal(false);
                   setVideoFile(null);
+                  setExternalVideoUrl('');
+                  setExternalVideoTitle('');
                   if (videoPreviewUrl) {
                     URL.revokeObjectURL(videoPreviewUrl);
                     setVideoPreviewUrl(null);
                   }
                 }}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleUploadVideo} className="space-y-4 text-xs">
+            {/* Tab Selector: Tải tệp lên vs Nhúng URL */}
+            <div className="grid grid-cols-2 p-1 bg-slate-900/90 rounded-xl border border-white/10 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setVideoTab('upload')}
+                className={`flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer ${
+                  videoTab === 'upload'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Tải tệp tin lên</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoTab('embed')}
+                className={`flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer ${
+                  videoTab === 'embed'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>Nhúng liên kết URL</span>
+              </button>
+            </div>
+
+            {/* TAB 1: TẢI TỆP TRỰC TIẾP */}
+            {videoTab === 'upload' && (
+              <form onSubmit={handleUploadVideo} className="space-y-4 text-xs">
               {/* Dropzone */}
               <div className="relative border-2 border-dashed border-white/20 hover:border-indigo-500/50 rounded-2xl p-6 bg-slate-900/60 text-center transition-colors">
                 <input
@@ -1511,6 +1570,138 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 </button>
               </div>
             </form>
+          )}
+
+          {/* TAB 2: NHÚNG LIÊN KẾT NGOÀI (YOUTUBE, VIMEO, DIRECT URL) */}
+          {videoTab === 'embed' && (
+            <form onSubmit={handleLinkExternalVideo} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>Đường dẫn URL Video</span>
+                  <span className="text-[11px] text-indigo-400 font-normal">YouTube, Vimeo, hoặc Direct MP4</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="url"
+                    required
+                    value={externalVideoUrl}
+                    onChange={(e) => setExternalVideoUrl(e.target.value)}
+                    placeholder="Dán link ví dụ: https://www.youtube.com/watch?v=... hoặc https://vimeo.com/..."
+                    className="w-full bg-slate-900 border border-white/15 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                  <Globe className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                </div>
+              </div>
+
+              {/* Nhận diện nền tảng & Xem trước */}
+              {externalVideoUrl.trim() && (() => {
+                const parsed = parseVideoUrl(externalVideoUrl);
+                return (
+                  <div className="space-y-2.5 p-3 rounded-xl bg-slate-950/80 border border-indigo-500/30">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Nguồn nhận diện:</span>
+                      {parsed.sourceType === 'youtube' && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-[11px]">
+                          YouTube Video
+                        </span>
+                      )}
+                      {parsed.sourceType === 'vimeo' && (
+                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold text-[11px]">
+                          Vimeo Video
+                        </span>
+                      )}
+                      {parsed.sourceType === 'direct_url' && (
+                        <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 font-bold text-[11px]">
+                          {parsed.platformName}
+                        </span>
+                      )}
+                      {parsed.sourceType === 'unknown' && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px]">
+                          Chưa nhận diện được định dạng
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Khung xem trước Embed Preview */}
+                    {parsed.embedUrl ? (
+                      <div className="rounded-lg overflow-hidden border border-white/10 bg-black aspect-video max-h-52">
+                        <iframe
+                          src={parsed.embedUrl}
+                          title="Video Preview"
+                          className="w-full h-full border-0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : parsed.sourceType === 'direct_url' ? (
+                      <div className="rounded-lg overflow-hidden border border-white/10 bg-black aspect-video max-h-52 flex items-center justify-center">
+                        <video
+                          src={externalVideoUrl}
+                          controls
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  Tiêu đề ghi chú video (Tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={externalVideoTitle}
+                  onChange={(e) => setExternalVideoTitle(e.target.value)}
+                  placeholder={`Mặc định: Video bài giảng ${targetLessonForVideo.title}`}
+                  className="w-full bg-slate-900 border border-white/15 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/20 text-[11px] text-slate-400 space-y-1 leading-relaxed">
+                <p className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
+                  Lợi ích khi nhúng video:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                  <li>Không tốn dung lượng và chi phí lưu trữ kho Azure.</li>
+                  <li>Phát video siêu tốc qua CDN toàn cầu của YouTube / Vimeo.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVideoModal(false);
+                    setExternalVideoUrl('');
+                    setExternalVideoTitle('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={!externalVideoUrl.trim() || linkingExternalVideo}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg"
+                >
+                  {linkingExternalVideo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang gắn liên kết...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-4 h-4" />
+                      <span>Xác nhận Nhúng Video</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
           </div>
         </div>
       )}
