@@ -135,7 +135,7 @@ export const userProfileService = {
       course.subjects?.forEach((subject) => {
         subject.lessons?.forEach((lesson) => {
           courseTotalLessons += 1;
-          const duration = lesson.durationMinutes || Math.round((lesson.durationSeconds || 300) / 60) || 5;
+          const duration = Math.round((lesson.durationSeconds || 300) / 60) || 5;
           courseDurationMinutes += duration;
 
           if (completedLessonIds.includes(lesson.id)) {
@@ -171,8 +171,8 @@ export const userProfileService = {
         courseThumbnail:
           course.thumbnailUrl ||
           'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop',
-        author: course.authorName || 'Đội ngũ Giảng viên MicroLearning',
-        category: course.categoryName || 'Kỹ năng số',
+        author: 'Đội ngũ Giảng viên MicroLearning',
+        category: 'Kỹ năng số',
         progressPercent,
         completedLessons: courseCompletedLessons,
         totalLessons: courseTotalLessons,

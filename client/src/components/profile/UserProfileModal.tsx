@@ -362,42 +362,42 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-4xl max-h-[92vh] bg-[#090D1C] border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn">
+      <div className="relative w-full max-w-4xl max-h-[96vh] sm:max-h-[92vh] bg-[#090D1C] border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         {/* =========================================================================
             HEADER MODAL: THÔNG TIN TÓM TẮT & NÚT ĐÓNG
         ========================================================================= */}
-        <div className="p-4 sm:p-6 border-b border-white/10 bg-gradient-to-r from-indigo-950/60 via-[#0C1226] to-slate-900/60 flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3.5 sm:gap-4">
+        <div className="p-3.5 sm:p-6 border-b border-white/10 bg-gradient-to-r from-indigo-950/60 via-[#0C1226] to-slate-900/60 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
             {/* Avatar góc trái */}
             <div className="relative group shrink-0">
               {profile.avatarUrl ? (
                 <img
                   src={profile.avatarUrl}
                   alt={profile.fullName}
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-indigo-500/50 shadow-md shadow-indigo-500/20"
+                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-indigo-500/50 shadow-md shadow-indigo-500/20"
                 />
               ) : (
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 p-[1.5px] shadow-md shadow-indigo-500/20">
-                  <div className="w-full h-full bg-[#0E1528] rounded-[14px] flex items-center justify-center text-cyan-300 font-bold text-base sm:text-lg">
+                <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 p-[1.5px] shadow-md shadow-indigo-500/20">
+                  <div className="w-full h-full bg-[#0E1528] rounded-[14px] flex items-center justify-center text-cyan-300 font-bold text-sm sm:text-lg">
                     {avatarInitials}
                   </div>
                 </div>
               )}
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#090D1C]" title="Đang trực tuyến" />
+              <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-emerald-500 rounded-full border-2 border-[#090D1C]" title="Đang trực tuyến" />
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-xl font-bold text-white tracking-tight">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h2 className="text-sm sm:text-xl font-bold text-white tracking-tight truncate">
                   {profile.fullName || 'Học viên MicroLearning'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
                   {profile.role || 'Học viên'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                <span>{profile.email || profile.phoneNumber || 'Tài khoản thành viên'}</span>
+              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate">
+                {profile.email || profile.phoneNumber || 'Tài khoản thành viên'}
               </p>
             </div>
           </div>
@@ -405,7 +405,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           {/* Nút đóng */}
           <button
             onClick={onClose}
-            className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
             title="Đóng cửa sổ"
           >
             <X className="w-5 h-5" />
@@ -413,175 +413,187 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* =========================================================================
-            NAVIGATION TABS (3 TAB CHÍNH)
+            NAVIGATION TABS (GRID 3 CỘT: KHÔNG BAO GIỜ BỊ TRÀN HAY MẤT TÍCH TRÊN MOBILE)
         ========================================================================= */}
-        <div className="px-4 sm:px-6 pt-3 border-b border-white/5 bg-[#080D1A]/60 flex items-center gap-2 overflow-x-auto shrink-0">
-          <button
-            onClick={() => {
-              setActiveTab('PROGRESS');
-              setIsForgotFlow(false);
-            }}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'PROGRESS'
-                ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-600/20 border border-indigo-500/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 text-cyan-400" />
-            <span>Dashboard tiến độ học</span>
-          </button>
+        <div className="px-3 sm:px-6 py-2 sm:py-3 border-b border-white/5 bg-[#080D1A]/80 shrink-0">
+          <div className="grid grid-cols-3 gap-1 sm:gap-2 p-1 rounded-2xl bg-slate-900/90 border border-white/5">
+            {/* Tab 1: Tiến độ học tập */}
+            <button
+              onClick={() => {
+                setActiveTab('PROGRESS');
+                setIsForgotFlow(false);
+              }}
+              className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-2.5 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'PROGRESS'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500/50'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Tiến độ</span>
+                <span className="hidden sm:inline">Tiến độ học tập</span>
+              </span>
+            </button>
 
-          <button
-            onClick={() => {
-              setActiveTab('INFO');
-              setIsForgotFlow(false);
-            }}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'INFO'
-                ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-600/20 border border-indigo-500/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <User className="w-4 h-4 text-purple-400" />
-            <span>Thông tin cá nhân &amp; Avatar</span>
-          </button>
+            {/* Tab 2: Thông tin cá nhân & Avatar */}
+            <button
+              onClick={() => {
+                setActiveTab('INFO');
+                setIsForgotFlow(false);
+              }}
+              className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-2.5 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'INFO'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500/50'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Hồ sơ &amp; Ảnh</span>
+                <span className="hidden sm:inline">Thông tin &amp; Avatar</span>
+              </span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('PASSWORD')}
-            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'PASSWORD'
-                ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-600/20 border border-indigo-500/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <KeyRound className="w-4 h-4 text-amber-400" />
-            <span>Đổi mật khẩu</span>
-          </button>
+            {/* Tab 3: Đổi mật khẩu - BẢO ĐẢM HIỂN THỊ RÕ RÀNG TRÊN MỌI MÀN HÌNH */}
+            <button
+              onClick={() => setActiveTab('PASSWORD')}
+              className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-2.5 px-1 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                activeTab === 'PASSWORD'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500/50'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Đổi MK</span>
+                <span className="hidden sm:inline">Đổi mật khẩu</span>
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* =========================================================================
             NỘI DUNG TỪNG TAB
         ========================================================================= */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
+        <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-5 sm:space-y-6">
           {/* =====================================================================
               TAB 1: DASHBOARD TIẾN ĐỘ HỌC TẬP
           ===================================================================== */}
           {activeTab === 'PROGRESS' && (
-            <div className="space-y-6 animate-fadeIn">
-              {/* 3 Thẻ chỉ số tổng quan chính */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+            <div className="space-y-4 sm:space-y-6 animate-fadeIn">
+              {/* 3 Thẻ chỉ số tổng quan chính: Tối ưu 3 cột trên cả mobile và desktop */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 {/* 1. Tỉ lệ học (%) */}
-                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-900/40 via-indigo-950/20 to-slate-900/60 border border-indigo-500/30 shadow-lg">
+                <div className="relative overflow-hidden p-2.5 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-900/40 via-indigo-950/20 to-slate-900/60 border border-indigo-500/30 shadow-lg flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-indigo-300">Tỉ lệ hoàn thành</span>
-                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-300">
-                      <Percent className="w-4 h-4" />
+                    <span className="text-[10px] sm:text-xs font-semibold text-indigo-300 truncate">Hoàn thành</span>
+                    <div className="p-1 sm:p-2 rounded-lg sm:rounded-xl bg-indigo-500/20 text-indigo-300 shrink-0">
+                      <Percent className="w-3 h-3 sm:w-4 sm:h-4" />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-extrabold text-white">
+                  <div className="mt-1.5 sm:mt-3 flex items-baseline gap-1">
+                    <span className="text-lg sm:text-3xl font-extrabold text-white">
                       {loadingStats ? '--' : `${stats?.averageProgressPercent ?? 0}%`}
                     </span>
-                    <span className="text-[11px] text-emerald-400 font-medium">Trung bình khóa học</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Dựa trên {stats?.totalEnrolledCourses || 0} khóa học bạn đã đăng ký tham gia.
+                  <p className="mt-1 text-[11px] text-slate-400 hidden sm:block">
+                    Dựa trên {stats?.totalEnrolledCourses || 0} khóa học đã đăng ký.
                   </p>
                 </div>
 
                 {/* 2. Tổng thời gian học */}
-                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-cyan-900/40 via-cyan-950/20 to-slate-900/60 border border-cyan-500/30 shadow-lg">
+                <div className="relative overflow-hidden p-2.5 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br from-cyan-900/40 via-cyan-950/20 to-slate-900/60 border border-cyan-500/30 shadow-lg flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-cyan-300">Tổng thời gian học</span>
-                    <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300">
-                      <Clock className="w-4 h-4" />
+                    <span className="text-[10px] sm:text-xs font-semibold text-cyan-300 truncate">Thời gian học</span>
+                    <div className="p-1 sm:p-2 rounded-lg sm:rounded-xl bg-cyan-500/20 text-cyan-300 shrink-0">
+                      <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-extrabold text-white">
+                  <div className="mt-1.5 sm:mt-3 flex items-baseline gap-1">
+                    <span className="text-sm sm:text-3xl font-extrabold text-white truncate">
                       {loadingStats ? '--' : formattedStudyTime}
                     </span>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Thời lượng tích lũy từ các bài học video đã theo dõi.
+                  <p className="mt-1 text-[11px] text-slate-400 hidden sm:block">
+                    Thời lượng tích lũy video đã theo dõi.
                   </p>
                 </div>
 
                 {/* 3. % Làm đúng trắc nghiệm */}
-                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-purple-900/40 via-purple-950/20 to-slate-900/60 border border-purple-500/30 shadow-lg">
+                <div className="relative overflow-hidden p-2.5 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-900/40 via-purple-950/20 to-slate-900/60 border border-purple-500/30 shadow-lg flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-purple-300">Tỉ lệ làm đúng Quizz</span>
-                    <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300">
-                      <Award className="w-4 h-4" />
+                    <span className="text-[10px] sm:text-xs font-semibold text-purple-300 truncate">Đúng Quizz</span>
+                    <div className="p-1 sm:p-2 rounded-lg sm:rounded-xl bg-purple-500/20 text-purple-300 shrink-0">
+                      <Award className="w-3 h-3 sm:w-4 sm:h-4" />
                     </div>
                   </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-extrabold text-white">
+                  <div className="mt-1.5 sm:mt-3 flex items-baseline gap-1">
+                    <span className="text-lg sm:text-3xl font-extrabold text-white">
                       {loadingStats ? '--' : `${stats?.quizAccuracyPercent ?? 0}%`}
                     </span>
-                    <span className="text-[11px] text-indigo-300 font-medium">Điểm đánh giá</span>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Độ chính xác trung bình trong các bài thi trắc nghiệm mini.
+                  <p className="mt-1 text-[11px] text-slate-400 hidden sm:block">
+                    Độ chính xác bài trắc nghiệm mini.
                   </p>
                 </div>
               </div>
 
               {/* Chi tiết từng khóa học tham gia */}
-              <div className="space-y-3.5">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <BookOpen className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-sm font-bold text-white">Tiến độ chi tiết từng khóa học đã tham gia</h3>
+                    <h3 className="text-xs sm:text-sm font-bold text-white">Khóa học đã tham gia</h3>
                   </div>
-                  <span className="text-xs text-slate-400">
-                    {userCourseList.length} khóa học đang học
+                  <span className="text-[11px] sm:text-xs text-slate-400">
+                    {userCourseList.length} khóa học
                   </span>
                 </div>
 
                 {userCourseList.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl border border-white/5 bg-slate-900/40 text-slate-400 text-xs">
+                  <div className="p-6 text-center rounded-2xl border border-white/5 bg-slate-900/40 text-slate-400 text-xs">
                     Bạn chưa ghi danh khóa học nào. Hãy quay lại mục Khám phá Khóa học để bắt đầu học ngay!
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5 sm:gap-3">
                     {userCourseList.map((c) => (
                       <div
                         key={c.courseId}
-                        className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/70 border border-white/10 hover:border-indigo-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                        className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/70 border border-white/10 hover:border-indigo-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 group"
                       >
                         {/* Thông tin khóa học */}
-                        <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
                           <img
                             src={c.courseThumbnail}
                             alt={c.courseTitle}
-                            className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover shrink-0 border border-white/10 shadow"
+                            className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl object-cover shrink-0 border border-white/10 shadow"
                           />
                           <div className="min-w-0 flex-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/5 text-slate-300 border border-white/5">
+                            <span className="px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-white/5 text-slate-300 border border-white/5">
                               {c.category}
                             </span>
-                            <h4 className="text-sm sm:text-base font-bold text-white truncate mt-1 group-hover:text-cyan-300 transition-colors">
+                            <h4 className="text-xs sm:text-base font-bold text-white truncate mt-0.5 group-hover:text-cyan-300 transition-colors">
                               {c.courseTitle}
                             </h4>
-                            <p className="text-[11px] text-slate-400 truncate">
+                            <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
                               Giảng viên: {c.author}
                             </p>
                           </div>
                         </div>
 
                         {/* Thanh tiến độ & nút Tiếp tục học */}
-                        <div className="flex items-center gap-4 sm:w-72 shrink-0">
-                          <div className="flex-1 space-y-1.5">
+                        <div className="flex items-center gap-3 w-full sm:w-72 shrink-0">
+                          <div className="flex-1 space-y-1">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-slate-400 text-[11px]">
+                              <span className="text-slate-400 text-[10px] sm:text-[11px]">
                                 {c.completedLessons}/{c.totalLessons} bài hoàn thành
                               </span>
                               <span className="font-bold text-cyan-300 text-xs">
                                 {c.progressPercent}%
                               </span>
                             </div>
-                            <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="w-full h-1.5 sm:h-2 rounded-full bg-slate-800 overflow-hidden">
                               <div
                                 className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-500"
                                 style={{ width: `${c.progressPercent}%` }}
@@ -597,7 +609,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                             className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/30 shrink-0"
                             title="Vào phòng học ngay"
                           >
-                            <span>Tiếp tục</span>
+                            <span>Học ngay</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -815,14 +827,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
               {/* TRƯỜNG HỢP 1: FORM ĐỔI MẬT KHẨU THƯỜNG */}
               {!isForgotFlow ? (
-                <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+                <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5 sm:space-y-4">
                   {/* Trường: Mật khẩu hiện tại */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-slate-300">
                         Mật khẩu hiện tại <span className="text-rose-400">*</span>
                       </label>
-                      {/* NÚT QUÊN MẬT KHẨU NHỎ ĐƯỢC YÊU CẦU */}
+                      {/* NÚT QUÊN MẬT KHẨU NHỎ ĐƯỢC TỐI ƯU CẢM ỨNG MOBILE */}
                       <button
                         type="button"
                         onClick={() => {
@@ -832,9 +844,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                           setForgotError(null);
                           setForgotMsg(null);
                         }}
-                        className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 hover:underline transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-[11px] sm:text-xs font-semibold text-indigo-300 hover:text-white active:text-cyan-300 transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95"
+                        title="Khôi phục mật khẩu qua số điện thoại"
                       >
-                        Quên mật khẩu?
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        <span>Quên mật khẩu?</span>
                       </button>
                     </div>
 
@@ -845,12 +859,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         placeholder="Nhập mật khẩu hiện tại..."
                         required
-                        className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 focus:border-indigo-500 focus:outline-none text-xs text-white placeholder-slate-500 transition-colors"
+                        className="w-full pl-3.5 pr-10 py-2.5 sm:py-2.5 rounded-xl bg-slate-900/90 border border-white/10 focus:border-indigo-500 focus:outline-none text-sm sm:text-xs text-white placeholder-slate-500 transition-colors"
                       />
                       <button
                         type="button"
                         onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
                       >
                         {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -870,12 +884,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         placeholder="Tối thiểu 6 ký tự..."
                         required
                         minLength={6}
-                        className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 focus:border-indigo-500 focus:outline-none text-xs text-white placeholder-slate-500 transition-colors"
+                        className="w-full pl-3.5 pr-10 py-2.5 sm:py-2.5 rounded-xl bg-slate-900/90 border border-white/10 focus:border-indigo-500 focus:outline-none text-sm sm:text-xs text-white placeholder-slate-500 transition-colors"
                       />
                       <button
                         type="button"
                         onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
                       >
                         {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -894,12 +908,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         onChange={(e) => setConfirmNewPassword(e.target.value)}
                         placeholder="Nhập lại mật khẩu mới..."
                         required
-                        className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 focus:border-indigo-500 focus:outline-none text-xs text-white placeholder-slate-500 transition-colors"
+                        className="w-full pl-3.5 pr-10 py-2.5 sm:py-2.5 rounded-xl bg-slate-900/90 border border-white/10 focus:border-indigo-500 focus:outline-none text-sm sm:text-xs text-white placeholder-slate-500 transition-colors"
                       />
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
                       >
                         {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -910,7 +924,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <button
                       type="submit"
                       disabled={isChangingPassword}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                      className="w-full py-3 sm:py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm sm:text-xs font-bold transition-all shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
                     >
                       {isChangingPassword ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />

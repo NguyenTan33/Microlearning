@@ -15,6 +15,7 @@ import {
   ListOrdered,
   PlusCircle,
   Bookmark,
+  BarChart3,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -377,8 +378,28 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
           </div>
 
-          {/* Mobile Right Controls: Studio + Mobile Menu Toggle */}
+          {/* Mobile Right Controls: Avatar + Studio + Mobile Menu Toggle */}
           <div className="flex md:hidden items-center gap-1.5">
+            {/* Nút Avatar người dùng trên Mobile Header (Chạm để mở Dashboard & Đổi mật khẩu) */}
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="p-1 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer active:scale-95"
+              title={`Hồ sơ: ${userProfile.fullName || currentUser?.displayName}`}
+            >
+              {userProfile.avatarUrl ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={userProfile.fullName}
+                  className="w-7 h-7 rounded-lg object-cover border border-indigo-400/50 shrink-0"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-xs text-white font-bold shrink-0">
+                  {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
+                </div>
+              )}
+            </button>
+
             <button
               onClick={() => setIsCourseMgmtOpen(true)}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
@@ -437,14 +458,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                   setCurrentView('BOOKMARKS');
                   setIsMobileMenuOpen(false);
                 }}
-                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
                   currentView === 'BOOKMARKS'
                     ? 'bg-indigo-600 border-indigo-500 text-white'
                     : 'bg-slate-900/80 border-white/5 text-slate-300'
                 }`}
               >
-                <Bookmark className="w-4 h-4 text-cyan-400" />
-                <span>Mục cờ ({totalBookmarksCount})</span>
+                <Bookmark className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="truncate">Mục cờ {totalBookmarksCount > 0 ? `(${totalBookmarksCount})` : ''}</span>
               </button>
             </div>
 
@@ -488,7 +509,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       {/* =========================================================================
           MAIN CONTENT AREA
       ========================================================================= */}
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 flex-1">
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 flex-1">
         {/* VIEW 1: KHÁM PHÁ KHÓA HỌC (CATALOG) */}
         {currentView === 'CATALOG' && (
           <CourseCatalogView
@@ -640,6 +661,93 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           </div>
         )}
       </main>
+
+      {/* =========================================================================
+          THANH ĐIỀU HƯỚNG CHỨC NĂNG DASHBOARD CỐ ĐỊNH TRÊN MOBILE WEB (BOTTOM BAR)
+      ========================================================================= */}
+      <nav
+        aria-label="Thanh điều hướng di động"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#070B17]/95 backdrop-blur-lg border-t border-white/10 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom"
+      >
+        {/* 1. Khóa học */}
+        <button
+          type="button"
+          onClick={() => setCurrentView('CATALOG')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+            currentView === 'CATALOG'
+              ? 'text-cyan-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Compass className={`w-5 h-5 ${currentView === 'CATALOG' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">Khóa học</span>
+        </button>
+
+        {/* 2. Phòng học */}
+        <button
+          type="button"
+          onClick={() => setCurrentView('WORKSPACE')}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+            currentView === 'WORKSPACE'
+              ? 'text-cyan-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookOpen className={`w-5 h-5 ${currentView === 'WORKSPACE' ? 'stroke-[2.5]' : ''}`} />
+          <span className="text-[10px] mt-0.5">Phòng học</span>
+        </button>
+
+        {/* 3. Mục cắm cờ đánh dấu */}
+        <button
+          type="button"
+          onClick={() => setCurrentView('BOOKMARKS')}
+          className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+            currentView === 'BOOKMARKS'
+              ? 'text-cyan-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Bookmark className={`w-5 h-5 ${currentView === 'BOOKMARKS' ? 'stroke-[2.5]' : ''}`} />
+          {totalBookmarksCount > 0 && (
+            <span className="absolute top-0 right-1.5 px-1 min-w-[14px] h-[14px] rounded-full bg-cyan-400 text-[#070B17] text-[9px] font-extrabold flex items-center justify-center">
+              {totalBookmarksCount}
+            </span>
+          )}
+          <span className="text-[10px] mt-0.5">Mục cờ</span>
+        </button>
+
+        {/* 4. Dashboard Tiến độ & Hồ sơ & Đổi mật khẩu */}
+        <button
+          type="button"
+          onClick={() => setIsProfileModalOpen(true)}
+          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+            isProfileModalOpen
+              ? 'text-indigo-400 font-bold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          {userProfile.avatarUrl ? (
+            <img
+              src={userProfile.avatarUrl}
+              alt=""
+              className="w-5 h-5 rounded-full object-cover border border-indigo-400 shrink-0"
+            />
+          ) : (
+            <BarChart3 className="w-5 h-5 text-indigo-400" />
+          )}
+          <span className="text-[10px] mt-0.5">Tiến độ</span>
+        </button>
+
+        {/* 5. Studio Đăng tải bài giảng */}
+        <button
+          type="button"
+          onClick={() => setIsCourseMgmtOpen(true)}
+          className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 hover:text-purple-300 transition-all cursor-pointer"
+        >
+          <FolderKanban className="w-5 h-5 text-purple-400" />
+          <span className="text-[10px] mt-0.5">Studio</span>
+        </button>
+      </nav>
 
       {/* =========================================================================
           STUDIO MODAL: ĐĂNG TẢI KHÓA HỌC, BÀI GIẢNG & SOẠN ĐỀ THI QUIZZ
