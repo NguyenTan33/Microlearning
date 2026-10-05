@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Layers,
   Plus,
@@ -22,9 +22,14 @@ import {
   Search,
   Filter,
   Sparkles,
+  FileText,
+  Download,
+  FileCheck,
+  Info,
 } from 'lucide-react';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
+import { parseDocxQuizFile, parseQuizText, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
 
 interface CourseManagementModalProps {
   isOpen: boolean;
@@ -109,6 +114,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       ],
     },
   ]);
+
+  // Word (.docx) Import for Quiz
+  const wordFileInputRef = useRef<HTMLInputElement>(null);
+  const [isParsingWord, setIsParsingWord] = useState<boolean>(false);
+  const [showWordGuide, setShowWordGuide] = useState<boolean>(false);
+  const [showPasteTextModal, setShowPasteTextModal] = useState<boolean>(false);
+  const [wordTextDraft, setWordTextDraft] = useState<string>('');
 
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
@@ -420,6 +432,96 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
+  // =================== WORD QUIZ IMPORT ACTIONS ===================
+  const handleWordFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.txt')) {
+      showToast('error', 'Vui lòng chọn tệp Word định dạng .docx (hoặc .txt).');
+      return;
+    }
+
+    setIsParsingWord(true);
+    try {
+      let parsed: ParsedQuizQuestion[] = [];
+      if (lowerName.endsWith('.docx')) {
+        const res = await parseDocxQuizFile(file);
+        parsed = res.questions;
+      } else {
+        const text = await file.text();
+        parsed = parseQuizText(text);
+      }
+
+      if (parsed.length === 0) {
+        showToast('error', 'Không tìm thấy câu hỏi trắc nghiệm hợp lệ trong tệp. Bấm "Hướng dẫn" để xem cấu trúc chuẩn.');
+        return;
+      }
+
+      setQuizQuestions(parsed);
+      const autoTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      if (quizTitle === 'Bài kiểm tra đánh giá' || !quizTitle) {
+        setQuizTitle(`Bài kiểm tra: ${autoTitle}`);
+      }
+      showToast('success', `Đã nhập thành công ${parsed.length} câu hỏi từ tệp "${file.name}"!`);
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi trích xuất tệp Word.');
+    } finally {
+      setIsParsingWord(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleParseFromTextDraft = () => {
+    if (!wordTextDraft.trim()) {
+      showToast('error', 'Vui lòng dán văn bản câu hỏi trước khi xác nhận.');
+      return;
+    }
+
+    const parsed = parseQuizText(wordTextDraft);
+    if (parsed.length === 0) {
+      showToast('error', 'Không tìm thấy câu hỏi hợp lệ trong đoạn văn bản đã dán. Vui lòng kiểm tra định dạng.');
+      return;
+    }
+
+    setQuizQuestions(parsed);
+    setShowPasteTextModal(false);
+    setWordTextDraft('');
+    showToast('success', `Đã trích xuất thành công ${parsed.length} câu hỏi từ văn bản!`);
+  };
+
+  const handleDownloadSampleFormat = () => {
+    const sampleText = `Câu 1: Hàm nào trong Excel dùng để tìm kiếm giá trị theo cột dọc?
+*A. VLOOKUP
+B. SUM
+C. AVERAGE
+D. COUNT
+Giải thích: Hàm VLOOKUP tìm kiếm giá trị ở cột đầu tiên và trả về dữ liệu tương ứng.
+
+Câu 2: Đâu là một phương pháp cốt lõi của Microlearning?
+A. Học dồn 8 tiếng liên tục
+*B. Chia nhỏ kiến thức thành bài học 3-5 phút
+C. Bỏ qua các bài kiểm tra thực hành
+D. Chỉ học lý thuyết sách vở
+Giải thích: Microlearning tập trung vào các bài học vi mô ngắn gọn, súc tích và có bài tập ứng dụng ngay.
+
+Câu 3: Đâu là câu lệnh git dùng để tạo commit theo chuẩn Conventional Commits?
+A. git push origin main
+*B. git commit -m "feat: thêm tính năng mới"
+C. git status
+D. git pull
+Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, refactor:, etc.`;
+
+    const blob = new Blob([sampleText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Mau_De_Thi_Trac_Nghiem_MicroLearn.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Filtered courses in Studio
   const filteredCourses = courses.filter((c) => {
     const matchesSearch =
@@ -443,25 +545,71 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       <div className="relative w-full max-w-6xl max-h-[92vh] bg-[#0A0F1F] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         
         {/* Header Modal */}
-        <div className="px-6 py-4.5 border-b border-white/10 flex items-center justify-between gap-4 bg-[#0D1429]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Layers className="w-5 h-5" />
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4.5 border-b border-white/10 bg-[#0D1429] flex flex-col gap-2.5 sm:gap-3">
+          {/* Hàng 1 (Top Row): Logo/Icon + Tiêu đề + Badge bên trái, Nút đóng [X] & Nút Desktop bên phải */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                <Layers className="w-4.5 sm:w-5 h-4.5 sm:h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight">
+                    Studio Quản Lý Khóa Học & Bài Giảng
+                  </h2>
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300 whitespace-nowrap">
+                    TEACHER & ADMIN
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 hidden sm:block">
+                  Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                Studio Quản Lý Khóa Học & Bài Giảng
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/30 text-indigo-300">
-                  TEACHER & ADMIN
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
-              </p>
+
+            {/* Desktop Actions & Nút đóng [X] */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="hidden sm:flex items-center gap-2">
+                {!selectedCourseDetail ? (
+                  <button
+                    onClick={() => {
+                      setEditingCourse(null);
+                      setCourseForm({ title: '', description: '', thumbnailUrl: '' });
+                      setShowCourseModal(true);
+                    }}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo Khóa Học Mới</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setSelectedCourseDetail(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Danh sách khóa học</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Đóng Studio"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Hàng 2 (Mô tả chi tiết nằm riêng biệt trên Mobile) */}
+          <p className="text-[11px] text-slate-400 sm:hidden leading-relaxed">
+            Soạn thảo khóa học, đăng tải video MP4, tạo đề thi trắc nghiệm và điều khiển hiển thị
+          </p>
+
+          {/* Hàng 3 (Nút hành động nằm riêng thành 1 hàng bên dưới trên Mobile để không bị bể chữ) */}
+          <div className="sm:hidden flex items-center gap-2 pt-1 border-t border-white/5">
             {!selectedCourseDetail ? (
               <button
                 onClick={() => {
@@ -469,7 +617,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   setCourseForm({ title: '', description: '', thumbnailUrl: '' });
                   setShowCourseModal(true);
                 }}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tạo Khóa Học Mới</span>
@@ -477,19 +625,12 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             ) : (
               <button
                 onClick={() => setSelectedCourseDetail(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Danh sách khóa học</span>
+                <span>Quay lại danh sách khóa học</span>
               </button>
             )}
-
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -1413,10 +1554,129 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 </div>
               </div>
 
+              {/* Input file ẩn cho tải Word */}
+              <input
+                type="file"
+                ref={wordFileInputRef}
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt"
+                onChange={handleWordFileUpload}
+                className="hidden"
+              />
+
+              {/* Thanh công cụ Tải Word (.docx) & Tùy chọn nhập câu hỏi */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-900 border border-purple-500/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Nhập câu hỏi tự động từ File Word</span>
+                    </span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Tải file .docx hoặc dán văn bản trắc nghiệm chuẩn để hệ thống tự động nhận diện câu hỏi &amp; đáp án
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Nút 1: Tải file Word (.docx) */}
+                    <button
+                      type="button"
+                      disabled={isParsingWord}
+                      onClick={() => wordFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 cursor-pointer transition-all disabled:opacity-50"
+                      title="Tải file Word (.docx) chứa câu hỏi trắc nghiệm"
+                    >
+                      {isParsingWord ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang đọc file Word...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Tải File Word (.docx)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Nút 2: Dán văn bản */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPasteTextModal(true)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-purple-500/40 text-purple-300 text-xs font-semibold cursor-pointer transition-colors"
+                      title="Dán nhanh văn bản câu hỏi từ Word hoặc Notepad"
+                    >
+                      <FileCheck className="w-3.5 h-3.5" />
+                      <span>Dán Văn Bản</span>
+                    </button>
+
+                    {/* Nút 3: Tải file mẫu */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadSampleFormat}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                      title="Tải file mẫu định dạng câu hỏi"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>File mẫu</span>
+                    </button>
+
+                    {/* Nút 4: Xem hướng dẫn */}
+                    <button
+                      type="button"
+                      onClick={() => setShowWordGuide(!showWordGuide)}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 text-slate-400 hover:text-white text-xs cursor-pointer transition-colors"
+                      title="Xem cú pháp chuẩn cho file Word"
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      <span>{showWordGuide ? 'Ẩn HD' : 'Hướng dẫn'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Khung hướng dẫn định dạng chi tiết */}
+                {showWordGuide && (
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-purple-500/30 space-y-2 text-[11px] text-slate-300">
+                    <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" />
+                      <span>Cấu trúc chuẩn file Word (.docx) được hỗ trợ tự động:</span>
+                    </div>
+                    <pre className="p-2.5 rounded-lg bg-black/60 border border-white/10 font-mono text-[10.5px] text-purple-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+{`Câu 1: Hàm nào trong Excel dùng để tìm kiếm giá trị theo cột dọc?
+*A. VLOOKUP
+B. SUM
+C. AVERAGE
+D. COUNT
+Giải thích: Hàm VLOOKUP tìm kiếm theo cột dọc đầu tiên của bảng.
+
+Câu 2: Đâu là định nghĩa của vi học (Microlearning)?
+A. Học dồn nhiều giờ liên tục
+*B. Chia nhỏ bài giảng thành các phần 3-5 phút (Đúng)
+C. Không cần làm bài tập
+D. Chỉ học lý thuyết`}
+                    </pre>
+                    <ul className="list-disc list-inside space-y-0.5 text-slate-400 text-[10.5px]">
+                      <li>Đánh dấu đáp án đúng: Đặt dấu <strong>*</strong> ở đầu hoặc cuối phương án (ví dụ: <code className="text-purple-300">*A. ...</code>), hoặc ghi <code className="text-purple-300">[x] A. ...</code> hoặc <code className="text-purple-300">Đáp án: A</code> ở dòng dưới.</li>
+                      <li>Hỗ trợ cả định dạng "Câu 1:", "1.", "Bài 1:" hoặc "Question 1:".</li>
+                      <li>Có thể thêm dòng "Giải thích: ..." hoặc "Lời giải: ..." cho từng câu hỏi.</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+
               {/* Danh sách câu hỏi */}
               <div className="space-y-4 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-white text-xs">Danh sách câu hỏi ({quizQuestions.length} câu)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-xs">
+                      Danh sách câu hỏi ({quizQuestions.length} câu)
+                    </span>
+                    {quizQuestions.length > 0 && (
+                      <span className="text-[10px] text-purple-400 font-mono px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-500/30">
+                        ~{Math.max(1, Math.round(100 / quizQuestions.length))} điểm/câu
+                      </span>
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1425,7 +1685,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                         {
                           content: `Câu hỏi số ${quizQuestions.length + 1}`,
                           explanation: 'Giải thích câu trả lời đúng',
-                          points: 50,
+                          points: Math.max(1, Math.round(100 / (quizQuestions.length + 1))),
                           options: [
                             { optionText: 'Đáp án A (Đúng)', isCorrect: true },
                             { optionText: 'Đáp án B', isCorrect: false },
@@ -1516,6 +1776,61 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-DIALOG: DÁN VĂN BẢN TRẮC NGHIỆM */}
+      {showPasteTextModal && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-xl bg-[#0D1429] border border-white/10 rounded-2xl p-5 shadow-2xl flex flex-col space-y-3.5 text-slate-100">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-purple-400" />
+                <span>Dán Văn Bản Câu Hỏi Từ Word / Bộ Nhớ Tạm</span>
+              </h4>
+              <button
+                onClick={() => setShowPasteTextModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Sao chép nội dung câu hỏi trong file Word và dán vào ô bên dưới. Hệ thống sẽ tự động tách câu hỏi, phương án và nhận diện đáp án đúng.
+            </p>
+
+            <textarea
+              rows={10}
+              value={wordTextDraft}
+              onChange={(e) => setWordTextDraft(e.target.value)}
+              placeholder={`Ví dụ:
+Câu 1: HTML là viết tắt của từ gì?
+*A. HyperText Markup Language
+B. Hyper Transfer Markup Language
+C. High Tech Markup Language
+D. Home Tool Multi Language
+Giải thích: HTML là ngôn ngữ đánh dấu siêu văn bản.`}
+              className="w-full p-3 rounded-xl bg-slate-950 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-purple-500/50 resize-y"
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowPasteTextModal(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-xs text-slate-300 hover:text-white"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={handleParseFromTextDraft}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold cursor-pointer shadow-md"
+              >
+                Xác Nhận & Trích Xuất Câu Hỏi
+              </button>
+            </div>
           </div>
         </div>
       )}
