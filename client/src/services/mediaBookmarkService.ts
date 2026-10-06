@@ -262,6 +262,7 @@ export const mediaBookmarkService = {
       if (key && key.startsWith(prefix)) {
         keysToRemove.push(key);
       }
+    }
     keysToRemove.forEach((k) => localStorage.removeItem(k));
   },
 };
