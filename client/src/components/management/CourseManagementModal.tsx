@@ -816,35 +816,15 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                     >
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-2">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
-                              course.isPublished
-                                ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                                : 'bg-amber-950/80 border-amber-500/40 text-amber-300'
-                            }`}
-                          >
-                            {course.isPublished ? (
-                              <>
-                                <Eye className="w-3 h-3" />
-                                <span>Đang công khai</span>
-                              </>
-                            ) : (
-                              <>
-                                <EyeOff className="w-3 h-3" />
-                                <span>Đang ẩn (Bản nháp)</span>
-                              </>
-                            )}
-                          </span>
-
-                          {/* Badge Khóa học Riêng tư / Công khai (Feature 6) */}
+                          {/* Duy nhất 1 huy hiệu: Hạn chế (khi riêng tư) hoặc Công khai */}
                           {course.isPrivate ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300 flex items-center gap-1">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300 flex items-center gap-1">
                               <Lock className="w-2.5 h-2.5 text-amber-400" />
-                              <span>Riêng tư</span>
+                              <span>Hạn chế</span>
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 border border-white/10 text-slate-400 flex items-center gap-1">
-                              <Globe className="w-2.5 h-2.5 text-cyan-400" />
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
+                              <Globe className="w-2.5 h-2.5 text-emerald-400" />
                               <span>Công khai</span>
                             </span>
                           )}
@@ -944,27 +924,17 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-indigo-400 font-semibold uppercase">Đang soạn thảo khóa học:</span>
-                      <button
-                        onClick={() => handleTogglePublishCourse(selectedCourseDetail)}
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 cursor-pointer transition-colors ${
-                          selectedCourseDetail.isPublished
-                            ? 'bg-emerald-950 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900'
-                            : 'bg-amber-950 border-amber-500/40 text-amber-300 hover:bg-amber-900'
-                        }`}
-                        title="Bấm để chuyển đổi trạng thái Công khai / Ẩn"
-                      >
-                        {selectedCourseDetail.isPublished ? (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            <span>Đang công khai</span>
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="w-3 h-3" />
-                            <span>Đang ẩn (Bản nháp)</span>
-                          </>
-                        )}
-                      </button>
+                      {selectedCourseDetail.isPrivate ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300 flex items-center gap-1 shadow-sm">
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Hạn chế</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1 shadow-sm">
+                          <Globe className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>Công khai</span>
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-base font-bold text-white mt-1">{selectedCourseDetail.title}</h3>
                     <p className="text-xs text-slate-400 mt-0.5">{selectedCourseDetail.description || 'Không có mô tả.'}</p>
