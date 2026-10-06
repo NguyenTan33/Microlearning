@@ -86,19 +86,19 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+      <div className="bg-[#0D1429] border border-white/10 rounded-3xl max-w-2xl w-full p-6 shadow-2xl flex flex-col max-h-[90vh] relative text-slate-100 animate-in fade-in zoom-in-95">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center text-xl shadow-inner">
+            <div className="w-10 h-10 rounded-2xl bg-rose-950/60 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl shadow-inner">
               📖
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+              <h3 className="text-lg font-extrabold text-white">
                 Sổ Tay Ôn Tập Câu Hỏi Sai
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-400">
                 Lưu lại các câu hỏi trả lời chưa đúng để ôn luyện lại kiến thức
               </p>
             </div>
@@ -107,7 +107,7 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
           >
             ✕
           </button>
@@ -118,10 +118,10 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
           <button
             type="button"
             onClick={() => setActiveTab('list')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
               activeTab === 'list'
-                ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
             }`}
           >
             Danh sách câu sai ({mistakes.length})
@@ -130,12 +130,12 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
             type="button"
             onClick={handleStartPractice}
             disabled={mistakes.length === 0}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'practice'
-                ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
                 : mistakes.length > 0
-                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100'
-                  : 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                  ? 'bg-rose-950/40 border border-rose-500/30 text-rose-300 hover:bg-rose-900/50'
+                  : 'text-slate-600 border border-white/5 cursor-not-allowed'
             }`}
           >
             <span>🎯 Ôn luyện ngay</span>
@@ -154,10 +154,10 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
             mistakes.length === 0 ? (
               <div className="py-16 text-center">
                 <div className="text-5xl mb-3">🎉</div>
-                <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                <h4 className="text-base font-bold text-slate-200">
                   Sổ tay của bạn đang trống!
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
                   Bạn không có câu hỏi nào chưa khắc phục. Hãy tiếp tục làm các bài thi trắc nghiệm nhé!
                 </p>
               </div>
@@ -166,10 +166,10 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                 {mistakes.map((mistake, index) => (
                   <div
                     key={mistake.id}
-                    className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 hover:border-rose-300 dark:hover:border-rose-900 transition"
+                    className="p-4 bg-slate-900/60 rounded-2xl border border-white/5 hover:border-rose-500/30 transition shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="px-2.5 py-0.5 bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 text-[11px] font-bold rounded-lg">
+                      <span className="px-2.5 py-0.5 bg-rose-950/80 border border-rose-500/30 text-rose-300 text-[11px] font-bold rounded-lg">
                         Câu #{index + 1} • Sai {mistake.failedCount} lần
                       </span>
                       <span className="text-[11px] text-slate-400 truncate max-w-[200px]" title={mistake.lessonTitle}>
@@ -177,13 +177,13 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                       </span>
                     </div>
 
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-snug">
+                    <p className="text-sm font-semibold text-white leading-relaxed">
                       {mistake.questionText}
                     </p>
 
                     {mistake.explanation && (
-                      <div className="mt-2.5 p-2.5 bg-white dark:bg-slate-800 rounded-xl text-xs text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700">
-                        <strong className="text-indigo-600 dark:text-indigo-400">💡 Giải thích:</strong> {mistake.explanation}
+                      <div className="mt-2.5 p-2.5 bg-slate-950/60 rounded-xl text-xs text-slate-300 border border-white/10 leading-relaxed">
+                        <strong className="text-indigo-400">💡 Giải thích:</strong> {mistake.explanation}
                       </div>
                     )}
                   </div>
@@ -193,15 +193,15 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
           ) : (
             /* TAB 2: PHIÊN ÔN LUYỆN */
             currentMistake && (
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div className="p-4 bg-slate-900/60 rounded-2xl border border-white/10">
                 <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-                  <span className="font-bold text-rose-600 dark:text-rose-400">
+                  <span className="font-bold text-rose-400">
                     Câu ôn tập {practiceIndex + 1} / {mistakes.length}
                   </span>
                   <span>Bài học: {currentMistake.lessonTitle}</span>
                 </div>
 
-                <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-4 leading-relaxed">
+                <h4 className="text-base font-bold text-white mb-4 leading-relaxed">
                   {currentMistake.questionText}
                 </h4>
 
@@ -213,13 +213,13 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                     const isCorrect = isAnswered && opt.id === answerResult.correctOptionId;
                     const isWrongSelected = isAnswered && isSelected && !answerResult.isCorrect;
 
-                    let optionStyle = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-400';
+                    let optionStyle = 'border-white/10 bg-slate-950/60 text-slate-300 hover:border-indigo-500/50 hover:bg-slate-900';
                     if (isSelected && !isAnswered) {
-                      optionStyle = 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-1 ring-indigo-600 text-indigo-700 dark:text-indigo-300 font-semibold';
+                      optionStyle = 'border-indigo-500 bg-indigo-950/50 ring-1 ring-indigo-500 text-white font-semibold';
                     } else if (isCorrect) {
-                      optionStyle = 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold';
+                      optionStyle = 'border-emerald-500 bg-emerald-950/60 text-emerald-200 font-bold';
                     } else if (isWrongSelected) {
-                      optionStyle = 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 font-bold';
+                      optionStyle = 'border-rose-500 bg-rose-950/60 text-rose-200 font-bold';
                     }
 
                     return (
@@ -228,11 +228,11 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                         type="button"
                         disabled={isAnswered}
                         onClick={() => setSelectedOptionId(opt.id)}
-                        className={`w-full text-left p-3.5 rounded-xl border text-sm transition flex items-center justify-between ${optionStyle}`}
+                        className={`w-full text-left p-3.5 rounded-xl border text-sm transition flex items-center justify-between cursor-pointer ${optionStyle}`}
                       >
                         <span>{opt.optionText}</span>
-                        {isCorrect && <span className="text-emerald-600 text-sm font-bold">✓ Đúng</span>}
-                        {isWrongSelected && <span className="text-rose-600 text-sm font-bold">✗ Sai</span>}
+                        {isCorrect && <span className="text-emerald-400 text-sm font-bold">✓ Đúng</span>}
+                        {isWrongSelected && <span className="text-rose-400 text-sm font-bold">✗ Sai</span>}
                       </button>
                     );
                   })}
@@ -243,14 +243,14 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                   <div
                     className={`p-3.5 rounded-xl border mb-4 text-xs ${
                       answerResult.isCorrect
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-                        : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                        : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
                     }`}
                   >
                     <p className="font-bold text-sm mb-1">{answerResult.feedbackMessage}</p>
                     {answerResult.explanation && (
-                      <p className="mt-1 opacity-90">
-                        <strong>Giải thích:</strong> {answerResult.explanation}
+                      <p className="mt-1 opacity-90 leading-relaxed">
+                        <strong className="text-indigo-400">Giải thích:</strong> {answerResult.explanation}
                       </p>
                     )}
                   </div>
@@ -263,7 +263,7 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                       type="button"
                       disabled={selectedOptionId === null || isSubmitting}
                       onClick={handleCheckAnswer}
-                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition flex items-center gap-2"
+                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/30 transition flex items-center gap-2 cursor-pointer"
                     >
                       {isSubmitting && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                       <span>Kiểm tra đáp án</span>
@@ -272,7 +272,7 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ isOpen, on
                     <button
                       type="button"
                       onClick={handleNextPracticeQuestion}
-                      className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition"
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
                     >
                       {practiceIndex < mistakes.length - 1 ? 'Câu tiếp theo →' : 'Hoàn thành phiên ôn tập 🎉'}
                     </button>
