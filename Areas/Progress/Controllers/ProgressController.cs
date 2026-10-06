@@ -13,10 +13,46 @@ namespace Microlearning.Areas.Progress.Controllers
     public class ProgressController : ControllerBase
     {
         private readonly IProgressService _progressService;
+        private readonly IVideoProgressService _videoProgressService;
 
-        public ProgressController(IProgressService progressService)
+        public ProgressController(
+            IProgressService progressService,
+            IVideoProgressService videoProgressService)
         {
             _progressService = progressService;
+            _videoProgressService = videoProgressService;
+        }
+
+        /// <summary>
+        /// Ghi nhận tiến độ xem kèm thuật toán Interval Union chống gian lận tua (> 30% tua bỏ)
+        /// </summary>
+        [HttpPost("video-coverage")]
+        public async Task<IActionResult> RecordVideoCoverage([FromBody] RecordVideoCoverageRequest request, CancellationToken cancellationToken)
+        {
+            var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                throw new BusinessException("Không xác định được danh tính tài khoản từ Token.");
+            }
+
+            var result = await _videoProgressService.RecordProgressWithCoverageAsync(accountId, request, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Lấy chi tiết thông tin chống gian lận & dải xem của bài học
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/coverage")]
+        public async Task<IActionResult> GetCoverageProgress(int lessonId, CancellationToken cancellationToken)
+        {
+            var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                throw new BusinessException("Không xác định được danh tính tài khoản từ Token.");
+            }
+
+            var result = await _videoProgressService.GetCoverageProgressAsync(accountId, lessonId, cancellationToken);
+            return Ok(result);
         }
 
         /// <summary>
