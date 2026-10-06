@@ -28,6 +28,81 @@ import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBo
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
 import { LessonAttachmentsTab } from './LessonAttachmentsTab';
 
+interface YTPlayerInstance {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  mute: () => void;
+  unMute: () => void;
+  isMuted: () => boolean;
+  setPlaybackRate: (suggestedRate: number) => void;
+  getPlayerState: () => number;
+  destroy: () => void;
+}
+
+interface YTPlayerEvent {
+  target: YTPlayerInstance;
+  data: number;
+}
+
+interface YTNamespace {
+  Player: new (
+    elementId: string | HTMLElement,
+    options: {
+      videoId?: string;
+      events?: {
+        onReady?: (event: { target: YTPlayerInstance }) => void;
+        onStateChange?: (event: YTPlayerEvent) => void;
+        onError?: (event: { target: YTPlayerInstance; data: number }) => void;
+      };
+    }
+  ) => YTPlayerInstance;
+  PlayerState: {
+    UNSTARTED: number;
+    ENDED: number;
+    PLAYING: number;
+    PAUSED: number;
+    BUFFERING: number;
+    CUED: number;
+  };
+}
+
+const loadYouTubeIframeApi = (): Promise<YTNamespace> => {
+  return new Promise((resolve) => {
+    const win = window as unknown as { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void };
+    if (win.YT && win.YT.Player) {
+      resolve(win.YT);
+      return;
+    }
+
+    const prevReady = win.onYouTubeIframeAPIReady;
+    win.onYouTubeIframeAPIReady = () => {
+      if (prevReady) {
+        try {
+          prevReady();
+        } catch {}
+      }
+      if (win.YT) {
+        resolve(win.YT);
+      }
+    };
+
+    if (!document.getElementById('yt-iframe-api-script')) {
+      const tag = document.createElement('script');
+      tag.id = 'yt-iframe-api-script';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      } else {
+        document.head.appendChild(tag);
+      }
+    }
+  });
+};
+
 interface VideoLessonPlayerProps {
   mediaId: number;
   lessonId: number;
@@ -38,6 +113,7 @@ interface VideoLessonPlayerProps {
   onOpenNotebookView?: () => void;
   onOpenBookmarksView?: () => void;
   onProgressSaved?: () => void;
+  onWatchedPercentChange?: (percent: number) => void;
 }
 
 export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
@@ -50,8 +126,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   onOpenNotebookView,
   onOpenBookmarksView,
   onProgressSaved,
+  onWatchedPercentChange,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const ytPlayerRef = useRef<YTPlayerInstance | null>(null);
+  const pendingSeekTimeRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -205,7 +284,36 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     [lessonId, onProgressSaved]
   );
 
+  const getCurrentPlayerTime = useCallback((): number => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const t = ytPlayerRef.current.getCurrentTime();
+        if (!isNaN(t) && t >= 0) return t;
+      } catch {}
+    }
+    if (videoRef.current) {
+      return videoRef.current.currentTime;
+    }
+    return currentTime;
+  }, [mediaInfo, currentTime]);
+
   const togglePlay = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (isPlaying) {
+          ytPlayerRef.current.pauseVideo();
+          setIsPlaying(false);
+          const cur = ytPlayerRef.current.getCurrentTime();
+          const dur = ytPlayerRef.current.getDuration();
+          handleSaveProgress(cur, dur, true);
+        } else {
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        }
+      } catch {}
+      return;
+    }
+
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
@@ -222,6 +330,56 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       videoRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
+  };
+
+  const handleRewind10 = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        const target = Math.max(0, cur - 10);
+        ytPlayerRef.current.seekTo(target, true);
+        setCurrentTime(target);
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+    }
+  };
+
+  const handleForward10 = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        const dur = ytPlayerRef.current.getDuration();
+        const target = Math.min(dur || duration, cur + 10);
+        ytPlayerRef.current.seekTo(target, true);
+        setCurrentTime(target);
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
+    }
+  };
+
+  const handleToggleMute = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (isMuted) {
+          ytPlayerRef.current.unMute();
+          setIsMuted(false);
+        } else {
+          ytPlayerRef.current.mute();
+          setIsMuted(true);
+        }
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
   };
 
   const handleRetryStream = () => {
@@ -243,11 +401,21 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     const dur = videoRef.current.duration || 0;
     setCurrentTime(cur);
     setDuration(dur);
+    if (dur > 0 && onWatchedPercentChange) {
+      onWatchedPercentChange(Math.min(100, (cur / dur) * 100));
+    }
     handleSaveProgress(cur, dur, false);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(targetTime, true);
+        setCurrentTime(targetTime);
+      } catch {}
+      return;
+    }
     if (videoRef.current) {
       if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
         watchedIntervalsRef.current.push({
@@ -266,6 +434,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     const nextSpeed = speeds[nextIdx];
     setPlaybackSpeed(nextSpeed);
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.setPlaybackRate(nextSpeed);
+      } catch {}
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = nextSpeed;
     }
@@ -286,22 +460,164 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     }
   };
 
-  // Nhảy tới mốc cắm cờ nếu được truyền từ bên ngoài (Mục Đánh Dấu)
+  // Nhảy tới mốc cắm cờ nếu được truyền từ bên ngoài (Mục Đánh Dấu / Bookmark Library)
   useEffect(() => {
-    if (initialSeekTime !== undefined && initialSeekTime !== null && initialSeekTime > 0 && videoRef.current) {
-      videoRef.current.currentTime = initialSeekTime;
-      setCurrentTime(initialSeekTime);
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-      setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
-      setTimeout(() => setSaveNotice(null), 3000);
+    if (initialSeekTime !== undefined && initialSeekTime !== null && initialSeekTime > 0) {
+      pendingSeekTimeRef.current = initialSeekTime;
+
+      // 1. YouTube Player
+      if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.seekTo(initialSeekTime, true);
+          ytPlayerRef.current.playVideo();
+          setCurrentTime(initialSeekTime);
+          setIsPlaying(true);
+          setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
+          setTimeout(() => setSaveNotice(null), 3000);
+          pendingSeekTimeRef.current = null;
+          setInitialSeekDone(true);
+        } catch {}
+        return;
+      }
+
+      // 2. HTML5 Video Player
+      if (videoRef.current && videoRef.current.readyState >= 1) {
+        videoRef.current.currentTime = initialSeekTime;
+        setCurrentTime(initialSeekTime);
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+        setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
+        setTimeout(() => setSaveNotice(null), 3000);
+        pendingSeekTimeRef.current = null;
+        setInitialSeekDone(true);
+      }
     }
-  }, [initialSeekTime]);
+  }, [initialSeekTime, mediaInfo]);
+
+  // Khởi tạo YouTube IFrame API và điều khiển video YouTube
+  useEffect(() => {
+    if (!mediaInfo || mediaInfo.sourceType !== 'youtube') {
+      return;
+    }
+
+    let isCancelled = false;
+    let timerId: number | null = null;
+    let playerInstance: YTPlayerInstance | null = null;
+    const iframeId = `yt-iframe-${lessonId}`;
+
+    const initYT = async () => {
+      try {
+        const YT = await loadYouTubeIframeApi();
+        if (isCancelled) return;
+
+        let attempts = 0;
+        const attachToIframe = () => {
+          if (isCancelled) return;
+          const el = document.getElementById(iframeId);
+          if (!el && attempts < 25) {
+            attempts++;
+            setTimeout(attachToIframe, 100);
+            return;
+          }
+          if (!el) return;
+
+          try {
+            playerInstance = new YT.Player(iframeId, {
+              events: {
+                onReady: (event) => {
+                  if (isCancelled) return;
+                  ytPlayerRef.current = event.target;
+                  try {
+                    const dur = event.target.getDuration();
+                    if (dur > 0) setDuration(dur);
+
+                    if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
+                      event.target.seekTo(pendingSeekTimeRef.current, true);
+                      setCurrentTime(pendingSeekTimeRef.current);
+                      event.target.playVideo();
+                      setIsPlaying(true);
+                      setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
+                      setTimeout(() => setSaveNotice(null), 3000);
+                      pendingSeekTimeRef.current = null;
+                      setInitialSeekDone(true);
+                    } else if (!initialSeekDone && lastSavedPercentRef.current > 0) {
+                      const resumeTime = (lastSavedPercentRef.current / 100) * dur;
+                      if (resumeTime > 2) {
+                        event.target.seekTo(resumeTime, true);
+                        setCurrentTime(resumeTime);
+                      }
+                      setInitialSeekDone(true);
+                    }
+                  } catch {}
+                },
+                onStateChange: (event) => {
+                  if (isCancelled) return;
+                  if (event.data === YT.PlayerState.PLAYING) {
+                    setIsPlaying(true);
+                  } else if (event.data === YT.PlayerState.PAUSED) {
+                    setIsPlaying(false);
+                    try {
+                      const cur = event.target.getCurrentTime();
+                      const dur = event.target.getDuration();
+                      handleSaveProgress(cur, dur, true);
+                    } catch {}
+                  } else if (event.data === YT.PlayerState.ENDED) {
+                    setIsPlaying(false);
+                    try {
+                      const dur = event.target.getDuration();
+                      handleSaveProgress(dur, dur, true);
+                    } catch {}
+                  }
+                },
+              },
+            });
+            ytPlayerRef.current = playerInstance;
+          } catch {}
+        };
+
+        attachToIframe();
+      } catch {}
+    };
+
+    initYT();
+
+    // Polling định kỳ đồng bộ thời gian và thanh tua khi xem video YouTube
+    timerId = window.setInterval(() => {
+      if (ytPlayerRef.current) {
+        try {
+          const cur = ytPlayerRef.current.getCurrentTime();
+          const dur = ytPlayerRef.current.getDuration();
+          if (!isNaN(cur) && cur >= 0) {
+            setCurrentTime(cur);
+            if (dur > 0) {
+              setDuration(dur);
+              const watchedPct = Math.min(100, (cur / dur) * 100);
+              if (onWatchedPercentChange) {
+                onWatchedPercentChange(watchedPct);
+              }
+            }
+            handleSaveProgress(cur, dur, false);
+          }
+        } catch {}
+      }
+    }, 500);
+
+    return () => {
+      isCancelled = true;
+      if (timerId) clearInterval(timerId);
+      if (playerInstance) {
+        try {
+          playerInstance.destroy();
+        } catch {}
+      }
+      ytPlayerRef.current = null;
+    };
+  }, [mediaInfo, lessonId, handleSaveProgress, onWatchedPercentChange, initialSeekDone]);
 
   // 3. Xử lý cắm cờ mốc thời gian (Thêm điểm đánh dấu)
   const handleAddBookmark = useCallback(
     (title: string, note?: string) => {
-      const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
+      const curTime = getCurrentPlayerTime();
       const newBm = mediaBookmarkService.addBookmark({
         lessonId,
         mediaId,
@@ -316,11 +632,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       setSaveNotice(`Đã cắm cờ lúc ${newBm.formattedTime}`);
       setTimeout(() => setSaveNotice(null), 3000);
     },
-    [lessonId, mediaId, courseId, courseTitle, lessonTitle, currentTime]
+    [getCurrentPlayerTime, lessonId, mediaId, courseId, courseTitle, lessonTitle]
   );
 
   const handleOpenAddFlagModal = () => {
-    const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
+    const curTime = getCurrentPlayerTime();
     setFlagTimestamp(curTime);
     setFlagTitleInput(lessonTitle || 'Mốc ghi nhớ');
     setFlagNoteInput('');
@@ -346,6 +662,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   // 5. Xử lý nhảy tới mốc cắm cờ (Seek to flag)
   const handleSeekToBookmark = useCallback((timestamp: number) => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(timestamp, true);
+        ytPlayerRef.current.playVideo();
+        setCurrentTime(timestamp);
+        setIsPlaying(true);
+        setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
+        setTimeout(() => setSaveNotice(null), 2500);
+        return;
+      } catch {}
+    }
+
     if (videoRef.current) {
       videoRef.current.currentTime = timestamp;
       setCurrentTime(timestamp);
@@ -353,8 +681,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       setIsPlaying(true);
       setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
       setTimeout(() => setSaveNotice(null), 2500);
+    } else {
+      pendingSeekTimeRef.current = timestamp;
+      setCurrentTime(timestamp);
+      setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
+      setTimeout(() => setSaveNotice(null), 2500);
     }
-  }, []);
+  }, [mediaInfo]);
 
   return (
     <div className="space-y-4">
@@ -374,7 +707,27 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {mediaInfo && (mediaInfo.sourceType === 'youtube' || mediaInfo.sourceType === 'vimeo') && mediaInfo.embedUrl ? (
+        {mediaInfo && mediaInfo.sourceType === 'youtube' && mediaInfo.embedUrl ? (
+          <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
+            <iframe
+              key={`yt-${lessonId}`}
+              id={`yt-iframe-${lessonId}`}
+              src={mediaInfo.embedUrl.includes('enablejsapi=1') ? mediaInfo.embedUrl : `${mediaInfo.embedUrl}${mediaInfo.embedUrl.includes('?') ? '&' : '?'}enablejsapi=1`}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+            {/* Badge hiển thị nguồn nhúng ngoài */}
+            <div className="absolute top-3 right-3 pointer-events-none z-10">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span>YouTube Video</span>
+              </span>
+            </div>
+          </div>
+        ) : mediaInfo && mediaInfo.sourceType === 'vimeo' && mediaInfo.embedUrl ? (
           <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
             <iframe
               src={mediaInfo.embedUrl}
@@ -387,17 +740,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             {/* Badge hiển thị nguồn nhúng ngoài */}
             <div className="absolute top-3 right-3 pointer-events-none z-10">
               <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
-                {mediaInfo.sourceType === 'youtube' ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span>YouTube Video</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                    <span>Vimeo Video</span>
-                  </>
-                )}
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Vimeo Video</span>
               </span>
             </div>
           </div>
@@ -440,9 +784,19 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={() => {
               if (videoRef.current) {
-                setDuration(videoRef.current.duration || 0);
-                if (!initialSeekDone && lastSavedPercentRef.current > 0) {
-                  const resumeTime = (lastSavedPercentRef.current / 100) * (videoRef.current.duration || 0);
+                const dur = videoRef.current.duration || 0;
+                setDuration(dur);
+                if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
+                  videoRef.current.currentTime = pendingSeekTimeRef.current;
+                  setCurrentTime(pendingSeekTimeRef.current);
+                  videoRef.current.play().catch(() => {});
+                  setIsPlaying(true);
+                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
+                  setTimeout(() => setSaveNotice(null), 3000);
+                  pendingSeekTimeRef.current = null;
+                  setInitialSeekDone(true);
+                } else if (!initialSeekDone && lastSavedPercentRef.current > 0) {
+                  const resumeTime = (lastSavedPercentRef.current / 100) * dur;
                   if (resumeTime > 2) {
                     videoRef.current.currentTime = resumeTime;
                     setCurrentTime(resumeTime);
@@ -535,11 +889,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Lùi 10s */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-                }
-              }}
+              onClick={handleRewind10}
               title="Lùi 10 giây"
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
@@ -548,11 +898,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Tiến 10s */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-                }
-              }}
+              onClick={handleForward10}
               title="Tua tới 10 giây"
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
@@ -561,12 +907,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Mute/Unmute */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.muted = !isMuted;
-                  setIsMuted(!isMuted);
-                }
-              }}
+              onClick={handleToggleMute}
               title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
