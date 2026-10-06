@@ -11,6 +11,7 @@ import { getOrCreateDeviceId } from '../utils/deviceHelper';
 import { generateGuid } from '../utils/guidHelper';
 import { downloadManager } from './downloadManager';
 import { mediaCleanupService } from './mediaCleanupService';
+import { tokenService } from './tokenService';
 import type { SyncOperationItem } from '../types/offline.types';
 
 export interface SyncStatusListener {
@@ -103,6 +104,10 @@ class AutoSyncEngine {
       const net = await NetInfo.fetch();
       if (!net.isConnected) return;
 
+      // Chỉ chạy đồng bộ khi học viên đã đăng nhập và có Bearer Token
+      const token = await tokenService.getAccessToken();
+      if (!token) return;
+
       const deviceId = await getOrCreateDeviceId();
 
       // ==========================================
@@ -181,9 +186,10 @@ class AutoSyncEngine {
       percent: Number(percent.toFixed(1)),
     };
 
-    // 2. Kiểm tra nếu có mạng -> Bắn API trực tiếp
+    // 2. Kiểm tra nếu có mạng và đã có Token -> Bắn API trực tiếp
     const net = await NetInfo.fetch();
-    if (net.isConnected && net.isInternetReachable !== false) {
+    const token = await tokenService.getAccessToken();
+    if (net.isConnected && net.isInternetReachable !== false && token) {
       try {
         await catalogApi.sendProgressEvent(lessonId, watchedSeconds, totalDurationSeconds);
         await progressRepository.markClean(lessonId);
@@ -235,8 +241,9 @@ class AutoSyncEngine {
     const net = await NetInfo.fetch();
     let isSyncedOnline = false;
 
-    // 2. Thử nộp trực tuyến nếu đang có mạng
-    if (net.isConnected && net.isInternetReachable !== false) {
+    const token = await tokenService.getAccessToken();
+    // 2. Thử nộp trực tuyến nếu đang có mạng và đã có token
+    if (net.isConnected && net.isInternetReachable !== false && token) {
       try {
         await catalogApi.submitQuizAttempt({
           quizId,
