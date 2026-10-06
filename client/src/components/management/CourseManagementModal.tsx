@@ -29,11 +29,17 @@ import {
   Link2,
   Globe,
   ExternalLink,
+  BarChart3,
+  Lock,
+  Unlock,
+  ShieldAlert,
 } from 'lucide-react';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { parseVideoUrl } from '../../types/media.types';
 import { parseDocxQuizFile, parseQuizText, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
+import { LessonAttachmentsTab } from '../player/LessonAttachmentsTab';
+import { CourseStudentProgressModal } from './CourseStudentProgressModal';
 
 interface CourseManagementModalProps {
   isOpen: boolean;
@@ -59,7 +65,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   // Course Modal
   const [showCourseModal, setShowCourseModal] = useState<boolean>(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
-  const [courseForm, setCourseForm] = useState({ title: '', description: '', thumbnailUrl: '' });
+  const [courseForm, setCourseForm] = useState({
+    title: '',
+    description: '',
+    thumbnailUrl: '',
+    isPrivate: false,
+    accessPassword: '',
+  });
+
+  // Feature 7: Student Progress Analytics Modal
+  const [analyticsCourse, setAnalyticsCourse] = useState<{ id: number; title: string } | null>(null);
+
+  // Feature 1: Lesson Attachment Manager Modal
+  const [targetLessonForAttachment, setTargetLessonForAttachment] = useState<Lesson | null>(null);
 
   // Subject Modal
   const [showSubjectModal, setShowSubjectModal] = useState<boolean>(false);
@@ -185,13 +203,29 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       showToast('error', 'Tiêu đề khóa học không được để trống.');
       return;
     }
+    if (courseForm.isPrivate && !editingCourse && !courseForm.accessPassword.trim()) {
+      showToast('error', 'Vui lòng đặt mật khẩu bảo vệ cho khóa học riêng tư mới.');
+      return;
+    }
     setActionLoading(true);
     try {
       if (editingCourse) {
-        await catalogApi.updateCourse(editingCourse.id, courseForm);
+        await catalogApi.updateCourse(editingCourse.id, {
+          title: courseForm.title,
+          description: courseForm.description,
+          thumbnailUrl: courseForm.thumbnailUrl,
+          isPrivate: courseForm.isPrivate,
+          accessPassword: courseForm.accessPassword.trim() || undefined,
+        });
         showToast('success', 'Đã cập nhật thông tin khóa học thành công.');
       } else {
-        await catalogApi.createCourse(courseForm);
+        await catalogApi.createCourse({
+          title: courseForm.title,
+          description: courseForm.description,
+          thumbnailUrl: courseForm.thumbnailUrl,
+          isPrivate: courseForm.isPrivate,
+          accessPassword: courseForm.accessPassword.trim() || undefined,
+        });
         showToast('success', 'Đã tạo khóa học mới thành công.');
       }
       setShowCourseModal(false);
@@ -621,7 +655,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   <button
                     onClick={() => {
                       setEditingCourse(null);
-                      setCourseForm({ title: '', description: '', thumbnailUrl: '' });
+                      setCourseForm({ title: '', description: '', thumbnailUrl: '', isPrivate: false, accessPassword: '' });
                       setShowCourseModal(true);
                     }}
                     className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
@@ -661,7 +695,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               <button
                 onClick={() => {
                   setEditingCourse(null);
-                  setCourseForm({ title: '', description: '', thumbnailUrl: '' });
+                  setCourseForm({ title: '', description: '', thumbnailUrl: '', isPrivate: false, accessPassword: '' });
                   setShowCourseModal(true);
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
@@ -802,7 +836,29 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                             )}
                           </span>
 
+                          {/* Badge Khóa học Riêng tư / Công khai (Feature 6) */}
+                          {course.isPrivate ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300 flex items-center gap-1">
+                              <Lock className="w-2.5 h-2.5 text-amber-400" />
+                              <span>Riêng tư</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 border border-white/10 text-slate-400 flex items-center gap-1">
+                              <Globe className="w-2.5 h-2.5 text-cyan-400" />
+                              <span>Công khai</span>
+                            </span>
+                          )}
+
                           <div className="flex items-center gap-1">
+                            {/* Feature 7: Nút xem % tiến độ toàn bộ học viên */}
+                            <button
+                              onClick={() => setAnalyticsCourse({ id: course.id, title: course.title })}
+                              className="p-1.5 rounded-lg bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-slate-400 hover:text-indigo-300 transition-colors"
+                              title="Xem thống kê % tiến độ học viên của khóa này"
+                            >
+                              <BarChart3 className="w-3.5 h-3.5" />
+                            </button>
+
                             <button
                               onClick={() => {
                                 setEditingCourse(course);
@@ -810,6 +866,8 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                                   title: course.title,
                                   description: course.description || '',
                                   thumbnailUrl: course.thumbnailUrl || '',
+                                  isPrivate: Boolean(course.isPrivate),
+                                  accessPassword: '',
                                 });
                                 setShowCourseModal(true);
                               }}
@@ -912,7 +970,17 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                     <p className="text-xs text-slate-400 mt-0.5">{selectedCourseDetail.description || 'Không có mô tả.'}</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Feature 7: Thống kê % tiến độ học viên của khóa */}
+                    <button
+                      onClick={() => setAnalyticsCourse({ id: selectedCourseDetail.id, title: selectedCourseDetail.title })}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white transition-colors cursor-pointer"
+                      title="Xem % tiến độ toàn bộ học viên đã đăng ký khóa học này"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span>Tiến độ học viên</span>
+                    </button>
+
                     <button
                       onClick={() => handleTogglePublishCourse(selectedCourseDetail)}
                       className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border cursor-pointer transition-colors ${
@@ -1115,6 +1183,16 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                                     <span>Tạo Quiz</span>
                                   </button>
 
+                                  {/* Feature 1: Quản lý Tài liệu đính kèm (Word, PDF) */}
+                                  <button
+                                    onClick={() => setTargetLessonForAttachment(lesson)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-cyan-300 text-[11px] font-semibold cursor-pointer transition-colors"
+                                    title="Quản lý và tải lên tài liệu đính kèm (Word, PDF)"
+                                  >
+                                    <FileText className="w-3 h-3 text-cyan-400" />
+                                    <span>Tài liệu</span>
+                                  </button>
+
                                   {/* Sửa bài học */}
                                   <button
                                     onClick={() => {
@@ -1213,6 +1291,61 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
                 />
+              </div>
+
+              {/* Feature 6: Chế độ Khóa học Riêng tư (Private) & Mật khẩu */}
+              <div className="pt-2 border-t border-white/10 space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-white/5">
+                  <div className="space-y-0.5 pr-2">
+                    <div className="flex items-center gap-1.5 font-medium text-slate-200">
+                      {courseForm.isPrivate ? (
+                        <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : (
+                        <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
+                      )}
+                      <span>Khóa học Riêng tư (Bảo vệ bằng Mật khẩu)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {courseForm.isPrivate
+                        ? 'Học viên bắt buộc phải nhập đúng mật khẩu để mở khóa và học.'
+                        : 'Mọi học viên đều có thể tự do truy cập học khóa học này.'}
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={courseForm.isPrivate}
+                      onChange={(e) => setCourseForm({ ...courseForm, isPrivate: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+
+                {courseForm.isPrivate && (
+                  <div className="space-y-2 p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 animate-in fade-in">
+                    <label className="block text-amber-300 font-medium">
+                      {editingCourse ? 'Mật khẩu truy cập mới (để trống nếu giữ nguyên)' : 'Mật khẩu truy cập *'}
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" />
+                      <input
+                        type="text"
+                        required={!editingCourse}
+                        placeholder={editingCourse ? 'Nhập mật khẩu mới nếu muốn đổi...' : 'Nhập mật khẩu truy cập...'}
+                        value={courseForm.accessPassword}
+                        onChange={(e) => setCourseForm({ ...courseForm, accessPassword: e.target.value })}
+                        className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-900 border border-amber-500/40 text-white focus:outline-none focus:border-amber-400 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-start gap-1.5 text-[11px] text-amber-300/80 leading-relaxed pt-1">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-amber-400 mt-0.5" />
+                      <span>
+                        Lưu ý: Khi bạn đổi mật khẩu cho khóa học riêng tư, toàn bộ mã ủy quyền trước đây của học viên sẽ bị thu hồi và họ sẽ phải nhập mật khẩu mới.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">
@@ -2022,6 +2155,44 @@ Giải thích: HTML là ngôn ngữ đánh dấu siêu văn bản.`}
               >
                 Xác Nhận & Trích Xuất Câu Hỏi
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 7: MODAL THEO DÕI % TIẾN ĐỘ HỌC VIÊN CỦA KHÓA HỌC */}
+      {analyticsCourse && (
+        <CourseStudentProgressModal
+          isOpen={true}
+          courseId={analyticsCourse.id}
+          courseTitle={analyticsCourse.title}
+          onClose={() => setAnalyticsCourse(null)}
+        />
+      )}
+
+      {/* Feature 1: MODAL QUẢN LÝ TÀI LIỆU ĐÍNH KÈM BÀI GIẢNG (WORD, PDF) */}
+      {targetLessonForAttachment && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-2xl bg-[#0D1429] border border-white/10 rounded-2xl p-5 shadow-2xl space-y-4 text-slate-100 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Tài liệu đính kèm: {targetLessonForAttachment.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setTargetLessonForAttachment(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pr-1">
+              <LessonAttachmentsTab
+                lessonId={targetLessonForAttachment.id}
+                canManage={true}
+              />
             </div>
           </div>
         </div>

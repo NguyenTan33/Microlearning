@@ -17,6 +17,8 @@ import {
   Bookmark,
   BookMarked,
   BarChart3,
+  Heart,
+  HelpCircle,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -31,6 +33,11 @@ import { LessonSidebar } from './LessonSidebar';
 import { CourseManagementModal } from '../management/CourseManagementModal';
 import { AdminUserManagementModal } from '../management/AdminUserManagementModal';
 import { UserProfileModal } from '../profile/UserProfileModal';
+import { StreakCrownBadge } from '../common/StreakCrownBadge';
+import { MistakeVaultModal } from '../quiz/MistakeVaultModal';
+import { FavoriteSubjectsDrawer } from '../common/FavoriteSubjectsDrawer';
+import { HistoryNavigationControls } from '../common/HistoryNavigationControls';
+import { useAppHistoryNavigation } from '../../hooks/useAppHistoryNavigation';
 import type { UserProfile } from '../../types/userProfile.types';
 import { getCurrentUser } from '../../utils/tokenHelper';
 import { mediaBookmarkService } from '../../services/mediaBookmarkService';
@@ -63,6 +70,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [totalBookmarksCount, setTotalBookmarksCount] = useState<number>(() =>
     mediaBookmarkService.getAllBookmarksCount()
   );
+
+  // Upgrade Features Modals (Mistake Vault & Favorite Subjects)
+  const [isMistakeVaultOpen, setIsMistakeVaultOpen] = useState<boolean>(false);
+  const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState<boolean>(false);
 
   // Khóa học và bài học hiện tại đang học
   const [currentCourse, setCurrentCourse] = useState<CourseDetail | null>(null);
@@ -144,11 +155,48 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     loadInitialCourse();
   }, [loadInitialCourse]);
 
+  // Feature 5: In-app history navigation stack & breadcrumbs
+  const {
+    canGoBack,
+    canGoForward,
+    goBack,
+    goForward,
+    pushState,
+    breadcrumbs,
+  } = useAppHistoryNavigation(
+    { view: 'catalog', title: 'Khám phá khóa học' },
+    (targetState) => {
+      if (targetState.view === 'catalog') {
+        setCurrentView('CATALOG');
+      } else if (targetState.view === 'lesson' || targetState.view === 'course') {
+        if (targetState.courseId && targetState.courseId !== currentCourse?.id) {
+          loadInitialCourse(targetState.courseId);
+        }
+        if (targetState.lessonId && currentCourse?.subjects) {
+          for (const subj of currentCourse.subjects) {
+            const found = subj.lessons?.find((l) => l.id === targetState.lessonId);
+            if (found) {
+              setActiveLesson(found);
+              break;
+            }
+          }
+        }
+        setCurrentView('WORKSPACE');
+      }
+    }
+  );
+
   // Xử lý chuyển bài học
   const handleSelectLesson = (lesson: Lesson) => {
     setActiveLesson(lesson);
     setCurrentView('WORKSPACE');
     setIsMobileCurriculumOpen(false); // Đóng drawer trên mobile khi đã chọn bài
+    pushState({
+      view: 'lesson',
+      courseId: currentCourse?.id,
+      lessonId: lesson.id,
+      title: lesson.title,
+    });
 
     progressApi
       .getLessonProgress(lesson.id)
@@ -164,6 +212,50 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const handleSelectCourseFromCatalog = async (courseId: number) => {
     await loadInitialCourse(courseId);
     setCurrentView('WORKSPACE');
+    pushState({
+      view: 'course',
+      courseId,
+      title: 'Phòng học',
+    });
+  };
+
+  // Feature 10: Bay nhanh tới môn học yêu thích (Quick Travel & Smooth Scroll)
+  const handleNavigateToFavoriteSubject = async (courseId: number, subjectId: number) => {
+    setIsFavoriteDrawerOpen(false);
+    try {
+      let targetCourse = currentCourse;
+      if (!targetCourse || targetCourse.id !== courseId) {
+        const fetched = await catalogApi.getCourseById(courseId);
+        if (fetched) {
+          targetCourse = fetched;
+          setCurrentCourse(fetched);
+        }
+      }
+
+      if (targetCourse?.subjects) {
+        const foundSubj = targetCourse.subjects.find((s) => s.id === subjectId);
+        if (foundSubj && foundSubj.lessons && foundSubj.lessons.length > 0) {
+          setActiveLesson(foundSubj.lessons[0]);
+          pushState({
+            view: 'lesson',
+            courseId: targetCourse.id,
+            subjectId,
+            lessonId: foundSubj.lessons[0].id,
+            title: `${foundSubj.title} - ${foundSubj.lessons[0].title}`,
+          });
+        }
+      }
+      setCurrentView('WORKSPACE');
+
+      setTimeout(() => {
+        const el = document.getElementById(`subject-${subjectId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 350);
+    } catch (err) {
+      console.warn('Lỗi khi điều hướng đến môn học yêu thích:', err);
+    }
   };
 
   // Ghi nhận hoàn thành bài học
@@ -279,7 +371,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           {/* Desktop Navigation Tabs */}
           <nav className="hidden md:flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-white/5 text-xs font-semibold">
             <button
-              onClick={() => setCurrentView('CATALOG')}
+              onClick={() => {
+                setCurrentView('CATALOG');
+                pushState({ view: 'catalog', title: 'Khám phá khóa học' });
+              }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'CATALOG'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -291,7 +386,15 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
 
             <button
-              onClick={() => setCurrentView('WORKSPACE')}
+              onClick={() => {
+                setCurrentView('WORKSPACE');
+                pushState({
+                  view: 'lesson',
+                  courseId: effectiveCourse.id,
+                  lessonId: effectiveLesson.id,
+                  title: effectiveLesson.title,
+                });
+              }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'WORKSPACE'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -304,7 +407,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
             {/* Nút Sổ tay NoteBook AI (Đứng phía trước Mục đánh dấu) */}
             <button
-              onClick={() => setCurrentView('NOTEBOOK')}
+              onClick={() => {
+                setCurrentView('NOTEBOOK');
+                pushState({ view: 'course', courseId: effectiveCourse.id, title: 'NoteBook AI' });
+              }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'NOTEBOOK'
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30 font-bold'
@@ -320,7 +426,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
 
             <button
-              onClick={() => setCurrentView('BOOKMARKS')}
+              onClick={() => {
+                setCurrentView('BOOKMARKS');
+                pushState({ view: 'course', courseId: effectiveCourse.id, title: 'Mục đánh dấu' });
+              }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'BOOKMARKS'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -338,7 +447,32 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           </nav>
 
           {/* Desktop Action Buttons & User Menu */}
-          <div className="hidden md:flex items-center gap-2 sm:gap-3">
+          <div className="hidden md:flex items-center gap-2 sm:gap-2.5">
+            {/* Feature 8: Streak 🔥 & Master Crown 👑 */}
+            <StreakCrownBadge />
+
+            {/* Feature 10: Môn học yêu thích ❤️ */}
+            <button
+              type="button"
+              onClick={() => setIsFavoriteDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-rose-950/80 border border-white/10 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Danh sách môn học yêu thích"
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-500/80" />
+              <span className="hidden xl:inline">Yêu thích</span>
+            </button>
+
+            {/* Feature 9: Sổ tay câu hỏi sai 📖 */}
+            <button
+              type="button"
+              onClick={() => setIsMistakeVaultOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-amber-950/80 border border-white/10 hover:border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Sổ tay câu sai & Ôn luyện trắc nghiệm"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden xl:inline">Sổ câu sai</span>
+            </button>
+
             {/* Nút Studio Đăng Tải Bài Giảng & Quiz (Chỉ hiện cho Teacher & Admin) */}
             {isTeacherOrAdmin && (
               <button
@@ -363,7 +497,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               </button>
             )}
 
-            {/* User Profile & Role Badge - Nhấp vào để mở Dashboard tiến độ học & Quản lý hồ sơ */}
+            {/* User Profile & Role Badge */}
             {currentUser && (
               <button
                 type="button"
@@ -382,7 +516,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
                   </div>
                 )}
-                <span className="truncate max-w-[120px] sm:max-w-[160px] group-hover:text-cyan-300 transition-colors">
+                <span className="truncate max-w-[100px] sm:max-w-[130px] group-hover:text-cyan-300 transition-colors">
                   {userProfile.fullName || currentUser.displayName}
                 </span>
                 <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase">
@@ -401,8 +535,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
           </div>
 
-          {/* Mobile Right Controls: Avatar + Studio + Mobile Menu Toggle */}
+          {/* Mobile Right Controls: Avatar + Streak + Studio + Mobile Menu Toggle */}
           <div className="flex md:hidden items-center gap-1.5">
+            <StreakCrownBadge />
+
             {/* Nút Avatar người dùng trên Mobile Header (Chạm để mở Dashboard & Đổi mật khẩu) */}
             <button
               type="button"
@@ -447,10 +583,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         {/* Mobile Dropdown Menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden pt-3 pb-2 border-t border-white/10 mt-3 space-y-2 animate-fadeIn">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <button
                 onClick={() => {
                   setCurrentView('CATALOG');
+                  pushState({ view: 'catalog', title: 'Khám phá khóa học' });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
@@ -466,6 +603,12 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 onClick={() => {
                   setCurrentView('WORKSPACE');
+                  pushState({
+                    view: 'lesson',
+                    courseId: effectiveCourse.id,
+                    lessonId: effectiveLesson.id,
+                    title: effectiveLesson.title,
+                  });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
@@ -478,10 +621,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 <span>Phòng học</span>
               </button>
 
-              {/* Nút Sổ tay NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+              {/* Nút Sổ tay NoteBook AI */}
               <button
                 onClick={() => {
                   setCurrentView('NOTEBOOK');
+                  pushState({ view: 'course', courseId: effectiveCourse.id, title: 'NoteBook AI' });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
@@ -497,6 +641,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 onClick={() => {
                   setCurrentView('BOOKMARKS');
+                  pushState({ view: 'course', courseId: effectiveCourse.id, title: 'Mục đánh dấu' });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
@@ -507,6 +652,30 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               >
                 <Bookmark className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span className="truncate">Mục cờ {totalBookmarksCount > 0 ? `(${totalBookmarksCount})` : ''}</span>
+              </button>
+
+              {/* Feature 10: Môn học yêu thích */}
+              <button
+                onClick={() => {
+                  setIsFavoriteDrawerOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-2 rounded-xl border border-rose-500/20 bg-rose-950/20 text-rose-300 text-xs font-bold flex items-center justify-center gap-1"
+              >
+                <Heart className="w-4 h-4 text-rose-400 fill-rose-500/80 shrink-0" />
+                <span>Yêu thích</span>
+              </button>
+
+              {/* Feature 9: Sổ tay câu hỏi sai */}
+              <button
+                onClick={() => {
+                  setIsMistakeVaultOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-2 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-300 text-xs font-bold flex items-center justify-center gap-1"
+              >
+                <HelpCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Sổ câu sai</span>
               </button>
             </div>
 
@@ -551,6 +720,35 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           MAIN CONTENT AREA
       ========================================================================= */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 flex-1">
+        {/* Feature 5: In-app History Navigation Controls & Breadcrumbs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 p-2 sm:p-2.5 rounded-2xl bg-[#090D1A]/90 border border-white/5 backdrop-blur-sm shadow-sm">
+          <HistoryNavigationControls
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onGoBack={goBack}
+            onGoForward={goForward}
+            breadcrumbs={breadcrumbs}
+          />
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              onClick={() => setIsFavoriteDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Danh sách môn học yêu thích"
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-500/80" />
+              <span>Môn yêu thích</span>
+            </button>
+            <button
+              onClick={() => setIsMistakeVaultOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Sổ tay ôn luyện các câu làm sai"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Sổ câu sai</span>
+            </button>
+          </div>
+        </div>
+
         {/* VIEW 1: KHÁM PHÁ KHÓA HỌC (CATALOG) */}
         {currentView === 'CATALOG' && (
           <CourseCatalogView
@@ -847,6 +1045,19 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         completedLessonIds={completedLessonIds}
         onSelectCourse={handleSelectCourseFromCatalog}
         onProfileUpdated={(updated) => setUserProfile(updated)}
+      />
+
+      {/* Feature 9: SỔ TAY CÂU HỎI SAI & ÔN TẬP */}
+      <MistakeVaultModal
+        isOpen={isMistakeVaultOpen}
+        onClose={() => setIsMistakeVaultOpen(false)}
+      />
+
+      {/* Feature 10: MÔN HỌC YÊU THÍCH (DRAWER BAY NHANH) */}
+      <FavoriteSubjectsDrawer
+        isOpen={isFavoriteDrawerOpen}
+        onClose={() => setIsFavoriteDrawerOpen(false)}
+        onSelectSubject={handleNavigateToFavoriteSubject}
       />
     </div>
   );
