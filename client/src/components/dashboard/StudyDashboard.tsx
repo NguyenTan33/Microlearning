@@ -189,14 +189,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       // Đồng bộ Max tiến độ từ Máy Chủ (chống mất tiến độ khi F5 hoặc vào lại web)
       try {
         const completedIdsFromServer = await progressApi.getCompletedLessonIds(targetCourse?.id);
-        if (completedIdsFromServer && completedIdsFromServer.length > 0) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, ...completedIdsFromServer]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (completedIdsFromServer) {
+          setCompletedLessonIds(completedIdsFromServer);
+          try {
+            localStorage.setItem(storageProgressKey, JSON.stringify(completedIdsFromServer));
+          } catch {}
         }
       } catch {
         // ignore
@@ -224,19 +221,22 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           .catch(() => {});
       }
 
-      // Kiểm tra tiến độ của bài học hiện tại
+      // Kiểm tra tiến độ của bài học hiện tại (bắt buộc kiểm tra isCompleted từ máy chủ)
       if (targetLesson) {
         progressApi
           .getLessonProgress(targetLesson.id)
           .then((p) => {
-            if (p && (p.isCompleted || p.percent >= 90)) {
-              setCompletedLessonIds((prev) => {
-                const merged = Array.from(new Set([...prev, targetLesson!.id]));
-                try {
-                  localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-                } catch {}
-                return merged;
-              });
+            if (p) {
+              setLessonWatchedPercent(p.percent);
+              if (p.isCompleted) {
+                setCompletedLessonIds((prev) => {
+                  const merged = Array.from(new Set([...prev, targetLesson!.id]));
+                  try {
+                    localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+                  } catch {}
+                  return merged;
+                });
+              }
             }
           })
           .catch(() => {});
@@ -258,14 +258,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     const handleProgressUpdate = async () => {
       try {
         const serverIds = await progressApi.getCompletedLessonIds(currentCourse?.id);
-        if (serverIds && serverIds.length > 0) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, ...serverIds]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (serverIds) {
+          setCompletedLessonIds(serverIds);
+          try {
+            localStorage.setItem(storageProgressKey, JSON.stringify(serverIds));
+          } catch {}
         }
       } catch {
         // ignore
@@ -310,6 +307,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     setActiveLesson(lesson);
     setCurrentView('WORKSPACE');
     setIsMobileCurriculumOpen(false); // Đóng drawer trên mobile khi đã chọn bài
+    setLessonWatchedPercent(0);
     pushState({
       view: 'lesson',
       courseId: currentCourse?.id,
@@ -320,14 +318,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     progressApi
       .getLessonProgress(lesson.id)
       .then((p) => {
-        if (p && (p.isCompleted || p.percent >= 90)) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, lesson.id]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (p) {
+          setLessonWatchedPercent(p.percent);
+          if (p.isCompleted) {
+            setCompletedLessonIds((prev) => {
+              const merged = Array.from(new Set([...prev, lesson.id]));
+              try {
+                localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
         }
       })
       .catch(() => {});
@@ -976,7 +977,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     initialSeekTime={initialSeekTimestamp}
                     onOpenNotebookView={() => setCurrentView('NOTEBOOK')}
                     onOpenBookmarksView={() => setCurrentView('BOOKMARKS')}
-                    onProgressSaved={handleLessonCompleted}
+                    onProgressSaved={(isCompleted) => {
+                      if (isCompleted) {
+                        handleLessonCompleted();
+                      }
+                    }}
                     onWatchedPercentChange={(p) =>
                       setLessonWatchedPercent((prev) => Math.max(prev, p))
                     }
