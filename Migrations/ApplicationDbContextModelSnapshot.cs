@@ -141,14 +141,23 @@ namespace Microlearning.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AccessPasswordHash")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsPrivate")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsPublished")
                         .HasColumnType("bit");
+
+                    b.Property<int>("PasswordVersion")
+                        .HasColumnType("int");
 
                     b.Property<string>("ThumbnailUrl")
                         .HasMaxLength(500)
@@ -292,6 +301,55 @@ namespace Microlearning.Migrations
                     b.ToTable("Lessons", (string)null);
                 });
 
+            modelBuilder.Entity("Microlearning.Model.Entities.LessonAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FileType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("LessonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Sha256Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonId");
+
+                    b.ToTable("LessonAttachments", (string)null);
+                });
+
             modelBuilder.Entity("Microlearning.Model.Entities.LessonProgress", b =>
                 {
                     b.Property<int>("Id")
@@ -314,6 +372,9 @@ namespace Microlearning.Migrations
                     b.Property<bool>("IsCompleted")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsEligibleForCompletion")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("LastPlayedAt")
                         .HasColumnType("datetime2");
 
@@ -324,8 +385,14 @@ namespace Microlearning.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<double>("SkippedRatio")
+                        .HasColumnType("float");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<double>("WatchedCoveragePercent")
+                        .HasColumnType("float");
 
                     b.Property<int>("WatchedSeconds")
                         .HasColumnType("int");
@@ -835,6 +902,122 @@ namespace Microlearning.Migrations
                     b.ToTable("SyncOperations", (string)null);
                 });
 
+            modelBuilder.Entity("Microlearning.Model.Entities.UserCourseAccess", b =>
+                {
+                    b.Property<string>("AccountId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UnlockedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UnlockedPasswordVersion")
+                        .HasColumnType("int");
+
+                    b.HasKey("AccountId", "CourseId");
+
+                    b.HasIndex("CourseId");
+
+                    b.ToTable("UserCourseAccesses", (string)null);
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserFavoriteSubject", b =>
+                {
+                    b.Property<string>("AccountId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("SubjectId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("AccountId", "SubjectId");
+
+                    b.HasIndex("SubjectId");
+
+                    b.ToTable("UserFavoriteSubjects", (string)null);
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserQuizMistake", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsResolved")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastFailedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LessonId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuestionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuizId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SelectedOptionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonId");
+
+                    b.HasIndex("QuestionId");
+
+                    b.HasIndex("QuizId");
+
+                    b.HasIndex("AccountId", "IsResolved");
+
+                    b.ToTable("UserQuizMistakes", (string)null);
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserStreak", b =>
+                {
+                    b.Property<string>("AccountId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("CrownAwardedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CurrentStreak")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasMasterCrown")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly?>("LastActiveDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("LongestStreak")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("AccountId");
+
+                    b.ToTable("UserStreaks", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
                     b.Property<string>("Id")
@@ -1007,6 +1190,17 @@ namespace Microlearning.Migrations
                         .IsRequired();
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.LessonAttachment", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Lesson", "Lesson")
+                        .WithMany("Attachments")
+                        .HasForeignKey("LessonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Lesson");
                 });
 
             modelBuilder.Entity("Microlearning.Model.Entities.LessonProgress", b =>
@@ -1184,6 +1378,90 @@ namespace Microlearning.Migrations
                     b.Navigation("Account");
                 });
 
+            modelBuilder.Entity("Microlearning.Model.Entities.UserCourseAccess", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Account", "Account")
+                        .WithMany("CourseAccesses")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Course", "Course")
+                        .WithMany("UserCourseAccesses")
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Course");
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserFavoriteSubject", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Account", "Account")
+                        .WithMany("FavoriteSubjects")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Subject", "Subject")
+                        .WithMany("UserFavoriteSubjects")
+                        .HasForeignKey("SubjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserQuizMistake", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Account", "Account")
+                        .WithMany("QuizMistakes")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Lesson", "Lesson")
+                        .WithMany("QuizMistakes")
+                        .HasForeignKey("LessonId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Quiz", "Quiz")
+                        .WithMany()
+                        .HasForeignKey("QuizId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Lesson");
+
+                    b.Navigation("Question");
+
+                    b.Navigation("Quiz");
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserStreak", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Account", "Account")
+                        .WithOne("Streak")
+                        .HasForeignKey("Microlearning.Model.Entities.UserStreak", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -1237,15 +1515,23 @@ namespace Microlearning.Migrations
 
             modelBuilder.Entity("Microlearning.Model.Entities.Account", b =>
                 {
+                    b.Navigation("CourseAccesses");
+
                     b.Navigation("Devices");
 
                     b.Navigation("Enrollments");
+
+                    b.Navigation("FavoriteSubjects");
 
                     b.Navigation("LessonProgresses");
 
                     b.Navigation("QuizAttempts");
 
+                    b.Navigation("QuizMistakes");
+
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("Streak");
 
                     b.Navigation("SyncOperations");
                 });
@@ -1255,15 +1541,21 @@ namespace Microlearning.Migrations
                     b.Navigation("Enrollments");
 
                     b.Navigation("Subjects");
+
+                    b.Navigation("UserCourseAccesses");
                 });
 
             modelBuilder.Entity("Microlearning.Model.Entities.Lesson", b =>
                 {
+                    b.Navigation("Attachments");
+
                     b.Navigation("LessonProgresses");
 
                     b.Navigation("MediaAssets");
 
                     b.Navigation("Quiz");
+
+                    b.Navigation("QuizMistakes");
                 });
 
             modelBuilder.Entity("Microlearning.Model.Entities.MediaAsset", b =>
@@ -1305,6 +1597,8 @@ namespace Microlearning.Migrations
             modelBuilder.Entity("Microlearning.Model.Entities.Subject", b =>
                 {
                     b.Navigation("Lessons");
+
+                    b.Navigation("UserFavoriteSubjects");
                 });
 #pragma warning restore 612, 618
         }

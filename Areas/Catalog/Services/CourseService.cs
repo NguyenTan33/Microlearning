@@ -1,3 +1,4 @@
+using Microlearning.Areas.Auth.Interfaces;
 using Microlearning.Areas.Catalog.DTOs;
 using Microlearning.Areas.Catalog.Interfaces;
 using Microlearning.Exceptions;
@@ -10,10 +11,19 @@ namespace Microlearning.Areas.Catalog.Services
     public class CourseService : ICourseService
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly IHashService _hashService;
+        private readonly IConfiguration _configuration;
 
-        public CourseService(ApplicationDbContext dbContext)
+        private string PasswordSecret => _configuration["CourseAccess:SecretKey"] ?? "Microlearning_Course_Secret_Salt_Key_2026!";
+
+        public CourseService(
+            ApplicationDbContext dbContext,
+            IHashService hashService,
+            IConfiguration configuration)
         {
             _dbContext = dbContext;
+            _hashService = hashService;
+            _configuration = configuration;
         }
 
         public async Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false)
@@ -35,7 +45,8 @@ namespace Microlearning.Areas.Catalog.Services
                     c.IsPublished,
                     c.CreatedAt,
                     c.UpdatedAt,
-                    c.Subjects.Count
+                    c.Subjects.Count,
+                    c.IsPrivate
                 ))
                 .ToListAsync();
 
@@ -93,7 +104,9 @@ namespace Microlearning.Areas.Catalog.Services
                 course.IsPublished,
                 course.CreatedAt,
                 course.UpdatedAt,
-                subjectResponses
+                subjectResponses,
+                course.IsPrivate,
+                !course.IsPrivate
             );
         }
 
@@ -110,9 +123,20 @@ namespace Microlearning.Areas.Catalog.Services
                 Description = request.Description?.Trim(),
                 ThumbnailUrl = request.ThumbnailUrl?.Trim(),
                 IsPublished = request.IsPublished,
+                IsPrivate = request.IsPrivate,
+                PasswordVersion = 1,
                 Version = 1,
                 CreatedAt = DateTime.UtcNow
             };
+
+            if (request.IsPrivate)
+            {
+                if (string.IsNullOrWhiteSpace(request.AccessPassword))
+                {
+                    throw new BusinessException("Khóa học ở chế độ Riêng tư bắt buộc phải thiết lập mật khẩu truy cập.");
+                }
+                course.AccessPasswordHash = _hashService.Hash(request.AccessPassword.Trim(), PasswordSecret);
+            }
 
             _dbContext.Courses.Add(course);
             await _dbContext.SaveChangesAsync();
@@ -126,7 +150,8 @@ namespace Microlearning.Areas.Catalog.Services
                 course.IsPublished,
                 course.CreatedAt,
                 course.UpdatedAt,
-                0
+                0,
+                course.IsPrivate
             );
         }
 
@@ -147,6 +172,25 @@ namespace Microlearning.Areas.Catalog.Services
             course.Description = request.Description?.Trim();
             course.ThumbnailUrl = request.ThumbnailUrl?.Trim();
             course.IsPublished = request.IsPublished;
+            course.IsPrivate = request.IsPrivate;
+
+            if (request.IsPrivate)
+            {
+                if (!string.IsNullOrWhiteSpace(request.AccessPassword))
+                {
+                    course.AccessPasswordHash = _hashService.Hash(request.AccessPassword.Trim(), PasswordSecret);
+                    course.PasswordVersion += 1;
+                }
+                else if (string.IsNullOrEmpty(course.AccessPasswordHash))
+                {
+                    throw new BusinessException("Khóa học ở chế độ Riêng tư bắt buộc phải thiết lập mật khẩu truy cập.");
+                }
+            }
+            else
+            {
+                course.AccessPasswordHash = null;
+            }
+
             course.Version += 1; // Tăng version cho đồng bộ Delta Sync
             course.UpdatedAt = DateTime.UtcNow;
 
@@ -160,7 +204,9 @@ namespace Microlearning.Areas.Catalog.Services
                 course.Version,
                 course.IsPublished,
                 course.CreatedAt,
-                course.UpdatedAt
+                course.UpdatedAt,
+                course.Subjects?.Count ?? 0,
+                course.IsPrivate
             );
         }
 

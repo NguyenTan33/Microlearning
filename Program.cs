@@ -166,7 +166,16 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.SetIsOriginAllowed(_ => true)
+        policy.SetIsOriginAllowed(origin =>
+        {
+            if (string.IsNullOrWhiteSpace(origin)) return false;
+            if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            {
+                return uri.Host == "localhost" ||
+                       uri.Host.EndsWith("azurestaticapps.net", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        })
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
