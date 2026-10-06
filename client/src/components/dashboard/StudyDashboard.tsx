@@ -490,7 +490,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   return (
     <div className="min-h-screen bg-[#060913] text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* =========================================================================
-          TOP NAVIGATION HEADER (Tương thích Desktop, Laptop, Tablet, Mobile)
+          TOP NAVIGATION HEADER (Tương thích Desktop, Laptop, Tablet, Mobile) - v2.1.0
       ========================================================================= */}
       <header className="sticky top-0 z-40 bg-[#070B17]/95 backdrop-blur-md border-b border-white/10 px-3 sm:px-6 lg:px-8 py-2.5 transition-colors">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2.5">
