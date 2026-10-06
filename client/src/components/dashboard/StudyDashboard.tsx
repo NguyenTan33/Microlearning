@@ -283,8 +283,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     };
   }, [currentCourse?.id, storageProgressKey]);
 
-  // Feature 5: Native Browser History Navigation stack & breadcrumbs
-  const { pushState, breadcrumbs } = useAppHistoryNavigation(
+  // Feature 5: Native Browser History Navigation stack
+  const { pushState } = useAppHistoryNavigation(
     { view: 'catalog', title: 'Khám phá khóa học' },
     (targetState) => {
       if (targetState.view === 'catalog') {
@@ -492,48 +492,48 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       {/* =========================================================================
           TOP NAVIGATION HEADER (Tương thích Desktop, Laptop, Tablet, Mobile)
       ========================================================================= */}
-      <header className="sticky top-0 z-40 bg-[#070B17]/95 backdrop-blur-md border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3 transition-colors">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-40 bg-[#070B17]/95 backdrop-blur-md border-b border-white/10 px-3 sm:px-6 lg:px-8 py-2.5 transition-colors">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2.5">
           {/* Brand Logo & Tiêu đề */}
           <div
             onClick={() => setCurrentView('CATALOG')}
-            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none"
+            className="flex items-center gap-2.5 cursor-pointer group select-none shrink-0"
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20 shrink-0 group-hover:scale-105 transition-transform">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20 shrink-0 group-hover:scale-105 transition-transform">
               <div className="w-full h-full bg-[#080D1A] rounded-[10px] flex items-center justify-center">
-                <GraduationCap className="w-4 sm:w-5 h-4 sm:h-5 text-cyan-300" />
+                <GraduationCap className="w-4.5 h-4.5 text-cyan-300" />
               </div>
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-base sm:text-lg font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
-                  MicroLearn
-                </span>
-              </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
-                Hệ thống Học tập &amp; Đánh giá Năng lực Trực tuyến
+            <div className="hidden sm:block">
+              <span className="text-base font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
+                MicroLearn
+              </span>
+              <p className="text-[10px] text-slate-400 hidden 2xl:block leading-none mt-0.5">
+                Học tập &amp; Đánh giá Năng lực
               </p>
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-white/5 text-xs font-semibold">
+          {/* Desktop Navigation Tabs (Đồng bộ tuyệt đối chiều cao h-9) */}
+          <nav className="hidden md:flex items-center gap-1 p-0.5 rounded-xl bg-slate-900/90 border border-white/10 h-9 shadow-inner shrink-0">
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('CATALOG');
                 pushState({ view: 'catalog', title: 'Khám phá khóa học' });
               }}
-              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap ${
                 currentView === 'CATALOG'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Compass className="w-4 h-4" />
+              <Compass className="w-3.5 h-3.5" />
               <span>Khóa học</span>
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('WORKSPACE');
                 pushState({
@@ -543,30 +543,31 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                   title: effectiveLesson.title,
                 });
               }}
-              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap ${
                 currentView === 'WORKSPACE'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <BookOpen className="w-4 h-4" />
+              <BookOpen className="w-3.5 h-3.5" />
               <span>Phòng học</span>
             </button>
 
-            {/* Nút Sổ tay NoteBook AI (Đứng phía trước Mục đánh dấu) */}
+            {/* Nút Sổ tay NoteBook AI */}
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('NOTEBOOK');
                 pushState({ view: 'notebook', title: 'NoteBook AI' });
               }}
-              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap ${
                 currentView === 'NOTEBOOK'
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30 font-bold'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
               title="Sổ tay học tập thông minh & Trợ lý hỏi đáp AI (Open Notebook)"
             >
-              <BookMarked className="w-4 h-4 text-purple-400" />
+              <BookMarked className="w-3.5 h-3.5 text-purple-400" />
               <span>NoteBook</span>
               <span className="px-1.5 py-0.2 rounded-full bg-purple-400/20 text-purple-300 text-[10px] font-bold">
                 AI
@@ -574,17 +575,18 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setCurrentView('BOOKMARKS');
                 pushState({ view: 'bookmarks', title: 'Mục đánh dấu' });
               }}
-              className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`h-full px-3 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap ${
                 currentView === 'BOOKMARKS'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Bookmark className="w-4 h-4 text-cyan-400" />
+              <Bookmark className="w-3.5 h-3.5 text-cyan-400" />
               <span>Mục đánh dấu</span>
               {totalBookmarksCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 text-[10px] font-bold">
@@ -594,32 +596,57 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
           </nav>
 
-          {/* Desktop Action Buttons & User Menu (Đồng bộ chiều cao h-9, căn lề và style thẩm mỹ thống nhất) */}
-          <div className="hidden md:flex items-center gap-2">
+          {/* Desktop Action Buttons & Tiện ích học tập (Thống nhất chuẩn chiều cao h-9) */}
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            {/* Feature 10: Môn học yêu thích (Đưa lên Header trên cùng) */}
+            <button
+              type="button"
+              onClick={() => setIsFavoriteDrawerOpen(true)}
+              className="h-9 px-2.5 lg:px-3 rounded-xl bg-slate-900/80 hover:bg-rose-950/40 border border-white/10 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="Danh sách môn học yêu thích"
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-500/80 shrink-0" />
+              <span className="hidden xl:inline">Môn yêu thích</span>
+              <span className="inline xl:hidden">Yêu thích</span>
+            </button>
+
+            {/* Feature 9: Sổ tay câu hỏi sai (Đưa lên Header trên cùng) */}
+            <button
+              type="button"
+              onClick={() => setIsMistakeVaultOpen(true)}
+              className="h-9 px-2.5 lg:px-3 rounded-xl bg-slate-900/80 hover:bg-amber-950/40 border border-white/10 hover:border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              title="Sổ tay ôn luyện các câu làm sai"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Sổ câu sai</span>
+            </button>
+
             {/* Feature 8: Streak 🔥 & Master Crown 👑 */}
             <StreakCrownBadge />
 
             {/* Nút Studio Đăng Tải Bài Giảng & Quiz (Chỉ hiện cho Teacher & Admin) */}
             {isTeacherOrAdmin && (
               <button
+                type="button"
                 onClick={() => setIsCourseMgmtOpen(true)}
-                className="h-9 flex items-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-indigo-900/90 to-purple-900/90 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-white transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap shrink-0"
-                title="Đăng tải bài giảng, học phần và soạn đề thi quizz"
+                className="h-9 px-2.5 lg:px-3 rounded-xl bg-gradient-to-r from-indigo-900/90 to-purple-900/90 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-cyan-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                title="Studio Đăng tải bài giảng, học phần và soạn đề thi quizz"
               >
                 <FolderKanban className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="whitespace-nowrap">Studio</span>
+                <span>Studio</span>
               </button>
             )}
 
             {/* Quản lý người dùng (Dành cho Admin) */}
             {currentUser?.isAdmin && (
               <button
+                type="button"
                 onClick={() => setIsAdminUsersOpen(true)}
-                className="h-9 flex items-center gap-1.5 px-3 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-xs font-bold text-purple-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap shrink-0"
+                className="h-9 px-2.5 lg:px-3 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-xs font-bold text-purple-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
                 title="Quản Lý Tài Khoản Người Dùng"
               >
                 <Users className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                <span className="whitespace-nowrap">Tài khoản</span>
+                <span>Tài khoản</span>
               </button>
             )}
 
@@ -628,7 +655,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 type="button"
                 onClick={() => setIsProfileModalOpen(true)}
-                className="h-9 flex items-center gap-2 px-3 rounded-xl text-xs font-semibold border bg-slate-900/80 hover:bg-slate-800 border-white/10 hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95 whitespace-nowrap shrink-0"
+                className="h-9 px-2.5 rounded-xl text-xs font-semibold border bg-slate-900/80 hover:bg-slate-800 border-white/10 hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95 flex items-center gap-2 whitespace-nowrap shrink-0"
                 title={`Hồ sơ: ${userProfile.fullName || currentUser.displayName} - Bấm để xem Dashboard học tập & Đổi mật khẩu`}
               >
                 {userProfile.avatarUrl ? (
@@ -642,10 +669,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
                   </div>
                 )}
-                <span className="truncate max-w-[90px] xl:max-w-[120px] group-hover:text-cyan-300 transition-colors">
+                <span className="truncate max-w-[85px] lg:max-w-[120px] group-hover:text-cyan-300 transition-colors">
                   {userProfile.fullName || currentUser.displayName}
                 </span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase font-bold shrink-0">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase font-bold shrink-0 hidden sm:inline">
                   {currentUser.isAdmin ? 'Admin' : currentUser.isTeacher ? 'Teacher' : 'Student'}
                 </span>
               </button>
@@ -653,6 +680,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
             {/* Nút Đăng xuất */}
             <button
+              type="button"
               onClick={onLogout}
               title="Đăng xuất khỏi hệ thống"
               className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900/80 hover:bg-rose-950/80 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer shrink-0 active:scale-95"
@@ -845,43 +873,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       {/* =========================================================================
           MAIN CONTENT AREA
       ========================================================================= */}
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 flex-1">
-        {/* Feature 5: Breadcrumbs & Quick Access Controls (Tích hợp nút Lùi / Tiến gốc của trình duyệt web) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 p-2 sm:p-2.5 rounded-2xl bg-[#090D1A]/90 border border-white/5 backdrop-blur-sm shadow-sm">
-          {/* Breadcrumb vị trí hiện tại */}
-          <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-400 overflow-x-auto whitespace-nowrap px-2 py-1">
-            {breadcrumbs.map((crumb, idx) => {
-              const isLast = idx === breadcrumbs.length - 1;
-              return (
-                <React.Fragment key={idx}>
-                  {idx > 0 && <span className="text-slate-600">/</span>}
-                  <span className={isLast ? 'font-semibold text-white truncate max-w-[260px]' : 'text-slate-400 hover:text-slate-200 truncate max-w-[180px]'}>
-                    {crumb}
-                  </span>
-                </React.Fragment>
-              );
-            })}
-          </nav>
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-            <button
-              onClick={() => setIsFavoriteDrawerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Danh sách môn học yêu thích"
-            >
-              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-500/80" />
-              <span>Môn yêu thích</span>
-            </button>
-            <button
-              onClick={() => setIsMistakeVaultOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 hover:border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Sổ tay ôn luyện các câu làm sai"
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span>Sổ câu sai</span>
-            </button>
-          </div>
-        </div>
-
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 pb-24 md:pb-6 flex-1">
         {/* VIEW 1: KHÁM PHÁ KHÓA HỌC (CATALOG) */}
         {currentView === 'CATALOG' && (
           <CourseCatalogView
