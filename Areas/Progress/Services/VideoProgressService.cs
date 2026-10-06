@@ -128,8 +128,8 @@ namespace Microlearning.Areas.Progress.Services
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            // Tự động kích hoạt điểm danh Streak và kiểm tra Vương miện nếu hoàn thành bài học
-            if (justBecameCompleted)
+            // Tự động kích hoạt điểm danh Streak và kiểm tra Vương miện khi hoàn thành bài học môn học trong khóa học
+            if (evaluation.IsCompleted || progress.IsCompleted)
             {
                 try
                 {
