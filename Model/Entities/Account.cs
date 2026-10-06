@@ -23,5 +23,13 @@ namespace Microlearning.Model.Entities
         public virtual ICollection<Device> Devices { get; set; } = new List<Device>();
 
         public virtual ICollection<SyncOperation> SyncOperations { get; set; } = new List<SyncOperation>();
+
+        public virtual ICollection<UserCourseAccess> CourseAccesses { get; set; } = new List<UserCourseAccess>();
+
+        public virtual UserStreak? Streak { get; set; }
+
+        public virtual ICollection<UserQuizMistake> QuizMistakes { get; set; } = new List<UserQuizMistake>();
+
+        public virtual ICollection<UserFavoriteSubject> FavoriteSubjects { get; set; } = new List<UserFavoriteSubject>();
     }
 }

@@ -19,5 +19,7 @@ namespace Microlearning.Model.Entities
         public virtual Course? Course { get; set; }
 
         public virtual ICollection<Lesson> Lessons { get; set; } = new List<Lesson>();
+
+        public virtual ICollection<UserFavoriteSubject> UserFavoriteSubjects { get; set; } = new List<UserFavoriteSubject>();
     }
 }
