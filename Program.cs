@@ -10,10 +10,13 @@ using Microlearning.Areas.Device.Interfaces;
 using Microlearning.Areas.Device.Services;
 using Microlearning.Areas.Enrollment.Interfaces;
 using Microlearning.Areas.Enrollment.Services;
+using Microlearning.Areas.Gamification.Interfaces;
+using Microlearning.Areas.Gamification.Services;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Areas.Media.Services;
 using Microlearning.Areas.Progress.Interfaces;
 using Microlearning.Areas.Progress.Services;
+using Microlearning.Areas.Progress.Strategies;
 using Microlearning.Areas.Quiz.Interfaces;
 using Microlearning.Areas.Quiz.Services;
 using Microlearning.Areas.Sync.Interfaces;
@@ -146,6 +149,17 @@ builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
 
 // Progress Services Online (Thắng)
 builder.Services.AddScoped<IProgressService, ProgressService>();
+
+// Upgrade Features Services (SOLID & Thin Architecture)
+builder.Services.AddScoped<IAttachmentStorageProvider, AzureBlobAttachmentStorageProvider>();
+builder.Services.AddScoped<ILessonAttachmentService, LessonAttachmentService>();
+builder.Services.AddScoped<ICourseAccessService, CourseAccessService>();
+builder.Services.AddSingleton<IVideoCompletionStrategy, StrictCoverageVideoCompletionStrategy>();
+builder.Services.AddScoped<IVideoProgressService, VideoProgressService>();
+builder.Services.AddScoped<IUserStreakService, UserStreakService>();
+builder.Services.AddScoped<IQuizMistakeVaultService, QuizMistakeVaultService>();
+builder.Services.AddScoped<IFavoriteSubjectService, FavoriteSubjectService>();
+builder.Services.AddScoped<IStudentProgressAnalyticsService, StudentProgressAnalyticsService>();
 
 // Sync, Device & Media Services (Tân)
 builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
