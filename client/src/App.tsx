@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModernAnimatedBackground } from './components/background/ModernAnimatedBackground';
 import { MicrolearningHeroShowcase } from './components/showcase/MicrolearningHeroShowcase';
 import { AuthActionCard } from './components/auth/AuthActionCard';
 import { StudyDashboard } from './components/dashboard/StudyDashboard';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, Loader2 } from 'lucide-react';
+import { getAndClearPendingOAuthToken } from './services/socialAuth';
+import { authApi } from './services/authApi';
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
@@ -11,12 +13,49 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return Boolean(localStorage.getItem('accessToken'));
   });
+  const [isProcessingOAuth, setIsProcessingOAuth] = useState<boolean>(false);
+
+  // Tự động nhận diện và hoàn tất đăng nhập Google khi chuyển hướng quay trở lại (Đặc biệt trên Mobile Web)
+  useEffect(() => {
+    const { idToken } = getAndClearPendingOAuthToken();
+    if (idToken) {
+      setIsProcessingOAuth(true);
+      authApi
+        .googleLogin({ idToken })
+        .then((response) => {
+          localStorage.setItem('accessToken', response.accessToken);
+          localStorage.setItem('refreshToken', response.refreshToken);
+          setIsAuthenticated(true);
+        })
+        .catch((err: unknown) => {
+          console.error('Lỗi tự động xác thực Google OAuth:', err);
+        })
+        .finally(() => {
+          setIsProcessingOAuth(false);
+        });
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setIsAuthenticated(false);
   };
+
+  // Màn hình chờ khi đang xử lý token từ Google OAuth (chống chớp tắt / văng trang)
+  if (isProcessingOAuth) {
+    return (
+      <div className="min-h-screen w-full bg-[#070B17] text-white flex flex-col items-center justify-center p-6 text-center select-none">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center mb-4 shadow-lg shadow-indigo-600/20">
+          <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+        </div>
+        <h2 className="text-xl font-extrabold text-white mb-1.5 tracking-tight">Đang đăng nhập bằng Google...</h2>
+        <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+          Hệ thống đang đồng bộ dữ liệu tài khoản và chuẩn bị không gian học tập cho bạn.
+        </p>
+      </div>
+    );
+  }
 
   // 1. Nếu đã đăng nhập: Hiển thị ngay màn hình học tập và đồng bộ Offline-First (StudyDashboard)
   if (isAuthenticated) {
