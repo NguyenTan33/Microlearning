@@ -124,5 +124,22 @@ namespace Microlearning.Areas.Progress.Services
                 totalLessons
             );
         }
+
+        public async Task<List<int>> GetCompletedLessonIdsAsync(string accountId, int? courseId = null)
+        {
+            var query = _dbContext.LessonProgresses
+                .AsNoTracking()
+                .Where(p => p.AccountId == accountId && (p.IsCompleted || p.Percent >= 90));
+
+            if (courseId.HasValue && courseId.Value > 0)
+            {
+                query = query.Where(p => p.Lesson!.Subject!.CourseId == courseId.Value);
+            }
+
+            return await query
+                .Select(p => p.LessonId)
+                .Distinct()
+                .ToListAsync();
+        }
     }
 }

@@ -114,5 +114,21 @@ namespace Microlearning.Areas.Progress.Controllers
             var result = await _progressService.GetCourseProgressAsync(accountId, courseId);
             return Ok(result);
         }
+
+        /// <summary>
+        /// Lấy danh sách các mã bài học đã hoàn thành của người dùng (chống mất tiến độ khi tải lại trang)
+        /// </summary>
+        [HttpGet("completed")]
+        public async Task<IActionResult> GetCompletedLessonIds([FromQuery] int? courseId)
+        {
+            var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                throw new BusinessException("Không xác định được danh tính tài khoản từ Token.");
+            }
+
+            var ids = await _progressService.GetCompletedLessonIdsAsync(accountId, courseId);
+            return Ok(ids);
+        }
     }
 }

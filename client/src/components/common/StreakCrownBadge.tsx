@@ -40,7 +40,7 @@ export const StreakCrownBadge: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsModalOpen(true)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer ${
+          className={`h-9 flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap ${
             streak.currentStreak > 0
               ? 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-500/30 shadow-amber-500/10'
               : 'bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/10'
@@ -59,7 +59,7 @@ export const StreakCrownBadge: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-100 bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 shadow-md shadow-amber-500/20 border border-amber-400/50 hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all overflow-hidden group cursor-pointer"
+            className="h-9 relative flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold text-amber-100 bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 shadow-md shadow-amber-500/20 border border-amber-400/50 hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all overflow-hidden group cursor-pointer whitespace-nowrap"
             title="Vương Miện Danh Dự: Bạn đã hoàn thành 100% tất cả các khóa học!"
           >
             {/* Hiệu ứng lấp lánh (Shimmer glow) */}
@@ -72,23 +72,23 @@ export const StreakCrownBadge: React.FC = () => {
         )}
       </div>
 
-      {/* Modal chi tiết Chuỗi Streak & Vương Miện Hoàng Gia */}
+      {/* Modal chi tiết Chuỗi Streak & Vương Miện Hoàng Gia (Dời thấp xuống khỏi Header tránh bị khuất) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-[#0D1429] border border-white/10 rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-slate-100 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:pt-20 md:pt-24 overflow-y-auto bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#0D1429] border border-white/10 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative text-slate-100 animate-in fade-in zoom-in-95 my-auto sm:my-2">
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
             >
               ✕
             </button>
 
             {/* Header Modal */}
-            <div className="text-center mb-6">
-              <div className="relative inline-block mb-3">
+            <div className="text-center mb-5">
+              <div className="relative inline-block mb-2.5">
                 <div
-                  className={`w-20 h-20 rounded-3xl flex items-center justify-center text-4xl shadow-xl mx-auto ${
+                  className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shadow-xl mx-auto ${
                     streak.hasMasterCrown
                       ? 'bg-gradient-to-br from-amber-400/30 via-yellow-400/20 to-amber-500/30 text-amber-300 border border-yellow-400/50 animate-pulse'
                       : 'bg-gradient-to-br from-amber-500/20 to-orange-500/30 text-orange-400 border border-orange-500/30 shadow-orange-500/20'
@@ -98,7 +98,7 @@ export const StreakCrownBadge: React.FC = () => {
                 </div>
               </div>
 
-              <h3 className="text-xl font-extrabold text-white">
+              <h3 className="text-lg sm:text-xl font-extrabold text-white">
                 {streak.hasMasterCrown ? 'Vương Miện Hoàng Gia' : 'Chuỗi Học Tập Hàng Ngày'}
               </h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">

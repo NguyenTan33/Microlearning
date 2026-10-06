@@ -92,17 +92,17 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
     <div className="space-y-4">
       {/* Thanh tác vụ tải lên cho Giảng viên/Admin */}
       {canManage && (
-        <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-slate-900/60 p-3.5 rounded-xl border border-white/10 flex flex-wrap items-center justify-between gap-3 shadow-sm">
           <div>
-            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <h4 className="text-sm font-semibold text-slate-100">
               Đính kèm tài liệu bài giảng
             </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-400 mt-0.5">
               Hỗ trợ Word (.docx, .doc) và PDF (.pdf), dung lượng tối đa 50MB.
             </p>
           </div>
 
-          <label className="relative inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg cursor-pointer transition shadow-sm active:scale-95">
+          <label className="relative inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl cursor-pointer transition shadow-md shadow-indigo-600/20 active:scale-95">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
@@ -119,7 +119,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
       )}
 
       {uploadError && (
-        <div className="p-3 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded-lg text-rose-700 dark:rose-300 text-xs">
+        <div className="p-3 bg-rose-950/60 border border-rose-500/30 rounded-xl text-rose-300 text-xs">
           {uploadError}
         </div>
       )}
@@ -131,14 +131,14 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
           <span className="text-sm">Đang tải danh sách tài liệu...</span>
         </div>
       ) : attachments.length === 0 ? (
-        <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-          <svg className="w-10 h-10 mx-auto text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="text-center py-8 bg-slate-900/40 rounded-xl border border-dashed border-white/10">
+          <svg className="w-10 h-10 mx-auto text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+          <p className="text-sm font-semibold text-slate-200">
             Chưa có tài liệu đính kèm cho bài học này
           </p>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
             Các tệp bài giảng Word hoặc slide PDF sẽ hiển thị tại đây khi được thêm vào.
           </p>
         </div>
@@ -149,14 +149,14 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
             return (
               <div
                 key={file.id}
-                className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition group"
+                className="flex items-center justify-between p-3.5 bg-slate-900/70 hover:bg-slate-900 rounded-xl border border-white/10 hover:border-indigo-500/40 transition group shadow-sm"
               >
                 <div className="flex items-center gap-3 min-w-0 pr-2">
                   <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
                       isPdf
-                        ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400'
-                        : 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400'
+                        ? 'bg-rose-950/60 text-rose-300 border border-rose-500/30'
+                        : 'bg-blue-950/60 text-blue-300 border border-blue-500/30'
                     }`}
                   >
                     {isPdf ? (
@@ -167,10 +167,10 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
                   </div>
 
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate" title={file.originalFileName}>
+                    <p className="text-sm font-semibold text-slate-100 truncate" title={file.originalFileName}>
                       {file.originalFileName}
                     </p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-400 mt-0.5">
                       {formatFileSize(file.fileSizeBytes)} • {new Date(file.createdAt).toLocaleDateString('vi-VN')}
                     </p>
                   </div>
@@ -182,7 +182,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setPreviewPdfUrl(previewPdfUrl === file.fileUrl ? null : file.fileUrl)}
-                      className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition"
+                      className="p-1.5 text-slate-300 hover:text-indigo-300 hover:bg-slate-800 rounded-lg transition cursor-pointer"
                       title={previewPdfUrl === file.fileUrl ? 'Đóng xem trước' : 'Xem trước PDF'}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,7 +198,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
                     download={file.originalFileName}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition"
+                    className="p-1.5 text-slate-300 hover:text-emerald-300 hover:bg-slate-800 rounded-lg transition cursor-pointer"
                     title="Tải về máy"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,7 +211,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDelete(file.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-md transition"
+                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
                       title="Xóa tài liệu"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -228,8 +228,8 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
 
       {/* Cửa sổ xem trước PDF nhúng trực quan */}
       {previewPdfUrl && (
-        <div className="mt-4 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-xl">
-          <div className="px-4 py-2.5 bg-slate-800 flex items-center justify-between text-white text-xs font-medium">
+        <div className="mt-4 bg-slate-950 rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+          <div className="px-4 py-2.5 bg-slate-900 flex items-center justify-between text-white text-xs font-semibold border-b border-white/10">
             <span className="flex items-center gap-2">
               <svg className="w-4 h-4 text-rose-400" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" />
@@ -239,7 +239,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
             <button
               type="button"
               onClick={() => setPreviewPdfUrl(null)}
-              className="text-slate-400 hover:text-white px-2 py-0.5 rounded hover:bg-slate-700 transition"
+              className="text-slate-400 hover:text-white px-2 py-0.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
             >
               Đóng xem trước ✕
             </button>
@@ -247,7 +247,7 @@ export const LessonAttachmentsTab: React.FC<LessonAttachmentsTabProps> = ({
           <iframe
             src={previewPdfUrl}
             title="PDF Preview"
-            className="w-full h-[550px] border-none bg-slate-800"
+            className="w-full h-[550px] border-none bg-slate-950"
           />
         </div>
       )}

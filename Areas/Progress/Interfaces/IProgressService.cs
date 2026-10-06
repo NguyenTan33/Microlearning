@@ -7,5 +7,6 @@ namespace Microlearning.Areas.Progress.Interfaces
         Task<LessonProgressResponse> SaveProgressAsync(string accountId, SaveProgressRequest request);
         Task<LessonProgressResponse?> GetLessonProgressAsync(string accountId, int lessonId);
         Task<CourseProgressResponse> GetCourseProgressAsync(string accountId, int courseId);
+        Task<List<int>> GetCompletedLessonIdsAsync(string accountId, int? courseId = null);
     }
 }
