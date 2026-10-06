@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   GraduationCap,
   LogOut,
@@ -48,6 +49,7 @@ import { userProfileService } from '../../services/userProfileService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
 import { enrollmentApi } from '../../services/enrollmentApi';
+import { streakApi } from '../../services/streakApi';
 import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
 
 interface StudyDashboardProps {
@@ -150,6 +152,21 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   // Trạng thái Responsive Mobile Drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState<boolean>(false);
+
+  // Khóa cuộn trang nền khi mở danh mục bài giảng toàn màn hình trên Mobile để tránh cuộn kép
+  useEffect(() => {
+    if (isMobileCurriculumOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalOverscroll = document.body.style.overscrollBehavior;
+      document.body.style.overflow = 'hidden';
+      document.body.style.overscrollBehavior = 'none';
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.overscrollBehavior = originalOverscroll;
+      };
+    }
+  }, [isMobileCurriculumOpen]);
 
   // 1. Tải khóa học và bài học ban đầu trực tuyến & Đồng bộ Max Tiến Độ Chuẩn
   const loadInitialCourse = useCallback(async (courseId?: number) => {
@@ -435,20 +452,44 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  // Ghi nhận hoàn thành bài học
-  const handleLessonCompleted = () => {
-    if (activeLesson) {
-      if (currentCourse?.id) {
-        enrollmentApi.enrollCourse(currentCourse.id).catch(() => {});
-      }
-      setCompletedLessonIds((prev) => {
-        const merged = Array.from(new Set([...prev, activeLesson.id]));
-        try {
-          localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-        } catch {}
-        return merged;
-      });
-      setLessonWatchedPercent((prev) => Math.max(prev, 100));
+  // Ghi nhận hoàn thành bài học của môn học trong khóa học và tự động kích hoạt tăng Streak trong ngày
+  const handleLessonCompleted = async () => {
+    if (!activeLesson) return;
+
+    if (currentCourse?.id) {
+      enrollmentApi.enrollCourse(currentCourse.id).catch(() => {});
+    }
+
+    setCompletedLessonIds((prev) => {
+      const merged = Array.from(new Set([...prev, activeLesson.id]));
+      try {
+        localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+      } catch {}
+      return merged;
+    });
+    setLessonWatchedPercent((prev) => Math.max(prev, 100));
+
+    // 1. Lưu tiến độ hoàn thành bài học lên máy chủ
+    try {
+      await progressApi.saveProgress(
+        activeLesson.id,
+        activeLesson.durationSeconds || 300,
+        100
+      );
+    } catch (err) {
+      console.warn('Lỗi khi lưu tiến độ bài học:', err);
+    }
+
+    // 2. Kích hoạt điểm danh Streak học tập hàng ngày
+    try {
+      await streakApi.pingDailyActivity();
+    } catch (err) {
+      console.warn('Lỗi khi ghi nhận streak:', err);
+    }
+
+    // 3. Phát sự kiện cập nhật tiến độ toàn cục để Header cập nhật ngọn lửa Streak ngay lập tức
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lesson-progress-updated'));
     }
   };
 
@@ -965,37 +1006,56 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               </span>
             </div>
 
-            {/* Mobile Curriculum Drawer Modal */}
-            {isMobileCurriculumOpen && (
-              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
-                <div className="w-full sm:max-w-md max-h-[85vh] bg-[#0A0F1F] border border-white/10 rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl">
-                  <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/90">
-                    <span className="text-sm font-bold text-white flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-cyan-400" />
-                      <span>Danh sách bài giảng khóa học</span>
-                    </span>
+            {/* Mobile Curriculum Fullscreen Portal Overlay */}
+            {isMobileCurriculumOpen &&
+              typeof document !== 'undefined' &&
+              createPortal(
+                <div className="fixed inset-0 z-[9999] w-screen h-screen h-[100dvh] bg-[#070B18] flex flex-col overflow-hidden animate-fadeIn select-none">
+                  {/* Top Bar toàn màn hình chuẩn Mobile với Safe Area */}
+                  <div className="shrink-0 pt-[max(env(safe-area-inset-top,0px),0.75rem)] px-4 pb-3 border-b border-white/10 bg-[#090D1A]/95 backdrop-blur-md flex items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-extrabold text-white truncate leading-tight">
+                          Danh sách bài giảng khóa học
+                        </h3>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {effectiveCourse?.title || 'Khóa học'} • {flatLessons.length} bài
+                        </p>
+                      </div>
+                    </div>
+
                     <button
+                      type="button"
                       onClick={() => setIsMobileCurriculumOpen(false)}
-                      className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                      className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer border border-white/10 shrink-0"
+                      title="Đóng danh mục bài giảng"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="p-4 overflow-y-auto flex-1">
+
+                  {/* Vùng danh sách bài giảng cuộn độc lập (overscroll-contain ngăn lướt lan trang bên dưới) */}
+                  <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 pb-[max(env(safe-area-inset-bottom,0px),2rem)]">
                     <LessonSidebar
                       course={effectiveCourse}
                       activeLessonId={effectiveLesson.id}
                       completedLessonIds={completedLessonIds}
-                      onSelectLesson={handleSelectLesson}
+                      onSelectLesson={(lesson) => {
+                        handleSelectLesson(lesson);
+                        setIsMobileCurriculumOpen(false);
+                      }}
                       onBackToCatalog={() => {
                         setIsMobileCurriculumOpen(false);
                         setCurrentView('CATALOG');
                       }}
                     />
                   </div>
-                </div>
-              </div>
-            )}
+                </div>,
+                document.body
+              )}
 
             {/* Workspace Grid Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1049,9 +1109,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                       )}
                     </div>
 
-                    {/* Cụm nút chuyển bài: Bài trước / Bài tiếp theo */}
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    {/* Cụm nút chuyển bài: Bài trước / Đánh dấu hoàn thành (+1 Streak) / Bài tiếp theo */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
                       <button
+                        type="button"
                         onClick={() => prevLesson && handleSelectLesson(prevLesson)}
                         disabled={!prevLesson}
                         title={prevLesson ? `Bài trước: ${prevLesson.title}` : 'Đã ở bài học đầu tiên'}
@@ -1061,7 +1122,31 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                         <span className="hidden sm:inline">Bài trước</span>
                       </button>
 
+                      {/* Nút Hoàn thành bài học để tăng Streak ngày ngay lập tức */}
                       <button
+                        type="button"
+                        onClick={handleLessonCompleted}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md ${
+                          completedLessonIds.includes(effectiveLesson.id)
+                            ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50'
+                            : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-orange-600/20 active:scale-95'
+                        }`}
+                        title={
+                          completedLessonIds.includes(effectiveLesson.id)
+                            ? 'Bài học đã hoàn thành! Bấm để cập nhật lại Streak nếu hôm nay là ngày mới.'
+                            : 'Hoàn thành bài học này để tăng chuỗi Streak hôm nay!'
+                        }
+                      >
+                        <CheckCircle className={`w-4 h-4 shrink-0 ${completedLessonIds.includes(effectiveLesson.id) ? 'text-emerald-400' : 'text-amber-200'}`} />
+                        <span>
+                          {completedLessonIds.includes(effectiveLesson.id)
+                            ? 'Đã hoàn thành'
+                            : 'Hoàn thành bài (+1 🔥)'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => nextLesson && handleSelectLesson(nextLesson)}
                         disabled={!nextLesson}
                         title={nextLesson ? `Bài tiếp theo: ${nextLesson.title}` : 'Đã ở bài học cuối cùng'}

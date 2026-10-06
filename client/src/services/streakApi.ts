@@ -9,15 +9,6 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    const message = errorData?.message || `Yêu cầu thất bại với mã trạng thái ${res.status}.`;
-    throw new Error(message);
-  }
-  return res.json() as Promise<T>;
-}
-
 export interface UserStreak {
   currentStreak: number;
   longestStreak: number;
@@ -30,40 +21,141 @@ export interface UserStreak {
   statusMessage: string;
 }
 
+const LOCAL_STREAK_KEY = 'microlearning_user_streak';
+
+function getLocalStreak(): UserStreak {
+  try {
+    const stored = localStorage.getItem(LOCAL_STREAK_KEY);
+    if (stored) {
+      return JSON.parse(stored) as UserStreak;
+    }
+  } catch {}
+
+  return {
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActiveDate: null,
+    hasMasterCrown: false,
+    crownAwardedAt: null,
+    completedLessons: 0,
+    totalEligibleLessons: 0,
+    overallProgressPercent: 0,
+    statusMessage: 'Hãy hoàn thành một bài học ngay hôm nay để kích hoạt chuỗi học tập!',
+  };
+}
+
+function saveLocalStreak(streak: UserStreak): void {
+  try {
+    localStorage.setItem(LOCAL_STREAK_KEY, JSON.stringify(streak));
+  } catch {}
+}
+
+function getTodayString(): string {
+  // Chuỗi ngày YYYY-MM-DD theo giờ Việt Nam UTC+7
+  const now = new Date();
+  const utc7 = new Date(now.getTime() + 7 * 3600 * 1000);
+  return utc7.toISOString().split('T')[0];
+}
+
+function getYesterdayString(): string {
+  const now = new Date();
+  const utc7 = new Date(now.getTime() + 7 * 3600 * 1000 - 24 * 3600 * 1000);
+  return utc7.toISOString().split('T')[0];
+}
+
 export const streakApi = {
   /**
    * Lấy chuỗi streak học tập hàng ngày và trạng thái Vương Miện Danh Dự (Master Crown)
    */
   async getMyStreak(): Promise<UserStreak> {
-    try {
-      const res = await fetch('/api/streak/my-streak', {
-        headers: getAuthHeaders(),
-      });
-      return await handleResponse<UserStreak>(res);
-    } catch {
-      // Fallback trạng thái mặc định nếu offline hoặc chưa đăng nhập
-      return {
-        currentStreak: 0,
-        longestStreak: 0,
-        lastActiveDate: null,
-        hasMasterCrown: false,
-        crownAwardedAt: null,
-        completedLessons: 0,
-        totalEligibleLessons: 0,
-        overallProgressPercent: 0,
-        statusMessage: 'Hãy hoàn thành bài học hôm nay để bắt đầu chuỗi streak!',
-      };
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      try {
+        const res = await fetch('/api/streak/my-streak', {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as UserStreak;
+          saveLocalStreak(data);
+          return data;
+        }
+      } catch {
+        // Dự phòng đọc từ local storage nếu tạm thời ngắt kết nối
+      }
     }
+
+    const local = getLocalStreak();
+    const yesterday = getYesterdayString();
+
+    // Nếu ngày hoạt động trước ngày hôm qua, streak hiển thị về 0 (chuỗi bị đứt)
+    let currentStreak = local.currentStreak;
+    if (local.lastActiveDate && local.lastActiveDate < yesterday) {
+      currentStreak = 0;
+    }
+
+    return {
+      ...local,
+      currentStreak,
+      statusMessage:
+        currentStreak > 0
+          ? `Tuyệt vời! Bạn đang duy trì chuỗi ${currentStreak} ngày học liên tiếp.`
+          : 'Hãy hoàn thành một bài học ngay hôm nay để kích hoạt chuỗi học tập!',
+    };
   },
 
   /**
-   * Ghi nhận điểm danh học tập hàng ngày
+   * Ghi nhận điểm danh học tập hàng ngày khi hoàn thành 1 bài học của môn học trong khóa học
    */
   async pingDailyActivity(): Promise<UserStreak> {
-    const res = await fetch('/api/streak/ping', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse<UserStreak>(res);
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      try {
+        const res = await fetch('/api/streak/ping', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as UserStreak;
+          saveLocalStreak(data);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('lesson-progress-updated'));
+          }
+          return data;
+        }
+      } catch (err) {
+        console.warn('Lỗi gọi API /api/streak/ping:', err);
+      }
+    }
+
+    // Cơ chế fallback local cập nhật streak ngay lập tức (cho khách hoặc khi offline)
+    const local = getLocalStreak();
+    const today = getTodayString();
+    const yesterday = getYesterdayString();
+
+    let newStreak = local.currentStreak;
+    if (!local.lastActiveDate) {
+      newStreak = 1;
+    } else if (local.lastActiveDate === yesterday) {
+      newStreak += 1;
+    } else if (local.lastActiveDate < yesterday) {
+      newStreak = 1;
+    }
+    // Nếu local.lastActiveDate === today: đã hoàn thành bài hôm nay rồi, giữ nguyên chuỗi hiện tại
+
+    const updated: UserStreak = {
+      ...local,
+      currentStreak: newStreak,
+      longestStreak: Math.max(local.longestStreak, newStreak),
+      lastActiveDate: today,
+      completedLessons: local.completedLessons + 1,
+      statusMessage: `Tuyệt vời! Bạn đang duy trì chuỗi ${newStreak} ngày học liên tiếp.`,
+    };
+    saveLocalStreak(updated);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lesson-progress-updated'));
+    }
+
+    return updated;
   },
 };
