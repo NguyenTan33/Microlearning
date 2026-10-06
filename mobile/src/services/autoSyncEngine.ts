@@ -19,8 +19,8 @@ export interface SyncStatusListener {
 
 class AutoSyncEngine {
   private isSyncing = false;
-  private debounceTimer: ReturnJS<typeof setTimeout> | null = null;
-  private heartbeatInterval: ReturnJS<typeof setInterval> | null = null;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<SyncStatusListener> = new Set();
   private isOnline = true;
 
@@ -254,7 +254,7 @@ class AutoSyncEngine {
     // 3. Nếu chưa sync được trực tuyến, đưa vào Outbox
     if (!isSyncedOnline) {
       const outboxItem: SyncOperationItem = {
-        clientOperationId,
+        clientOperationId: clientAttemptId,
         operationType: 'QUIZ_ATTEMPT',
         entityType: 'Quiz',
         entityId: quizId,
@@ -274,7 +274,5 @@ class AutoSyncEngine {
     return { clientAttemptId, isSyncedOnline };
   }
 }
-
-type ReturnJS<T extends (...args: unknown[]) => unknown> = ReturnType<T>;
 
 export const autoSyncEngine = new AutoSyncEngine();
