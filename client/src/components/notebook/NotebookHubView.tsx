@@ -458,6 +458,13 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 {sources.length} tài liệu
               </span>
             )}
+            {/* Badge bài học đang xem */}
+            {activeLesson && (
+              <span className="hidden sm:flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 font-semibold border border-cyan-500/30 max-w-[160px]">
+                <Play className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">{activeLesson.title}</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -1184,11 +1191,58 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                             className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                               isUser
                                 ? 'bg-indigo-600 text-white rounded-tr-none'
+                                : m.isError
+                                ? 'bg-rose-950/80 border border-rose-500/30 text-rose-200 rounded-tl-none'
                                 : 'bg-slate-900/90 border border-indigo-500/20 text-slate-200 rounded-tl-none shadow-sm'
                             }`}
                           >
-                            <div className="whitespace-pre-wrap">{m.text}</div>
-                            <span className="block text-[10px] text-slate-400 mt-1.5 text-right font-mono">
+                            {/* Nội dung tin nhắn - render markdown cơ bản */}
+                            <div className="whitespace-pre-wrap">
+                              {m.text.split('\n').map((line, li) => {
+                                // Bold: **text**
+                                const boldLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                // Bullet list
+                                if (line.match(/^[-•*]\s+/)) {
+                                  return (
+                                    <div key={li} className="flex items-start gap-1.5 my-0.5">
+                                      <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+                                      <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^[-•*]\s+/, '') }} />
+                                    </div>
+                                  );
+                                }
+                                // Numbered list
+                                if (line.match(/^\d+\.\s+/)) {
+                                  const num = line.match(/^(\d+)\./)?.[1];
+                                  return (
+                                    <div key={li} className="flex items-start gap-1.5 my-0.5">
+                                      <span className="text-indigo-400 font-bold shrink-0 min-w-[16px]">{num}.</span>
+                                      <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^\d+\.\s+/, '') }} />
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <p key={li} className={line === '' ? 'h-2' : 'my-0.5'}
+                                    dangerouslySetInnerHTML={{ __html: boldLine }} />
+                                );
+                              })}
+                            </div>
+
+                            {/* Source reference - hiển thị bài học nguồn */}
+                            {!isUser && m.sources && m.sources.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-indigo-500/20 flex flex-wrap gap-1">
+                                {m.sources.map((src, si) => (
+                                  <span
+                                    key={si}
+                                    className="px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-[10px] text-indigo-300 font-semibold flex items-center gap-1"
+                                  >
+                                    <FileText className="w-2.5 h-2.5" />
+                                    {src}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <span className="block text-[10px] text-slate-500 mt-1.5 text-right font-mono">
                               {m.timestamp}
                             </span>
                           </div>
@@ -1385,7 +1439,37 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                               {profileLabel}
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-400 font-mono">ID: {ep.id}</p>
+
+                          {/* Metadata bài học và khóa học thực tế */}
+                          <div className="space-y-1">
+                            {ep.lesson_title ? (
+                              <div className="flex items-center gap-1.5 text-[11px] text-cyan-300 truncate font-medium">
+                                <FileText className="w-3 h-3 shrink-0 text-cyan-400" />
+                                <span className="truncate">Bài học: {ep.lesson_title}</span>
+                              </div>
+                            ) : null}
+                            {ep.course_title ? (
+                              <div className="text-[10px] text-slate-400 truncate">
+                                Khóa học: {ep.course_title}
+                              </div>
+                            ) : null}
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono pt-0.5">
+                              <span>
+                                {ep.created
+                                  ? new Date(ep.created).toLocaleDateString('vi-VN', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                    })
+                                  : 'Gần đây'}
+                              </span>
+                              {ep.audio_url && (
+                                <span className="text-emerald-400 flex items-center gap-1 font-sans text-[10px]">
+                                  <Sparkles className="w-2.5 h-2.5" /> Âm thanh sẵn sàng
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         <div className="pt-3 mt-3 border-t border-white/5 flex items-center justify-between gap-2">
@@ -1754,9 +1838,22 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
               {modalType === 'PODCAST' && (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Tên tập Podcast *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Tên tập Podcast *
+                      </label>
+                      {activeLesson && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewPodcastName(`[Podcast] ${activeLesson.title}`);
+                          }}
+                          className="text-[10px] text-pink-400 hover:text-pink-300 underline cursor-pointer"
+                        >
+                          💡 Dùng tên bài học hiện tại
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={newPodcastName}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { streakApi, type UserStreak } from '../../services/streakApi';
 
 export const StreakCrownBadge: React.FC = () => {
@@ -72,9 +73,11 @@ export const StreakCrownBadge: React.FC = () => {
         )}
       </div>
 
-      {/* Modal chi tiết Chuỗi Streak & Vương Miện Hoàng Gia (Dời thấp xuống khỏi Header tránh bị khuất) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:pt-20 md:pt-24 overflow-y-auto bg-black/80 backdrop-blur-md animate-fadeIn">
+      {/* Modal chi tiết Chuỗi Streak & Vương Miện Hoàng Gia (Dùng React Portal và z-[9999] để đảm bảo luôn nổi trên cùng mọi layer) */}
+      {isModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-start justify-center p-4 pt-16 sm:pt-20 md:pt-24 overflow-y-auto bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#0D1429] border border-white/10 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative text-slate-100 animate-in fade-in zoom-in-95 my-auto sm:my-2">
             <button
               type="button"
@@ -167,7 +170,8 @@ export const StreakCrownBadge: React.FC = () => {
               Tiếp tục học tập
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
