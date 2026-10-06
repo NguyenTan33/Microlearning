@@ -19,6 +19,10 @@ import {
   BarChart3,
   Heart,
   HelpCircle,
+  Lock,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import type { CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -105,6 +109,31 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState<boolean>(true);
 
+  // Trạng thái mở khóa & hiển thị bài kiểm tra trắc nghiệm (yêu cầu xem >= 60%)
+  const [lessonWatchedPercent, setLessonWatchedPercent] = useState<number>(0);
+  const [isQuizOpen, setIsQuizOpen] = useState<boolean>(false);
+
+  // Khi chuyển bài giảng, đồng bộ tiến độ đã xem của bài học đó và thu gọn quiz
+  useEffect(() => {
+    setIsQuizOpen(false);
+    if (activeLesson) {
+      progressApi
+        .getLessonProgress(activeLesson.id)
+        .then((prog) => {
+          if (prog) {
+            setLessonWatchedPercent(Number(prog.percent) || 0);
+          } else {
+            setLessonWatchedPercent(0);
+          }
+        })
+        .catch(() => {
+          setLessonWatchedPercent(0);
+        });
+    } else {
+      setLessonWatchedPercent(0);
+    }
+  }, [activeLesson?.id]);
+
   // Trạng thái Responsive Mobile Drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState<boolean>(false);
@@ -160,14 +189,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       // Đồng bộ Max tiến độ từ Máy Chủ (chống mất tiến độ khi F5 hoặc vào lại web)
       try {
         const completedIdsFromServer = await progressApi.getCompletedLessonIds(targetCourse?.id);
-        if (completedIdsFromServer && completedIdsFromServer.length > 0) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, ...completedIdsFromServer]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (completedIdsFromServer) {
+          setCompletedLessonIds(completedIdsFromServer);
+          try {
+            localStorage.setItem(storageProgressKey, JSON.stringify(completedIdsFromServer));
+          } catch {}
         }
       } catch {
         // ignore
@@ -195,19 +221,22 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           .catch(() => {});
       }
 
-      // Kiểm tra tiến độ của bài học hiện tại
+      // Kiểm tra tiến độ của bài học hiện tại (bắt buộc kiểm tra isCompleted từ máy chủ)
       if (targetLesson) {
         progressApi
           .getLessonProgress(targetLesson.id)
           .then((p) => {
-            if (p && (p.isCompleted || p.percent >= 90)) {
-              setCompletedLessonIds((prev) => {
-                const merged = Array.from(new Set([...prev, targetLesson!.id]));
-                try {
-                  localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-                } catch {}
-                return merged;
-              });
+            if (p) {
+              setLessonWatchedPercent(p.percent);
+              if (p.isCompleted) {
+                setCompletedLessonIds((prev) => {
+                  const merged = Array.from(new Set([...prev, targetLesson!.id]));
+                  try {
+                    localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+                  } catch {}
+                  return merged;
+                });
+              }
             }
           })
           .catch(() => {});
@@ -229,14 +258,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     const handleProgressUpdate = async () => {
       try {
         const serverIds = await progressApi.getCompletedLessonIds(currentCourse?.id);
-        if (serverIds && serverIds.length > 0) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, ...serverIds]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (serverIds) {
+          setCompletedLessonIds(serverIds);
+          try {
+            localStorage.setItem(storageProgressKey, JSON.stringify(serverIds));
+          } catch {}
         }
       } catch {
         // ignore
@@ -281,6 +307,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     setActiveLesson(lesson);
     setCurrentView('WORKSPACE');
     setIsMobileCurriculumOpen(false); // Đóng drawer trên mobile khi đã chọn bài
+    setLessonWatchedPercent(0);
     pushState({
       view: 'lesson',
       courseId: currentCourse?.id,
@@ -291,14 +318,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     progressApi
       .getLessonProgress(lesson.id)
       .then((p) => {
-        if (p && (p.isCompleted || p.percent >= 90)) {
-          setCompletedLessonIds((prev) => {
-            const merged = Array.from(new Set([...prev, lesson.id]));
-            try {
-              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          });
+        if (p) {
+          setLessonWatchedPercent(p.percent);
+          if (p.isCompleted) {
+            setCompletedLessonIds((prev) => {
+              const merged = Array.from(new Set([...prev, lesson.id]));
+              try {
+                localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
         }
       })
       .catch(() => {});
@@ -364,6 +394,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         } catch {}
         return merged;
       });
+      setLessonWatchedPercent((prev) => Math.max(prev, 100));
     }
   };
 
@@ -383,6 +414,12 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   // Tính danh sách bài học phẳng để hỗ trợ Prev / Next Lesson
   const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
   const effectiveLesson = activeLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
+
+  // Trạng thái mở khóa trắc nghiệm: Học viên đã hoàn thành bài hoặc đã xem >= 60%
+  const isQuizUnlocked = Boolean(
+    effectiveLesson &&
+      (completedLessonIds.includes(effectiveLesson.id) || lessonWatchedPercent >= 60)
+  );
 
   const flatLessons: Lesson[] = useMemo(() => {
     const list: Lesson[] = [];
@@ -940,7 +977,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     initialSeekTime={initialSeekTimestamp}
                     onOpenNotebookView={() => setCurrentView('NOTEBOOK')}
                     onOpenBookmarksView={() => setCurrentView('BOOKMARKS')}
-                    onProgressSaved={handleLessonCompleted}
+                    onProgressSaved={(isCompleted) => {
+                      if (isCompleted) {
+                        handleLessonCompleted();
+                      }
+                    }}
+                    onWatchedPercentChange={(p) =>
+                      setLessonWatchedPercent((prev) => Math.max(prev, p))
+                    }
                   />
 
                   {/* Thanh điều hướng bài học & thông tin bài */}
@@ -990,11 +1034,88 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                   lessonDescription={effectiveLesson.description}
                 />
 
-                {/* 3. Đề kiểm tra đánh giá trắc nghiệm trực tuyến */}
-                <InteractiveQuizCard
-                  lessonId={effectiveLesson.id}
-                  onAttemptSubmitted={handleLessonCompleted}
-                />
+                {/* 3. Đề kiểm tra đánh giá trắc nghiệm trực tuyến (Mở khóa >= 60%) */}
+                <div className="rounded-2xl bg-[#090D1A] border border-white/10 shadow-xl overflow-hidden transition-all">
+                  {/* Thanh Header điều khiển Mở / Đóng Quizz */}
+                  <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-[#0B1024] to-slate-950 border-b border-white/5">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                          <BookOpen className="w-4 h-4" />
+                        </span>
+                        <h3 className="text-sm sm:text-base font-extrabold text-white">
+                          Bài kiểm tra trắc nghiệm & Đánh giá
+                        </h3>
+                        {isQuizUnlocked && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
+                            Đã mở khóa
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {isQuizUnlocked
+                          ? 'Bạn đã xem trên 60% thời lượng bài giảng và đủ điều kiện làm bài trắc nghiệm.'
+                          : 'Yêu cầu: Học viên cần xem tối thiểu 60% thời lượng video để mở khóa bài trắc nghiệm.'}
+                      </p>
+                    </div>
+
+                    {/* Nút bấm làm bài trắc nghiệm */}
+                    <div className="flex items-center gap-3">
+                      {!isQuizUnlocked ? (
+                        <div className="flex flex-col items-end gap-1.5 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 opacity-60 cursor-not-allowed select-none shadow-inner"
+                            title="Bạn cần xem tối thiểu 60% video bài giảng để mở khóa bài kiểm tra"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Làm bài kiểm tra ({Math.round(lessonWatchedPercent)}% / 60%)</span>
+                          </button>
+                          <div className="w-full sm:w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-amber-500 to-indigo-500 transition-all duration-300"
+                              style={{ width: `${Math.min(100, (lessonWatchedPercent / 60) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsQuizOpen((prev) => !prev)}
+                          className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-98 ${
+                            isQuizOpen
+                              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10'
+                              : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white shadow-indigo-600/30'
+                          }`}
+                        >
+                          {isQuizOpen ? (
+                            <>
+                              <span>Thu gọn bài kiểm tra</span>
+                              <ChevronUp className="w-4 h-4" />
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                              <span>Bắt đầu làm bài trắc nghiệm</span>
+                              <ChevronDown className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Vùng bài kiểm tra khi được mở */}
+                  {isQuizOpen && isQuizUnlocked && (
+                    <div className="p-4 sm:p-6 animate-fadeIn">
+                      <InteractiveQuizCard
+                        lessonId={effectiveLesson.id}
+                        onAttemptSubmitted={handleLessonCompleted}
+                      />
+                    </div>
+                  )}
+                </div>
               </section>
             </div>
           </div>

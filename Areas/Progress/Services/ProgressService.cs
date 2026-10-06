@@ -34,15 +34,14 @@ namespace Microlearning.Areas.Progress.Services
 
             if (progress == null)
             {
-                bool isCompleted = request.Percent >= 90;
                 progress = new LessonProgress
                 {
                     AccountId = accountId,
                     LessonId = request.LessonId,
                     WatchedSeconds = Math.Max(0, request.WatchedSeconds),
                     Percent = Math.Clamp(request.Percent, 0, 100),
-                    IsCompleted = isCompleted,
-                    CompletedAt = isCompleted ? DateTime.UtcNow : null,
+                    IsCompleted = false,
+                    CompletedAt = null,
                     LastPlayedAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -55,10 +54,11 @@ namespace Microlearning.Areas.Progress.Services
                 progress.WatchedSeconds = Math.Max(progress.WatchedSeconds, request.WatchedSeconds);
                 progress.Percent = Math.Clamp(Math.Max(progress.Percent, request.Percent), 0, 100);
 
-                if (progress.Percent >= 90 && !progress.IsCompleted)
+                // Thu hồi IsCompleted nếu thời gian xem thực tế chưa đủ 80%
+                if (progress.WatchedCoveragePercent > 0 && progress.WatchedCoveragePercent < 80)
                 {
-                    progress.IsCompleted = true;
-                    progress.CompletedAt = DateTime.UtcNow;
+                    progress.IsCompleted = false;
+                    progress.CompletedAt = null;
                 }
 
                 progress.LastPlayedAt = DateTime.UtcNow;
@@ -67,12 +67,14 @@ namespace Microlearning.Areas.Progress.Services
 
             await _dbContext.SaveChangesAsync();
 
+            bool isActuallyCompleted = progress.IsCompleted && (progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+
             return new LessonProgressResponse(
                 progress.LessonId,
                 progress.WatchedSeconds,
                 progress.Percent,
-                progress.IsCompleted,
-                progress.CompletedAt,
+                isActuallyCompleted,
+                isActuallyCompleted ? progress.CompletedAt : null,
                 progress.LastPlayedAt
             );
         }
@@ -88,12 +90,14 @@ namespace Microlearning.Areas.Progress.Services
                 return null;
             }
 
+            bool isActuallyCompleted = progress.IsCompleted && (progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+
             return new LessonProgressResponse(
                 progress.LessonId,
                 progress.WatchedSeconds,
                 progress.Percent,
-                progress.IsCompleted,
-                progress.CompletedAt,
+                isActuallyCompleted,
+                isActuallyCompleted ? progress.CompletedAt : null,
                 progress.LastPlayedAt
             );
         }
@@ -112,7 +116,7 @@ namespace Microlearning.Areas.Progress.Services
 
             var completedLessons = await _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && p.IsCompleted && p.Lesson!.Subject!.CourseId == courseId)
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
                 .CountAsync();
 
             decimal overallPercent = Math.Round(((decimal)completedLessons / totalLessons) * 100, 2);
@@ -129,7 +133,7 @@ namespace Microlearning.Areas.Progress.Services
         {
             var query = _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && (p.IsCompleted || p.Percent >= 90));
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80));
 
             if (courseId.HasValue && courseId.Value > 0)
             {
