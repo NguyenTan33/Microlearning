@@ -19,6 +19,7 @@ export default function LessonScreen() {
   const lessonId = parseInt(params.id || '1', 10);
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [onlineStreamUrl, setOnlineStreamUrl] = useState<string | undefined>(undefined);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +37,27 @@ export default function LessonScreen() {
         setIsCompleted(true);
       }
 
-      // 3. Nếu đang online và chưa có mediaAssets, có thể gọi package để cache
+      // 3. Tra cứu nguồn video chuẩn từ Azure Storage (Direct URL hoặc HTTP 206 Stream)
+      try {
+        const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+        if (mediaInfo.sourceType === 'direct_url' && mediaInfo.externalUrl) {
+          setOnlineStreamUrl(mediaInfo.externalUrl);
+        } else if (mediaInfo.streamUrl) {
+          setOnlineStreamUrl(mediaInfo.streamUrl);
+        } else {
+          const apiBase =
+            process.env.EXPO_PUBLIC_API_URL ||
+            'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
+          setOnlineStreamUrl(`${apiBase}/media/lesson/${lessonId}/stream`);
+        }
+      } catch {
+        const apiBase =
+          process.env.EXPO_PUBLIC_API_URL ||
+          'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
+        setOnlineStreamUrl(`${apiBase}/media/lesson/${lessonId}/stream`);
+      }
+
+      // 4. Nếu đang online và chưa có mediaAssets, gọi package để nạp đề trắc nghiệm
       try {
         const pkg = await catalogApi.getLessonPackage(lessonId);
         if (pkg) {
@@ -84,10 +105,6 @@ export default function LessonScreen() {
       </SafeAreaView>
     );
   }
-
-  const onlineStreamUrl = `${
-    process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5124/api'
-  }/media/1/stream`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
