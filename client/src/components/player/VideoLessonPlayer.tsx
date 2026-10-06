@@ -155,7 +155,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [videoError, setVideoError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [initialSeekDone, setInitialSeekDone] = useState<boolean>(false);
+  const initialSeekDoneRef = useRef<boolean>(false);
   const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
   const [isAddFlagModalOpen, setIsAddFlagModalOpen] = useState<boolean>(false);
   const [flagTitleInput, setFlagTitleInput] = useState<string>('');
@@ -175,7 +175,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     let objectUrl: string | null = null;
     let isCancelled = false;
 
-    setInitialSeekDone(false);
+    initialSeekDoneRef.current = false;
     setIsPlaying(false);
     setVideoError(null);
     setAntiCheatWarning(null);
@@ -298,6 +298,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     },
     [lessonId, onProgressSaved]
   );
+
+  const handleSaveProgressRef = useRef(handleSaveProgress);
+  handleSaveProgressRef.current = handleSaveProgress;
+
+  const onWatchedPercentChangeRef = useRef(onWatchedPercentChange);
+  onWatchedPercentChangeRef.current = onWatchedPercentChange;
 
   const getCurrentPlayerTime = useCallback((): number => {
     if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
@@ -490,7 +496,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
           setTimeout(() => setSaveNotice(null), 3000);
           pendingSeekTimeRef.current = null;
-          setInitialSeekDone(true);
+          initialSeekDoneRef.current = true;
         } catch {}
         return;
       }
@@ -504,14 +510,19 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
         setTimeout(() => setSaveNotice(null), 3000);
         pendingSeekTimeRef.current = null;
-        setInitialSeekDone(true);
+        initialSeekDoneRef.current = true;
       }
     }
   }, [initialSeekTime, mediaInfo]);
 
   // Khởi tạo YouTube IFrame API và điều khiển video YouTube an toàn (chống xung đột React DOM removeChild)
+  const youtubeEmbedUrl =
+    mediaInfo && mediaInfo.sourceType === 'youtube'
+      ? mediaInfo.embedUrl || mediaInfo.externalUrl || mediaInfo.streamUrl || ''
+      : null;
+
   useEffect(() => {
-    if (!mediaInfo || mediaInfo.sourceType !== 'youtube' || !mediaInfo.embedUrl) {
+    if (!mediaInfo || mediaInfo.sourceType !== 'youtube' || !youtubeEmbedUrl) {
       return;
     }
 
@@ -523,7 +534,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     let playerInstance: YTPlayerInstance | null = null;
 
     // Trích xuất videoId từ URL
-    const parsed = parseVideoUrl(mediaInfo.externalUrl || mediaInfo.streamUrl || mediaInfo.embedUrl || '');
+    const parsed = parseVideoUrl(youtubeEmbedUrl);
     const videoId = parsed.videoId;
 
     // Làm sạch DOM nội bộ của container mà không đụng chạm Virtual DOM của React
@@ -567,14 +578,14 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                   setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
                   setTimeout(() => setSaveNotice(null), 3000);
                   pendingSeekTimeRef.current = null;
-                  setInitialSeekDone(true);
-                } else if (!initialSeekDone && lastSavedPercentRef.current > 0) {
+                  initialSeekDoneRef.current = true;
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0) {
                   const resumeTime = (lastSavedPercentRef.current / 100) * dur;
                   if (resumeTime > 2) {
                     event.target.seekTo(resumeTime, true);
                     setCurrentTime(resumeTime);
                   }
-                  setInitialSeekDone(true);
+                  initialSeekDoneRef.current = true;
                 }
               } catch {}
             },
@@ -587,13 +598,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                 try {
                   const cur = event.target.getCurrentTime();
                   const dur = event.target.getDuration();
-                  handleSaveProgress(cur, dur, true);
+                  handleSaveProgressRef.current(cur, dur, true);
                 } catch {}
               } else if (event.data === YT.PlayerState.ENDED) {
                 setIsPlaying(false);
                 try {
                   const dur = event.target.getDuration();
-                  handleSaveProgress(dur, dur, true);
+                  handleSaveProgressRef.current(dur, dur, true);
                 } catch {}
               }
             },
@@ -605,7 +616,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         if (!isCancelled && container) {
           container.innerHTML = '';
           const fallbackIframe = document.createElement('iframe');
-          fallbackIframe.src = mediaInfo.embedUrl || '';
+          fallbackIframe.src = youtubeEmbedUrl;
           fallbackIframe.className = 'w-full h-full border-0 aspect-video';
           fallbackIframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
           fallbackIframe.allowFullscreen = true;
@@ -627,11 +638,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             if (dur > 0) {
               setDuration(dur);
               const watchedPct = Math.min(100, (cur / dur) * 100);
-              if (onWatchedPercentChange) {
-                onWatchedPercentChange(watchedPct);
+              if (onWatchedPercentChangeRef.current) {
+                onWatchedPercentChangeRef.current(watchedPct);
               }
             }
-            handleSaveProgress(cur, dur, false);
+            handleSaveProgressRef.current(cur, dur, false);
           }
         } catch {}
       }
@@ -650,7 +661,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         container.innerHTML = '';
       }
     };
-  }, [mediaInfo, lessonId, handleSaveProgress, onWatchedPercentChange, initialSeekDone]);
+  }, [lessonId, mediaInfo?.sourceType, youtubeEmbedUrl]);
 
   // 3. Xử lý cắm cờ mốc thời gian (Thêm điểm đánh dấu)
   const handleAddBookmark = useCallback(
@@ -826,14 +837,14 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                   setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
                   setTimeout(() => setSaveNotice(null), 3000);
                   pendingSeekTimeRef.current = null;
-                  setInitialSeekDone(true);
-                } else if (!initialSeekDone && lastSavedPercentRef.current > 0) {
+                  initialSeekDoneRef.current = true;
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0) {
                   const resumeTime = (lastSavedPercentRef.current / 100) * dur;
                   if (resumeTime > 2) {
                     videoRef.current.currentTime = resumeTime;
                     setCurrentTime(resumeTime);
                   }
-                  setInitialSeekDone(true);
+                  initialSeekDoneRef.current = true;
                 }
               }
             }}
