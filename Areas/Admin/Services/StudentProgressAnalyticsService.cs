@@ -61,7 +61,11 @@ namespace Microlearning.Areas.Admin.Services
 
             var completedCounts = await _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => allStudentIds.Contains(p.AccountId) && p.Lesson.Subject.CourseId == courseId && p.IsCompleted && p.Lesson.IsPublished)
+                .Where(p => allStudentIds.Contains(p.AccountId) &&
+                            p.Lesson.Subject.CourseId == courseId &&
+                            p.IsCompleted &&
+                            (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) &&
+                            p.Lesson.IsPublished)
                 .GroupBy(p => p.AccountId)
                 .Select(g => new { AccountId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.AccountId, x => x.Count, cancellationToken);
@@ -144,7 +148,7 @@ namespace Microlearning.Areas.Admin.Services
                 .Select(g => new
                 {
                     AccountId = g.Key,
-                    CompletedCount = g.Count(x => x.IsCompleted),
+                    CompletedCount = g.Count(x => x.IsCompleted && (x.WatchedCoveragePercent == 0 || x.WatchedCoveragePercent >= 80)),
                     LastActiveAt = g.Max(x => x.LastPlayedAt)
                 })
                 .ToDictionaryAsync(x => x.AccountId, cancellationToken);
