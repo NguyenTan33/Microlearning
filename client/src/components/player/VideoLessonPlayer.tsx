@@ -317,6 +317,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               src={mediaInfo.embedUrl}
               title={lessonTitle}
               className="w-full h-full border-0 aspect-video"
+              referrerPolicy="strict-origin-when-cross-origin"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
             />
