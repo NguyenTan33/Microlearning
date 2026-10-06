@@ -33,6 +33,17 @@ export interface MediaAsset {
   streamUrl?: string;
 }
 
+export interface LessonMediaInfo {
+  lessonId: number;
+  mediaId: number | null;
+  sourceType: string; // 'azure' | 'direct_url' | 'youtube' | 'vimeo' | 'demo'
+  streamUrl: string | null;
+  externalUrl: string | null;
+  embedUrl: string | null;
+  contentType: string;
+  fileSizeBytes: number;
+}
+
 export interface Lesson {
   id: number;
   subjectId: number;

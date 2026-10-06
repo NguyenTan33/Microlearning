@@ -5,6 +5,7 @@ import type {
   Subject,
   Lesson,
   LessonPackage,
+  LessonMediaInfo,
   SubmitQuizAttemptRequest,
   SubmitQuizAttemptResponse,
 } from '../types/catalog.types';
@@ -49,6 +50,14 @@ export const catalogApi = {
    */
   async getLessonPackage(lessonId: number): Promise<LessonPackage> {
     const response = await apiClient.get<LessonPackage>(`/lessons/${lessonId}/package`);
+    return response.data;
+  },
+
+  /**
+   * Lấy thông tin nguồn phát video chi tiết của bài học (xác định Azure Blob Storage, Direct URL, Stream)
+   */
+  async getLessonMediaInfo(lessonId: number): Promise<LessonMediaInfo> {
+    const response = await apiClient.get<LessonMediaInfo>(`/media/lesson/${lessonId}/info`);
     return response.data;
   },
 
