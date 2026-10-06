@@ -1,7 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { tokenService } from './tokenService';
 
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5124/api';
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
 
 export const apiClient = axios.create({
   baseURL: DEFAULT_API_URL,
