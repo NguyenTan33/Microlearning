@@ -191,7 +191,13 @@ export const catalogApi = {
   /**
    * Tạo khóa học mới (Teacher & Admin)
    */
-  async createCourse(request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+  async createCourse(request: {
+    title: string;
+    description: string;
+    thumbnailUrl: string;
+    isPrivate?: boolean;
+    accessPassword?: string;
+  }): Promise<Course> {
     const res = await fetch('/api/courses', {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -203,7 +209,16 @@ export const catalogApi = {
   /**
    * Cập nhật thông tin khóa học (Teacher & Admin)
    */
-  async updateCourse(id: number, request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+  async updateCourse(
+    id: number,
+    request: {
+      title: string;
+      description: string;
+      thumbnailUrl: string;
+      isPrivate?: boolean;
+      accessPassword?: string;
+    }
+  ): Promise<Course> {
     const res = await fetch(`/api/courses/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
