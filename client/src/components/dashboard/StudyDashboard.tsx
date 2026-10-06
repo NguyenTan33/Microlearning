@@ -48,6 +48,7 @@ import { userProfileService } from '../../services/userProfileService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
 import { enrollmentApi } from '../../services/enrollmentApi';
+import { streakApi } from '../../services/streakApi';
 import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
 
 interface StudyDashboardProps {
@@ -435,20 +436,44 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  // Ghi nhận hoàn thành bài học
-  const handleLessonCompleted = () => {
-    if (activeLesson) {
-      if (currentCourse?.id) {
-        enrollmentApi.enrollCourse(currentCourse.id).catch(() => {});
-      }
-      setCompletedLessonIds((prev) => {
-        const merged = Array.from(new Set([...prev, activeLesson.id]));
-        try {
-          localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-        } catch {}
-        return merged;
-      });
-      setLessonWatchedPercent((prev) => Math.max(prev, 100));
+  // Ghi nhận hoàn thành bài học của môn học trong khóa học và tự động kích hoạt tăng Streak trong ngày
+  const handleLessonCompleted = async () => {
+    if (!activeLesson) return;
+
+    if (currentCourse?.id) {
+      enrollmentApi.enrollCourse(currentCourse.id).catch(() => {});
+    }
+
+    setCompletedLessonIds((prev) => {
+      const merged = Array.from(new Set([...prev, activeLesson.id]));
+      try {
+        localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+      } catch {}
+      return merged;
+    });
+    setLessonWatchedPercent((prev) => Math.max(prev, 100));
+
+    // 1. Lưu tiến độ hoàn thành bài học lên máy chủ
+    try {
+      await progressApi.saveProgress(
+        activeLesson.id,
+        activeLesson.durationSeconds || 300,
+        100
+      );
+    } catch (err) {
+      console.warn('Lỗi khi lưu tiến độ bài học:', err);
+    }
+
+    // 2. Kích hoạt điểm danh Streak học tập hàng ngày
+    try {
+      await streakApi.pingDailyActivity();
+    } catch (err) {
+      console.warn('Lỗi khi ghi nhận streak:', err);
+    }
+
+    // 3. Phát sự kiện cập nhật tiến độ toàn cục để Header cập nhật ngọn lửa Streak ngay lập tức
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('lesson-progress-updated'));
     }
   };
 
@@ -1049,9 +1074,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                       )}
                     </div>
 
-                    {/* Cụm nút chuyển bài: Bài trước / Bài tiếp theo */}
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    {/* Cụm nút chuyển bài: Bài trước / Đánh dấu hoàn thành (+1 Streak) / Bài tiếp theo */}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
                       <button
+                        type="button"
                         onClick={() => prevLesson && handleSelectLesson(prevLesson)}
                         disabled={!prevLesson}
                         title={prevLesson ? `Bài trước: ${prevLesson.title}` : 'Đã ở bài học đầu tiên'}
@@ -1061,7 +1087,31 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                         <span className="hidden sm:inline">Bài trước</span>
                       </button>
 
+                      {/* Nút Hoàn thành bài học để tăng Streak ngày ngay lập tức */}
                       <button
+                        type="button"
+                        onClick={handleLessonCompleted}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md ${
+                          completedLessonIds.includes(effectiveLesson.id)
+                            ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50'
+                            : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-orange-600/20 active:scale-95'
+                        }`}
+                        title={
+                          completedLessonIds.includes(effectiveLesson.id)
+                            ? 'Bài học đã hoàn thành! Bấm để cập nhật lại Streak nếu hôm nay là ngày mới.'
+                            : 'Hoàn thành bài học này để tăng chuỗi Streak hôm nay!'
+                        }
+                      >
+                        <CheckCircle className={`w-4 h-4 shrink-0 ${completedLessonIds.includes(effectiveLesson.id) ? 'text-emerald-400' : 'text-amber-200'}`} />
+                        <span>
+                          {completedLessonIds.includes(effectiveLesson.id)
+                            ? 'Đã hoàn thành'
+                            : 'Hoàn thành bài (+1 🔥)'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => nextLesson && handleSelectLesson(nextLesson)}
                         disabled={!nextLesson}
                         title={nextLesson ? `Bài tiếp theo: ${nextLesson.title}` : 'Đã ở bài học cuối cùng'}
