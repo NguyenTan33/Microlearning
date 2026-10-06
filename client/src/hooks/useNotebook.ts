@@ -51,6 +51,8 @@ export function useNotebook(options: UseNotebookOptions = {}) {
 
   // Ref để tránh gọi loadInitialData nhiều lần
   const hasLoadedRef = useRef<boolean>(false);
+  // Ref để prevent double-submit khi user click nhanh liên tiếp
+  const isAskingRef = useRef<boolean>(false);
 
   // =========================================================================
   // LOAD INITIAL DATA
@@ -421,10 +423,16 @@ export function useNotebook(options: UseNotebookOptions = {}) {
    */
   const askQuestion = useCallback(
     async (questionText: string) => {
+      // Prevent double-submit
+      if (isAskingRef.current) return;
+      if (!questionText.trim()) return;
+
       if (!activeNotebook) {
         setError('Vui lòng chọn một Sổ tay trước khi đặt câu hỏi!');
         return;
       }
+
+      isAskingRef.current = true;
 
       const userMsg: NotebookChatMessage = {
         id: `user-${Date.now()}`,
@@ -440,13 +448,24 @@ export function useNotebook(options: UseNotebookOptions = {}) {
       setIsAsking(true);
       setError(null);
 
+
       try {
-        // Truyền lessonId và courseId thực tế để backend query SQL
+        // Lấy lịch sử 6 tin nhắn trước đó (bỏ tin nhắn lỗi) để AI duy trì mạch hội thoại
+        const chatHistory = messages
+          .filter((m) => !m.isError && m.text.trim().length > 0)
+          .slice(-6)
+          .map((m) => ({
+            role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+            text: m.text,
+          }));
+
+        // Truyền lessonId, courseId và chatHistory thực tế để backend query SQL & duy trì ngữ cảnh
         const aiAnswer = await notebookService.askQuestion(
           activeNotebook.id,
           questionText,
           activeLesson?.id,    // ID bài học từ SQL
-          currentCourse?.id    // ID khóa học từ SQL
+          currentCourse?.id,   // ID khóa học từ SQL
+          chatHistory
         );
 
         const aiMsg: NotebookChatMessage = {
@@ -481,9 +500,10 @@ export function useNotebook(options: UseNotebookOptions = {}) {
         setMessages((prev) => [...prev, errorMsg]);
       } finally {
         setIsAsking(false);
+        isAskingRef.current = false;
       }
     },
-    [activeNotebook, activeLesson, currentCourse]
+    [activeNotebook, activeLesson, currentCourse, messages]
   );
 
   // =========================================================================
@@ -519,13 +539,24 @@ export function useNotebook(options: UseNotebookOptions = {}) {
             .join('\n');
         }
 
+        const lessonMeta = activeLesson
+          ? {
+              lessonId: activeLesson.id,
+              courseId: currentCourse?.id,
+              lessonTitle: activeLesson.title,
+              courseTitle: currentCourse?.title,
+              durationSeconds: activeLesson.durationSeconds,
+            }
+          : undefined;
+
         await notebookService.generatePodcast(
           episodeName,
           episodeProfile,
           resolvedSpeaker,
           targetNbId,
           finalContent,
-          voiceName || 'vi-VN-HoaiMyNeural'
+          voiceName || 'vi-VN-HoaiMyNeural',
+          lessonMeta
         );
 
         const updatedList = await notebookService.getPodcastEpisodes();

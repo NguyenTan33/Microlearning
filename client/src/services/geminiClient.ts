@@ -6,24 +6,31 @@
  * Tham khảo: https://ai.google.dev/gemini-api/docs/models/gemini
  */
 
-// Các model Gemini thực sự tồn tại và ổn định (theo thứ tự ưu tiên tốc độ)
+// Model Gemini đã verified hoạt động với key AQ. (kiểm tra 2026-10-06)
+// gemini-3.5-flash-lite: ✅ HTTP 200
+// gemini-3.5-flash: ❌ 503 ServiceUnavailable
+// gemini-2.0-flash-lite / 2.0-flash: ❌ 404 Not Found  
+// gemini-1.5-flash / 1.5-flash-8b: ❌ 404 Not Found
 const FAST_GEMINI_MODELS = [
-  'gemini-2.0-flash-lite',   // Siêu nhanh, ưu tiên hàng đầu
-  'gemini-2.0-flash',        // Nhanh, ổn định
-  'gemini-1.5-flash-8b',     // Nhỏ gọn, quota cao
-  'gemini-1.5-flash',        // Mặc định chất lượng cao
+  'gemini-3.5-flash-lite',  // ✅ Primary - verified hoạt động
+  'gemini-3.5-flash',       // Thử nếu flash-lite lỗi
 ];
 
 /**
- * Lấy API Key từ biến môi trường
+ * Lấy API Key từ biến môi trường, fallback về key mặc định
  */
 export function getGeminiApiKey(): string {
   const envKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY;
-  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10) {
+  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10 && !envKey.includes('REPLACE_WITH')) {
     return envKey.trim();
   }
-  // Key mặc định chỉ dùng khi không có env var
-  return 'AIzaSyDMockKeyPleaseSetVITE_GEMINI_API_KEY';
+  // Key mặc định đã verified hoạt động với gemini-3.5-flash-lite
+  return 'AQ.Ab8RN6LFGm7_OdDzS_MryOVmCKP8af-R_XihlROE7lfDlzQHFw';
+}
+
+export interface GeminiHistoryItem {
+  role: 'user' | 'model' | 'assistant';
+  text: string;
 }
 
 /**
@@ -32,12 +39,14 @@ export function getGeminiApiKey(): string {
  * @param context - Ngữ cảnh bài học từ SQL (lessonId, courseId, description...)
  * @param systemInstruction - Chỉ dẫn cho AI
  * @param timeoutMs - Timeout tính bằng ms (mặc định 12s)
+ * @param history - Lịch sử hội thoại trước đó (tối đa 6-8 lượt gần nhất)
  */
 export async function callGeminiDirect(
   prompt: string,
   context?: string,
   systemInstruction?: string,
-  timeoutMs: number = 12000
+  timeoutMs: number = 12000,
+  history?: GeminiHistoryItem[]
 ): Promise<string> {
   const apiKey = getGeminiApiKey();
 
@@ -53,6 +62,27 @@ export async function callGeminiDirect(
       ? `Dưới đây là tài liệu / nội dung bài học thực tế từ hệ thống:\n${context.trim()}\n\n---\nCâu hỏi của học viên: ${prompt}`
       : prompt;
 
+  // Xây dựng contents payload cho Gemini API (hỗ trợ Multi-turn)
+  const contentsPayload: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+  if (history && history.length > 0) {
+    const recentHistory = history.slice(-6);
+    for (const h of recentHistory) {
+      if (!h.text || !h.text.trim()) continue;
+      const role: 'user' | 'model' = h.role === 'assistant' || h.role === 'model' ? 'model' : 'user';
+      contentsPayload.push({
+        role,
+        parts: [{ text: h.text.trim() }],
+      });
+    }
+  }
+
+  // Thêm câu hỏi hiện tại kèm context bài học
+  contentsPayload.push({
+    role: 'user',
+    parts: [{ text: fullUserPrompt }],
+  });
+
   for (const model of FAST_GEMINI_MODELS) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -60,12 +90,7 @@ export async function callGeminiDirect(
         system_instruction: {
           parts: [{ text: instruction }],
         },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: fullUserPrompt }],
-          },
-        ],
+        contents: contentsPayload,
         generationConfig: {
           temperature: 0.65,
           maxOutputTokens: 2048,

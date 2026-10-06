@@ -463,7 +463,15 @@ export const notebookService = {
       .filter(Boolean)
       .join('\n');
 
-    return this.addLessonSource(notebookId, lessonTitle, lessonContent, lesson.id, course.id);
+    return this.addLessonSource(
+      notebookId,
+      lessonTitle,
+      lessonContent,
+      lesson.id,
+      course.id,
+      lesson.title,
+      course.title
+    );
   },
 
   /**
@@ -476,7 +484,9 @@ export const notebookService = {
     title: string,
     content: string,
     lessonId?: number,
-    courseId?: number
+    courseId?: number,
+    lessonTitle?: string,
+    courseTitle?: string
   ): Promise<NotebookSource> {
     // 1. Thử nạp lên Open Notebook Container để có vector search
     try {
@@ -488,6 +498,8 @@ export const notebookService = {
         metadata: {
           lesson_id: lessonId,
           course_id: courseId,
+          lesson_title: lessonTitle,
+          course_title: courseTitle,
           source_type: 'microlearning_lesson',
         },
       };
@@ -504,6 +516,11 @@ export const notebookService = {
       if (res.ok && isJsonResponse(res)) {
         const src = await safeJson<NotebookSource | null>(res, null);
         if (src && src.id) {
+          src.lesson_id = lessonId;
+          src.course_id = courseId;
+          src.lesson_title = lessonTitle;
+          src.course_title = courseTitle;
+
           if (notebookId) {
             const current = getLocalSourcesByNotebook(notebookId);
             saveLocalSourcesByNotebook(notebookId, [src, ...current.filter((s) => s.id !== src.id)]);
@@ -530,6 +547,10 @@ export const notebookService = {
       updated: new Date().toISOString(),
       embedded: true,
       status: 'Ready (Local)',
+      lesson_id: lessonId,
+      course_id: courseId,
+      lesson_title: lessonTitle,
+      course_title: courseTitle,
     };
 
     if (notebookId) {
@@ -659,12 +680,14 @@ export const notebookService = {
    * @param question - Câu hỏi của học viên
    * @param lessonId - ID bài học thật từ SQL (truyền vào để AI lấy ngữ cảnh)
    * @param courseId - ID khóa học thật từ SQL
+   * @param history - Lịch sử hội thoại trước đó để AI duy trì mạch trò chuyện
    */
   async askQuestion(
     notebookId: string,
     question: string,
     lessonId?: number,
-    courseId?: number
+    courseId?: number,
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>
   ): Promise<string> {
     // Lấy context từ local sources đã cache
     const localSources = notebookId
@@ -680,13 +703,19 @@ export const notebookService = {
         : '';
 
     // =========================================================
-    // BƯỚC 1: Gọi Backend AI Gateway (.NET) - HỌA LẠI THỰC TẾ TỪ SQL
+    // BƯỚC 1: Gọi Backend AI Gateway (.NET) - HỖ TRỢ MULTI-TURN + SQL CONTEXT
     // =========================================================
     try {
       const payload: Record<string, unknown> = { question };
       if (lessonId && lessonId > 0) payload.lessonId = lessonId;
       if (courseId && courseId > 0) payload.courseId = courseId;
       if (localContextText) payload.customContext = localContextText;
+      if (history && history.length > 0) {
+        payload.history = history.slice(-6).map((h) => ({
+          role: h.role === 'assistant' ? 'model' : 'user',
+          text: h.text,
+        }));
+      }
 
       const res = await timeoutFetch(
         `${BACKEND_BASE}/api/AiAssistant/ask`,
@@ -714,14 +743,15 @@ export const notebookService = {
     }
 
     // =========================================================
-    // BƯỚC 2: Gọi Gemini trực tiếp từ Browser với context local
+    // BƯỚC 2: Gọi Gemini trực tiếp từ Browser với context local + history
     // =========================================================
     try {
       const directAnswer = await callGeminiDirect(
         question,
         localContextText || undefined,
         undefined,
-        12000
+        12000,
+        history
       );
       if (directAnswer && directAnswer.trim().length > 20) {
         return directAnswer;
@@ -820,7 +850,14 @@ export const notebookService = {
     speakerProfile: string,
     notebookId?: string,
     content?: string,
-    voiceName: string = 'vi-VN-HoaiMyNeural'
+    voiceName: string = 'vi-VN-HoaiMyNeural',
+    lessonMeta?: {
+      lessonId?: number;
+      courseId?: number;
+      lessonTitle?: string;
+      courseTitle?: string;
+      durationSeconds?: number;
+    }
   ): Promise<{ job_id: string; message: string }> {
     // 1. Lấy context thực tế từ notebook nếu không có content
     let lessonContext = content;
@@ -866,7 +903,7 @@ export const notebookService = {
       }
     }
 
-    // 4. Lưu podcast vào local storage
+    // 4. Lưu podcast vào local storage với liên kết bài học nguồn
     const newEpisode: PodcastEpisode = {
       id: `pod-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       name: episodeName,
@@ -876,6 +913,11 @@ export const notebookService = {
       created: new Date().toISOString(),
       audio_url: audioUrl || undefined,
       transcript: script,
+      lesson_id: lessonMeta?.lessonId,
+      course_id: lessonMeta?.courseId,
+      lesson_title: lessonMeta?.lessonTitle,
+      course_title: lessonMeta?.courseTitle,
+      duration_seconds: lessonMeta?.durationSeconds,
     };
 
     const currentList = getLocalPodcasts();
