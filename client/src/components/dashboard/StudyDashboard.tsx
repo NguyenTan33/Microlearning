@@ -64,7 +64,33 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     })
   );
   const [currentView, setCurrentView] = useState<'WORKSPACE' | 'CATALOG' | 'BOOKMARKS' | 'NOTEBOOK'>('CATALOG');
-  const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
+  const storageProgressKey = useMemo(
+    () => `microlearn_completed_lessons_${currentUser?.userId || 'guest'}`,
+    [currentUser?.userId]
+  );
+
+  // Khôi phục mốc tiến độ đã hoàn thành từ LocalStorage để không bao giờ bị mất khi F5 / mở lại web
+  const [completedLessonIds, setCompletedLessonIds] = useState<number[]>(() => {
+    try {
+      const key = `microlearn_completed_lessons_${currentUser?.userId || 'guest'}`;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Tự động sao lưu tiến độ khi danh sách bài học hoàn thành thay đổi
+  useEffect(() => {
+    try {
+      if (completedLessonIds.length > 0) {
+        localStorage.setItem(storageProgressKey, JSON.stringify(completedLessonIds));
+      }
+    } catch {
+      // ignore
+    }
+  }, [completedLessonIds, storageProgressKey]);
+
   const [initialSeekTimestamp, setInitialSeekTimestamp] = useState<number | null>(null);
   const [totalBookmarksCount, setTotalBookmarksCount] = useState<number>(() =>
     mediaBookmarkService.getAllBookmarksCount()
@@ -83,7 +109,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState<boolean>(false);
 
-  // 1. Tải khóa học và bài học ban đầu trực tuyến
+  // 1. Tải khóa học và bài học ban đầu trực tuyến & Đồng bộ Max Tiến Độ Chuẩn
   const loadInitialCourse = useCallback(async (courseId?: number) => {
     setLoadingWorkspace(true);
     try {
@@ -131,13 +157,57 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       setCurrentCourse(targetCourse);
       setActiveLesson(targetLesson);
 
-      // Kiểm tra tiến độ hoàn thành từ máy chủ
+      // Đồng bộ Max tiến độ từ Máy Chủ (chống mất tiến độ khi F5 hoặc vào lại web)
+      try {
+        const completedIdsFromServer = await progressApi.getCompletedLessonIds(targetCourse?.id);
+        if (completedIdsFromServer && completedIdsFromServer.length > 0) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...completedIdsFromServer]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      // Kiểm tra tiến độ tổng thể khóa học: nếu đạt 100% thì tự động đánh dấu toàn bộ bài học
+      if (targetCourse?.id) {
+        progressApi
+          .getCourseProgress(targetCourse.id)
+          .then((cp) => {
+            if (cp && cp.overallPercent >= 100 && targetCourse?.subjects) {
+              const allCourseLessonIds: number[] = [];
+              targetCourse.subjects.forEach((s) => s.lessons?.forEach((l) => allCourseLessonIds.push(l.id)));
+              if (allCourseLessonIds.length > 0) {
+                setCompletedLessonIds((prev) => {
+                  const merged = Array.from(new Set([...prev, ...allCourseLessonIds]));
+                  try {
+                    localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+                  } catch {}
+                  return merged;
+                });
+              }
+            }
+          })
+          .catch(() => {});
+      }
+
+      // Kiểm tra tiến độ của bài học hiện tại
       if (targetLesson) {
         progressApi
           .getLessonProgress(targetLesson.id)
           .then((p) => {
-            if (p && p.isCompleted) {
-              setCompletedLessonIds((prev) => Array.from(new Set([...prev, targetLesson!.id])));
+            if (p && (p.isCompleted || p.percent >= 90)) {
+              setCompletedLessonIds((prev) => {
+                const merged = Array.from(new Set([...prev, targetLesson!.id]));
+                try {
+                  localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+                } catch {}
+                return merged;
+              });
             }
           })
           .catch(() => {});
@@ -148,11 +218,35 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     } finally {
       setLoadingWorkspace(false);
     }
-  }, []);
+  }, [storageProgressKey]);
 
   useEffect(() => {
     loadInitialCourse();
   }, [loadInitialCourse]);
+
+  // Lắng nghe sự kiện cập nhật tiến độ từ video player hoặc quiz
+  useEffect(() => {
+    const handleProgressUpdate = async () => {
+      try {
+        const serverIds = await progressApi.getCompletedLessonIds(currentCourse?.id);
+        if (serverIds && serverIds.length > 0) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...serverIds]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('lesson-progress-updated', handleProgressUpdate);
+    return () => {
+      window.removeEventListener('lesson-progress-updated', handleProgressUpdate);
+    };
+  }, [currentCourse?.id, storageProgressKey]);
 
   // Feature 5: Native Browser History Navigation stack & breadcrumbs
   const { pushState, breadcrumbs } = useAppHistoryNavigation(
@@ -197,8 +291,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     progressApi
       .getLessonProgress(lesson.id)
       .then((p) => {
-        if (p && p.isCompleted) {
-          setCompletedLessonIds((prev) => Array.from(new Set([...prev, lesson.id])));
+        if (p && (p.isCompleted || p.percent >= 90)) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, lesson.id]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       })
       .catch(() => {});
@@ -257,7 +357,13 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   // Ghi nhận hoàn thành bài học
   const handleLessonCompleted = () => {
     if (activeLesson) {
-      setCompletedLessonIds((prev) => Array.from(new Set([...prev, activeLesson.id])));
+      setCompletedLessonIds((prev) => {
+        const merged = Array.from(new Set([...prev, activeLesson.id]));
+        try {
+          localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
     }
   };
 
@@ -442,8 +548,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
           </nav>
 
-          {/* Desktop Action Buttons & User Menu (Lược bớt Yêu thích & Sổ câu sai theo yêu cầu để giảm tải Header) */}
-          <div className="hidden md:flex items-center gap-2 sm:gap-2.5">
+          {/* Desktop Action Buttons & User Menu (Đồng bộ chiều cao h-9, căn lề và style thẩm mỹ thống nhất) */}
+          <div className="hidden md:flex items-center gap-2">
             {/* Feature 8: Streak 🔥 & Master Crown 👑 */}
             <StreakCrownBadge />
 
@@ -451,11 +557,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             {isTeacherOrAdmin && (
               <button
                 onClick={() => setIsCourseMgmtOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-900/80 to-purple-900/80 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-white transition-all cursor-pointer shadow-sm active:scale-95"
+                className="h-9 flex items-center gap-1.5 px-3 rounded-xl bg-gradient-to-r from-indigo-900/90 to-purple-900/90 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-xs font-bold text-white transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap shrink-0"
                 title="Đăng tải bài giảng, học phần và soạn đề thi quizz"
               >
-                <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Studio Đăng tải</span>
+                <FolderKanban className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="whitespace-nowrap">Studio</span>
               </button>
             )}
 
@@ -463,11 +569,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             {currentUser?.isAdmin && (
               <button
                 onClick={() => setIsAdminUsersOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-xs font-semibold text-purple-300 hover:text-white transition-all cursor-pointer shadow-sm"
+                className="h-9 flex items-center gap-1.5 px-3 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-xs font-bold text-purple-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap shrink-0"
                 title="Quản Lý Tài Khoản Người Dùng"
               >
-                <Users className="w-3.5 h-3.5 text-purple-400" />
-                <span>Tài khoản</span>
+                <Users className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <span className="whitespace-nowrap">Tài khoản</span>
               </button>
             )}
 
@@ -476,7 +582,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 type="button"
                 onClick={() => setIsProfileModalOpen(true)}
-                className="flex items-center gap-2 px-2.5 py-1 rounded-xl text-[11px] font-bold border bg-slate-900/80 hover:bg-slate-800 border-white/10 hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
+                className="h-9 flex items-center gap-2 px-3 rounded-xl text-xs font-semibold border bg-slate-900/80 hover:bg-slate-800 border-white/10 hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95 whitespace-nowrap shrink-0"
                 title={`Hồ sơ: ${userProfile.fullName || currentUser.displayName} - Bấm để xem Dashboard học tập & Đổi mật khẩu`}
               >
                 {userProfile.avatarUrl ? (
@@ -490,10 +596,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
                   </div>
                 )}
-                <span className="truncate max-w-[100px] sm:max-w-[130px] group-hover:text-cyan-300 transition-colors">
+                <span className="truncate max-w-[90px] xl:max-w-[120px] group-hover:text-cyan-300 transition-colors">
                   {userProfile.fullName || currentUser.displayName}
                 </span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5 uppercase font-bold shrink-0">
                   {currentUser.isAdmin ? 'Admin' : currentUser.isTeacher ? 'Teacher' : 'Student'}
                 </span>
               </button>
@@ -503,7 +609,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             <button
               onClick={onLogout}
               title="Đăng xuất khỏi hệ thống"
-              className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-950/80 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer"
+              className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900/80 hover:bg-rose-950/80 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-300 transition-colors cursor-pointer shrink-0 active:scale-95"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -517,17 +623,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             <button
               type="button"
               onClick={() => setIsProfileModalOpen(true)}
-              className="p-1 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer active:scale-95"
+              className="h-9 w-9 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white cursor-pointer active:scale-95 shrink-0"
               title={`Hồ sơ: ${userProfile.fullName || currentUser?.displayName}`}
             >
               {userProfile.avatarUrl ? (
                 <img
                   src={userProfile.avatarUrl}
                   alt={userProfile.fullName}
-                  className="w-7 h-7 rounded-lg object-cover border border-indigo-400/50 shrink-0"
+                  className="w-6 h-6 rounded-lg object-cover border border-indigo-400/50 shrink-0"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-xs text-white font-bold shrink-0">
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-xs text-white font-bold shrink-0">
                   {userProfile.fullName ? userProfile.fullName.trim()[0].toUpperCase() : 'U'}
                 </div>
               )}
@@ -536,7 +642,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             {isTeacherOrAdmin && (
               <button
                 onClick={() => setIsCourseMgmtOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-xs font-bold"
+                className="h-9 flex items-center gap-1 px-2.5 rounded-xl bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-xs font-bold whitespace-nowrap active:scale-95 shrink-0"
                 title="Studio Đăng tải"
               >
                 <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
@@ -546,7 +652,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 rounded-lg bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer"
+              className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer active:scale-95 shrink-0"
               aria-label="Menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
