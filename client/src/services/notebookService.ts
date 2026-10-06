@@ -6,29 +6,43 @@ import type {
   EpisodeProfile,
   SearchResult,
 } from '../types/notebook.types';
+import type { Course, Lesson } from '../types/catalog.types';
 import { callGeminiDirect, generatePodcastScript } from './geminiClient';
 import { ttsApi } from './ttsApi';
 
-const AZURE_NOTEBOOK_URL = (import.meta.env.VITE_OPEN_NOTEBOOK_API_URL || 'https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io').replace(/\/$/, '');
-const API_BASE = '/notebook-api';
+// =========================================================================
+// CONSTANTS & BASE URLs
+// =========================================================================
+const AZURE_NOTEBOOK_URL = (
+  import.meta.env.VITE_OPEN_NOTEBOOK_API_URL ||
+  'https://open-notebook-ai.wittydesert-f9ca7f08.eastasia.azurecontainerapps.io'
+).replace(/\/$/, '');
+
+const BACKEND_BASE = (
+  import.meta.env.VITE_BACKEND_URL ||
+  (import.meta.env.PROD
+    ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net'
+    : '')
+).replace(/\/$/, '');
+
 const DIRECT_API_BASE = `${AZURE_NOTEBOOK_URL}/api`;
 const LOCAL_FALLBACK_BASE = 'http://localhost:5055/api';
-const WEB_STUDIO_URL = 'http://localhost:8502';
 
-const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+// =========================================================================
+// STORAGE KEYS (Namespace riêng cho mỗi notebook/course)
+// =========================================================================
+const STORAGE_PREFIX = 'ml_nb_';
+const PODCASTS_KEY = `${STORAGE_PREFIX}podcasts`;
 
-/**
- * Kiểm tra xem phản hồi mạng có thực sự là dữ liệu JSON hay không
- * (Tránh trường hợp Azure Static Web Apps trả về HTML của index.html gây lỗi JSON.parse)
- */
+// =========================================================================
+// HTTP HELPERS
+// =========================================================================
+
 function isJsonResponse(res: Response): boolean {
   const ct = res.headers.get('content-type') || '';
   return ct.toLowerCase().includes('application/json');
 }
 
-/**
- * Helper parse JSON an toàn tuyệt đối, không bao giờ ném ngoại lệ JSON.parse làm sập UI
- */
 async function safeJson<T>(res: Response, fallback: T): Promise<T> {
   try {
     if (!isJsonResponse(res)) return fallback;
@@ -38,10 +52,11 @@ async function safeJson<T>(res: Response, fallback: T): Promise<T> {
   }
 }
 
-/**
- * Helper gọi fetch có timeout an toàn, tuyệt đối không để trình duyệt bị treo
- */
-async function timeoutFetch(url: string, options: RequestInit = {}, timeoutMs: number = 3000): Promise<Response> {
+async function timeoutFetch(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = 8000
+): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -51,245 +66,223 @@ async function timeoutFetch(url: string, options: RequestInit = {}, timeoutMs: n
   }
 }
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('accessToken');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 /**
- * Gọi container Open Notebook có timeout 2.5s; bảo đảm chỉ chấp nhận phản hồi JSON thật
+ * Gọi Open Notebook Container có timeout - chỉ dùng cho features thật sự cần container
  */
-async function requestWithFallback(endpoint: string, options: RequestInit = {}, timeoutMs: number = 2500): Promise<Response> {
+async function requestNotebookApi(
+  endpoint: string,
+  options: RequestInit = {},
+  timeoutMs: number = 6000
+): Promise<Response> {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
 
-  // 1. Thử gọi trực tiếp Cloud Azure Container App với timeout ngắn
+  // 1. Thử gọi trực tiếp Azure Container App
   try {
-    const res = await timeoutFetch(`${DIRECT_API_BASE}${endpoint}`, { ...options, headers }, timeoutMs);
+    const res = await timeoutFetch(
+      `${DIRECT_API_BASE}${endpoint}`,
+      { ...options, headers },
+      timeoutMs
+    );
     if (res.ok && isJsonResponse(res)) return res;
   } catch {
-    // tiếp tục fallback nếu cloud chưa phản hồi hoặc timeout
+    // fallback
   }
 
-  // 2. CHỈ thử gọi qua Vite Proxy khi ở môi trường Local Development (import.meta.env.DEV)
+  // 2. Thử qua Vite proxy khi dev
   if (import.meta.env.DEV) {
     try {
-      const res = await timeoutFetch(`${API_BASE}${endpoint}`, { ...options, headers }, 2000);
+      const res = await timeoutFetch(
+        `/notebook-api${endpoint}`,
+        { ...options, headers },
+        4000
+      );
       if (res.ok && isJsonResponse(res)) return res;
     } catch {
-      // tiếp tục
+      // fallback
     }
-  }
 
-  // 3. Fallback về Local Docker CHỈ khi ở môi trường DEV và không dùng HTTPS
-  if (import.meta.env.DEV && !isHttps) {
+    // 3. Fallback localhost Docker khi dev
     try {
-      const res = await timeoutFetch(`${LOCAL_FALLBACK_BASE}${endpoint}`, { ...options, headers }, 2000);
+      const res = await timeoutFetch(
+        `${LOCAL_FALLBACK_BASE}${endpoint}`,
+        { ...options, headers },
+        3000
+      );
       if (res.ok && isJsonResponse(res)) return res;
     } catch {
-      // bỏ qua
+      // ignore
     }
   }
 
-  throw new Error(`Dịch vụ Container không phản hồi JSON hợp lệ cho endpoint ${endpoint}`);
+  throw new Error(`Notebook Container không phản hồi: ${endpoint}`);
 }
 
 // =========================================================================
-// QUẢN LÝ DỮ LIỆU OFFLINE / LOCAL RESILIENT CACHE (INDEXEDDB / LOCALSTORAGE)
+// LOCAL STORAGE HELPERS - CHỈ DÙNG CHO PODCASTS VÀ NOTEBOOKS META
+// KHÔNG còn dùng dummy data mặc định
 // =========================================================================
-const LOCAL_STORAGE_NOTEBOOKS_KEY = 'microlearning_notebooks_store';
-const LOCAL_STORAGE_SOURCES_KEY = 'microlearning_sources_store';
 
 function getLocalNotebooks(): Notebook[] {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_NOTEBOOKS_KEY);
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}notebooks`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {}
-
-  const defaults: Notebook[] = [
-    {
-      id: 'nb-excel-expert',
-      name: 'Sổ tay Thành Thạo Microsoft Excel',
-      description: 'Ghi chú, tài liệu và hỏi đáp AI về các hàm VLOOKUP, XLOOKUP, INDEX MATCH và Pivot Table.',
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      source_count: 3,
-      note_count: 5,
-    },
-    {
-      id: 'nb-csharp-dotnet',
-      name: 'Sổ tay Lập trình C# & .NET 8 Hiện Đại',
-      description: 'Tổng hợp kiến thức về ASP.NET Core Web API, Entity Framework Core và Clean Architecture.',
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      source_count: 2,
-      note_count: 3,
-    },
-    {
-      id: 'nb-react-frontend',
-      name: 'Sổ tay React 18, TypeScript & Tailwind CSS',
-      description: 'Nguyên lý Offline-First, State Management với TanStack Query và tối ưu UI/UX.',
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      source_count: 2,
-      note_count: 4,
-    },
-  ];
-  try {
-    localStorage.setItem(LOCAL_STORAGE_NOTEBOOKS_KEY, JSON.stringify(defaults));
-  } catch {}
-  return defaults;
+  return [];
 }
 
-function saveLocalNotebooks(notebooks: Notebook[]) {
+function saveLocalNotebooks(notebooks: Notebook[]): void {
   try {
-    localStorage.setItem(LOCAL_STORAGE_NOTEBOOKS_KEY, JSON.stringify(notebooks));
+    localStorage.setItem(`${STORAGE_PREFIX}notebooks`, JSON.stringify(notebooks));
   } catch {}
 }
 
-function getLocalSources(): NotebookSource[] {
+/** Lưu sources của notebook cụ thể vào local cache */
+function getLocalSourcesByNotebook(notebookId: string): NotebookSource[] {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_SOURCES_KEY);
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}src_${notebookId}`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {}
-
-  const defaults: NotebookSource[] = [
-    {
-      id: 'src-excel-01',
-      title: 'Giáo trình Hàm Tra cứu VLOOKUP & XLOOKUP Nâng Cao',
-      full_text: 'Hàm VLOOKUP trong Excel dùng để tìm kiếm giá trị theo chiều dọc. Cú pháp: VLOOKUP(lookup_value, table_array, col_index_num, [range_lookup]). Đối với phiên bản Excel mới, XLOOKUP cho phép tìm kiếm hai chiều không phụ thuộc vị trí cột đầu tiên.',
-      topics: ['Excel', 'Hàm tính', 'VLOOKUP', 'XLOOKUP'],
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      embedded: true,
-      status: 'Ready',
-    },
-    {
-      id: 'src-excel-02',
-      title: 'Kỹ thuật Phân tích Dữ liệu Pivot Table & Slicer',
-      full_text: 'Pivot Table là công cụ đắc lực giúp tổng hợp, phân tích, khám phá và trình bày dữ liệu tóm tắt trong Microsoft Excel mà không cần viết công thức phức tạp.',
-      topics: ['Excel', 'Báo cáo', 'Pivot Table'],
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      embedded: true,
-      status: 'Ready',
-    },
-    {
-      id: 'src-dotnet-01',
-      title: 'Kiến trúc Entity Framework Core 8 & Dependency Injection',
-      full_text: 'Entity Framework Core là ORM hiện đại cho .NET, hỗ trợ LINQ, theo dõi thay đổi tự động, và di chuyển dữ liệu (Migrations). Trong ứng dụng Microlearning, EF Core kết nối an toàn tới Azure SQL Database.',
-      topics: ['C#', '.NET 8', 'EF Core'],
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      embedded: true,
-      status: 'Ready',
-    },
-  ];
-  try {
-    localStorage.setItem(LOCAL_STORAGE_SOURCES_KEY, JSON.stringify(defaults));
-  } catch {}
-  return defaults;
+  return [];
 }
 
-function saveLocalSources(sources: NotebookSource[]) {
+function saveLocalSourcesByNotebook(notebookId: string, sources: NotebookSource[]): void {
   try {
-    localStorage.setItem(LOCAL_STORAGE_SOURCES_KEY, JSON.stringify(sources));
+    localStorage.setItem(`${STORAGE_PREFIX}src_${notebookId}`, JSON.stringify(sources));
   } catch {}
 }
 
-const LOCAL_STORAGE_PODCASTS_KEY = 'microlearning_podcasts_store';
+function getAllLocalSources(): NotebookSource[] {
+  const notebooks = getLocalNotebooks();
+  const all: NotebookSource[] = [];
+  const seen = new Set<string>();
+  for (const nb of notebooks) {
+    const srcs = getLocalSourcesByNotebook(nb.id);
+    for (const s of srcs) {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        all.push(s);
+      }
+    }
+  }
+  return all;
+}
 
 function getLocalPodcasts(): PodcastEpisode[] {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_PODCASTS_KEY);
+    const raw = localStorage.getItem(PODCASTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {}
-
-  const defaults: PodcastEpisode[] = [
-    {
-      id: 'pod-demo-01',
-      name: 'Podcast Tóm tắt: Hàm VLOOKUP và XLOOKUP trong 3 phút',
-      episode_profile: 'Chuyên gia Độc thoại (Solo Expert)',
-      created: new Date().toISOString(),
-      status: 'completed',
-      audio_url: '/audio/podcast_demo.mp3',
-      transcript:
-        'Host (Tuấn): Chào mừng các bạn đến với MicroLearning Audio Podcast! Hôm nay chúng ta sẽ cùng tìm hiểu về sự khác biệt cốt lõi giữa hàm VLOOKUP và XLOOKUP trong Excel.\n\n' +
-        'Chuyên gia (Hà): Chào Tuấn và các bạn học viên! Điểm khác biệt lớn nhất là XLOOKUP khắc phục hoàn toàn nhược điểm của VLOOKUP: nó có thể dò tìm cả sang trái lẫn sang phải, mặc định tìm kiếm chính xác tuyệt đối mà không cần nhập số 0, và đặc biệt là không bị lỗi khi người dùng chèn thêm cột mới trong bảng dữ liệu.\n\n' +
-        'Host (Tuấn): Cảm ơn chị Hà! Tóm lại, nếu dùng Excel 365 hoặc phiên bản mới, hãy ưu tiên dùng XLOOKUP để bảng tính gọn gàng và ổn định nhất!',
-    },
-  ];
-  saveLocalPodcasts(defaults);
-  return defaults;
+  return [];
 }
 
-function saveLocalPodcasts(podcasts: PodcastEpisode[]) {
+function saveLocalPodcasts(podcasts: PodcastEpisode[]): void {
   try {
-    localStorage.setItem(LOCAL_STORAGE_PODCASTS_KEY, JSON.stringify(podcasts));
+    localStorage.setItem(PODCASTS_KEY, JSON.stringify(podcasts));
   } catch {}
 }
 
+// =========================================================================
+// NOTEBOOK SERVICE - REBUILT
+// =========================================================================
+
 export const notebookService = {
-  getWebStudioUrl(): string {
-    return WEB_STUDIO_URL;
-  },
+  // =========================================================================
+  // STATUS CHECK
+  // =========================================================================
 
-  /**
-   * Kiểm tra xem AI Container hay Cổng Backend AI Gateway đang sẵn sàng
-   */
   async checkStatus(): Promise<NotebookStatus> {
-    // 1. Kiểm tra nhanh Container App (timeout 2s)
+    // 1. Kiểm tra Backend AI Gateway (.NET) trước - đây là nguồn chính
     try {
-      const res = await requestWithFallback('/config', { method: 'GET' }, 2000);
-      if (res.ok && isJsonResponse(res)) {
-        return {
-          isOnline: true,
-          apiUrl: AZURE_NOTEBOOK_URL,
-          webUrl: WEB_STUDIO_URL,
-          modelName: 'AI Cloud (Open Notebook Container)',
-        };
-      }
-    } catch {}
-
-    // 2. Fallback sang Cổng AI Gateway Backend Azure (.NET 8)
-    try {
-      const BACKEND_BASE = (
-        import.meta.env.VITE_BACKEND_URL ||
-        (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
-      ).replace(/\/$/, '');
-
-      const res = await timeoutFetch(`${BACKEND_BASE}/api/AiAssistant/status`, { method: 'GET' }, 2500);
+      const res = await timeoutFetch(
+        `${BACKEND_BASE}/api/AiAssistant/status`,
+        { method: 'GET', headers: getAuthHeaders() },
+        4000
+      );
       if (res.ok && isJsonResponse(res)) {
         return {
           isOnline: true,
           apiUrl: `${BACKEND_BASE}/api/AiAssistant`,
-          webUrl: WEB_STUDIO_URL,
-          modelName: 'Google Gemini 3.5 Flash-Lite (Siêu tốc)',
+          webUrl: AZURE_NOTEBOOK_URL,
+          modelName: 'Google Gemini 2.0 Flash (kết nối SQL thực tế)',
+        };
+      }
+    } catch {}
+
+    // 2. Kiểm tra Open Notebook Container
+    try {
+      const res = await timeoutFetch(
+        `${DIRECT_API_BASE}/config`,
+        { method: 'GET' },
+        3000
+      );
+      if (res.ok) {
+        return {
+          isOnline: true,
+          apiUrl: AZURE_NOTEBOOK_URL,
+          webUrl: AZURE_NOTEBOOK_URL,
+          modelName: 'Open Notebook AI Container',
+        };
+      }
+    } catch {}
+
+    // 3. Thử Gemini Direct để xác nhận có internet
+    try {
+      const testRes = await timeoutFetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY || 'invalid'}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] }),
+        },
+        3000
+      );
+      // 400 = API key sai nhưng server online; 200 = hoạt động
+      if (testRes.status !== 0) {
+        return {
+          isOnline: true,
+          apiUrl: 'https://generativelanguage.googleapis.com',
+          webUrl: AZURE_NOTEBOOK_URL,
+          modelName: 'Google Gemini Direct (không qua backend)',
         };
       }
     } catch {}
 
     return {
       isOnline: false,
-      apiUrl: AZURE_NOTEBOOK_URL,
-      webUrl: WEB_STUDIO_URL,
+      apiUrl: BACKEND_BASE,
+      webUrl: AZURE_NOTEBOOK_URL,
       modelName: 'Ngoại tuyến (Offline)',
     };
   },
 
   // =========================================================================
-  // 1. CHỨC NĂNG NOTEBOOKS (SỔ TAY)
+  // NOTEBOOKS MANAGEMENT
   // =========================================================================
 
   async getNotebooks(): Promise<Notebook[]> {
+    // 1. Lấy từ Open Notebook Container
     try {
-      const res = await requestWithFallback('/notebooks', { method: 'GET' }, 2000);
+      const res = await requestNotebookApi('/notebooks', { method: 'GET' }, 6000);
       if (res.ok && isJsonResponse(res)) {
         const data = await safeJson<Notebook[]>(res, []);
         if (Array.isArray(data) && data.length > 0) {
@@ -299,27 +292,34 @@ export const notebookService = {
       }
     } catch {}
 
+    // 2. Dùng local cache nếu container offline
     return getLocalNotebooks();
   },
 
   async createNotebook(name: string, description: string = ''): Promise<Notebook> {
+    // 1. Tạo trên Container
     try {
-      const res = await requestWithFallback('/notebooks', {
-        method: 'POST',
-        body: JSON.stringify({ name, description }),
-      }, 2500);
+      const res = await requestNotebookApi(
+        '/notebooks',
+        {
+          method: 'POST',
+          body: JSON.stringify({ name, description }),
+        },
+        6000
+      );
       if (res.ok && isJsonResponse(res)) {
         const nb = await safeJson<Notebook | null>(res, null);
         if (nb && nb.id) {
           const current = getLocalNotebooks();
-          saveLocalNotebooks([nb, ...current]);
+          saveLocalNotebooks([nb, ...current.filter((n) => n.id !== nb.id)]);
           return nb;
         }
       }
     } catch {}
 
+    // 2. Tạo local khi container offline
     const newNb: Notebook = {
-      id: `nb-${Date.now()}`,
+      id: `nb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name,
       description,
       created: new Date().toISOString(),
@@ -334,163 +334,211 @@ export const notebookService = {
 
   async deleteNotebook(notebookId: string): Promise<void> {
     try {
-      await requestWithFallback(`/notebooks/${notebookId}`, { method: 'DELETE' }, 2000);
+      await requestNotebookApi(`/notebooks/${notebookId}`, { method: 'DELETE' }, 5000);
     } catch {}
 
     const current = getLocalNotebooks().filter((n) => n.id !== notebookId);
     saveLocalNotebooks(current);
+    localStorage.removeItem(`${STORAGE_PREFIX}src_${notebookId}`);
   },
 
-  async getSourcesByNotebook(notebookId: string): Promise<NotebookSource[]> {
-    try {
-      const res = await requestWithFallback(`/sources?notebook_id=${encodeURIComponent(notebookId)}`, { method: 'GET' }, 2000);
-      if (res.ok && isJsonResponse(res)) {
-        const data = await safeJson<NotebookSource[]>(res, []);
-        if (Array.isArray(data)) return data;
-      }
-    } catch {}
+  async getNotebookDetail(
+    notebookId: string
+  ): Promise<{ notebook: Notebook; sources: NotebookSource[] }> {
+    const [notebookRes, sources] = await Promise.allSettled([
+      requestNotebookApi(`/notebooks/${notebookId}`, { method: 'GET' }, 6000).catch(() => null),
+      this.getSourcesByNotebook(notebookId),
+    ]);
 
-    return getLocalSources();
-  },
+    const localNotebooks = getLocalNotebooks();
+    let notebook =
+      localNotebooks.find((n) => n.id === notebookId) || localNotebooks[0];
 
-  async addSourceToNotebook(notebookId: string, sourceId: string): Promise<void> {
-    try {
-      await requestWithFallback(`/notebooks/${notebookId}/sources/${sourceId}`, {
-        method: 'POST',
-      }, 2000);
-    } catch {}
-
-    const notebooks = getLocalNotebooks();
-    const nb = notebooks.find((n) => n.id === notebookId);
-    if (nb) {
-      nb.source_count = (nb.source_count || 0) + 1;
-      saveLocalNotebooks(notebooks);
+    if (
+      notebookRes.status === 'fulfilled' &&
+      notebookRes.value &&
+      isJsonResponse(notebookRes.value)
+    ) {
+      const nb = await safeJson<Notebook | null>(notebookRes.value, null);
+      if (nb) notebook = nb;
     }
-  },
 
-  async removeSourceFromNotebook(notebookId: string, sourceId: string): Promise<void> {
-    try {
-      await requestWithFallback(`/notebooks/${notebookId}/sources/${sourceId}`, {
-        method: 'DELETE',
-      }, 2000);
-    } catch {}
+    const srcList =
+      sources.status === 'fulfilled' ? sources.value : getLocalSourcesByNotebook(notebookId);
 
-    const notebooks = getLocalNotebooks();
-    const nb = notebooks.find((n) => n.id === notebookId);
-    if (nb && nb.source_count > 0) {
-      nb.source_count -= 1;
-      saveLocalNotebooks(notebooks);
-    }
-  },
-
-  async getNotebookDetail(notebookId: string): Promise<{ notebook: Notebook; sources: NotebookSource[] }> {
-    try {
-      const [nbRes, sources] = await Promise.all([
-        requestWithFallback(`/notebooks/${notebookId}`, { method: 'GET' }, 2000),
-        this.getSourcesByNotebook(notebookId).catch(() => [] as NotebookSource[]),
-      ]);
-      if (nbRes.ok && isJsonResponse(nbRes)) {
-        const notebook = await safeJson<Notebook | null>(nbRes, null);
-        if (notebook) {
-          return { notebook, sources };
-        }
-      }
-    } catch {}
-
-    const notebooks = getLocalNotebooks();
-    const notebook = notebooks.find((n) => n.id === notebookId) || notebooks[0];
-    const sources = getLocalSources();
-    return { notebook, sources };
+    return { notebook, sources: srcList };
   },
 
   // =========================================================================
-  // 2. CHỨC NĂNG SOURCES (NGUỒN TÀI LIỆU & BÀI HỌC)
+  // SOURCES MANAGEMENT - KẾT NỐI SQL THỰC TẾ
   // =========================================================================
 
   async getAllSources(): Promise<NotebookSource[]> {
     try {
-      const res = await requestWithFallback('/sources', { method: 'GET' }, 2000);
+      const res = await requestNotebookApi('/sources', { method: 'GET' }, 6000);
       if (res.ok && isJsonResponse(res)) {
         const data = await safeJson<NotebookSource[]>(res, []);
         if (Array.isArray(data) && data.length > 0) {
-          saveLocalSources(data);
+          // Cache theo notebook
+          const notebooks = getLocalNotebooks();
+          for (const nb of notebooks) {
+            const nbSrcs = data.filter((s) =>
+              (s as NotebookSource & { notebook_id?: string }).notebook_id === nb.id
+            );
+            if (nbSrcs.length > 0) {
+              saveLocalSourcesByNotebook(nb.id, nbSrcs);
+            }
+          }
           return data;
         }
       }
     } catch {}
+    return getAllLocalSources();
+  },
 
-    return getLocalSources();
+  async getSourcesByNotebook(notebookId: string): Promise<NotebookSource[]> {
+    try {
+      const res = await requestNotebookApi(
+        `/sources?notebook_id=${encodeURIComponent(notebookId)}`,
+        { method: 'GET' },
+        6000
+      );
+      if (res.ok && isJsonResponse(res)) {
+        const data = await safeJson<NotebookSource[]>(res, []);
+        if (Array.isArray(data)) {
+          saveLocalSourcesByNotebook(notebookId, data);
+          return data;
+        }
+      }
+    } catch {}
+    return getLocalSourcesByNotebook(notebookId);
   },
 
   async getSourceDetail(sourceId: string): Promise<NotebookSource> {
     try {
-      const res = await requestWithFallback(`/sources/${sourceId}`, { method: 'GET' }, 2000);
+      const res = await requestNotebookApi(`/sources/${sourceId}`, { method: 'GET' }, 6000);
       if (res.ok && isJsonResponse(res)) {
         const data = await safeJson<NotebookSource | null>(res, null);
         if (data) return data;
       }
     } catch {}
-
-    const sources = getLocalSources();
-    const match = sources.find((s) => s.id === sourceId);
+    const all = getAllLocalSources();
+    const match = all.find((s) => s.id === sourceId);
     if (match) return match;
     throw new Error('Không tìm thấy tài liệu');
   },
 
   async deleteSource(sourceId: string): Promise<void> {
     try {
-      await requestWithFallback(`/sources/${sourceId}`, { method: 'DELETE' }, 2000);
+      await requestNotebookApi(`/sources/${sourceId}`, { method: 'DELETE' }, 5000);
     } catch {}
-
-    const current = getLocalSources().filter((s) => s.id !== sourceId);
-    saveLocalSources(current);
+    const notebooks = getLocalNotebooks();
+    for (const nb of notebooks) {
+      const srcs = getLocalSourcesByNotebook(nb.id).filter((s) => s.id !== sourceId);
+      saveLocalSourcesByNotebook(nb.id, srcs);
+    }
   },
 
+  /**
+   * Nạp nội dung bài học THỰC TẾ từ SQL vào Notebook
+   * QUAN TRỌNG: Phải truyền lesson/course object đầy đủ để AI có context thật
+   */
+  async addLessonSourceFromSql(
+    notebookId: string | undefined,
+    lesson: Lesson,
+    course: Course,
+    subjectTitle?: string
+  ): Promise<NotebookSource> {
+    const durationMin = Math.round((lesson.durationSeconds || 0) / 60);
+    const lessonTitle = `[${course.title}] ${lesson.title}`;
+    const lessonContent = [
+      `KHÓA HỌC: ${course.title}`,
+      course.description ? `Mô tả khóa học: ${course.description}` : '',
+      `MÔN HỌC: ${subjectTitle || 'N/A'}`,
+      `BÀI HỌC: ${lesson.title}`,
+      lesson.description ? `Nội dung bài học: ${lesson.description}` : '',
+      `Thời lượng: ${durationMin} phút`,
+      `ID bài học: ${lesson.id} | ID khóa học: ${course.id}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return this.addLessonSource(notebookId, lessonTitle, lessonContent, lesson.id, course.id);
+  },
+
+  /**
+   * Nạp nguồn tài liệu text vào Notebook
+   * @param lessonId - ID bài học thật từ SQL (quan trọng để AI biết context)
+   * @param courseId - ID khóa học thật từ SQL
+   */
   async addLessonSource(
     notebookId: string | undefined,
     title: string,
-    content: string
+    content: string,
+    lessonId?: number,
+    courseId?: number
   ): Promise<NotebookSource> {
+    // 1. Thử nạp lên Open Notebook Container để có vector search
     try {
       const body: Record<string, unknown> = {
         type: 'text',
         title,
         content,
         embed: true,
+        metadata: {
+          lesson_id: lessonId,
+          course_id: courseId,
+          source_type: 'microlearning_lesson',
+        },
       };
       if (notebookId) body.notebook_id = notebookId;
-      const res = await requestWithFallback('/sources/json', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }, 2500);
+
+      const res = await requestNotebookApi(
+        '/sources/json',
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+        8000
+      );
       if (res.ok && isJsonResponse(res)) {
         const src = await safeJson<NotebookSource | null>(res, null);
-        if (src) {
-          const current = getLocalSources();
-          saveLocalSources([src, ...current]);
+        if (src && src.id) {
+          if (notebookId) {
+            const current = getLocalSourcesByNotebook(notebookId);
+            saveLocalSourcesByNotebook(notebookId, [src, ...current.filter((s) => s.id !== src.id)]);
+            // Cập nhật source_count trong notebook cache
+            const notebooks = getLocalNotebooks();
+            const nb = notebooks.find((n) => n.id === notebookId);
+            if (nb) {
+              nb.source_count = (nb.source_count || 0) + 1;
+              saveLocalNotebooks(notebooks);
+            }
+          }
           return src;
         }
       }
     } catch {}
 
+    // 2. Tạo local source khi container offline
     const newSrc: NotebookSource = {
-      id: `src-${Date.now()}`,
+      id: `src-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title,
       full_text: content,
-      topics: ['Bài học', title],
+      topics: ['Bài học', title].filter(Boolean),
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
       embedded: true,
-      status: 'Ready',
+      status: 'Ready (Local)',
     };
-    const current = getLocalSources();
-    saveLocalSources([newSrc, ...current]);
 
     if (notebookId) {
+      const current = getLocalSourcesByNotebook(notebookId);
+      saveLocalSourcesByNotebook(notebookId, [newSrc, ...current]);
       const notebooks = getLocalNotebooks();
-      const targetNb = notebooks.find((n) => n.id === notebookId);
-      if (targetNb) {
-        targetNb.source_count = (targetNb.source_count || 0) + 1;
+      const nb = notebooks.find((n) => n.id === notebookId);
+      if (nb) {
+        nb.source_count = (nb.source_count || 0) + 1;
         saveLocalNotebooks(notebooks);
       }
     }
@@ -503,13 +551,57 @@ export const notebookService = {
     notebookId?: string,
     title?: string
   ): Promise<NotebookSource> {
-    const textContent = await file.text().catch(() => `Tài liệu tải lên: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
     const docTitle = title || file.name;
+
+    // Đọc nội dung file text (hỗ trợ PDF text, TXT, MD, DOCX text)
+    let textContent = '';
+    try {
+      textContent = await file.text();
+    } catch {
+      textContent = `[File tải lên: ${file.name} - ${(file.size / 1024).toFixed(1)} KB]`;
+    }
+
     return this.addLessonSource(notebookId, docTitle, textContent);
   },
 
+  async addSourceToNotebook(notebookId: string, sourceId: string): Promise<void> {
+    try {
+      await requestNotebookApi(
+        `/notebooks/${notebookId}/sources/${sourceId}`,
+        { method: 'POST' },
+        5000
+      );
+    } catch {}
+
+    const notebooks = getLocalNotebooks();
+    const nb = notebooks.find((n) => n.id === notebookId);
+    if (nb) {
+      nb.source_count = (nb.source_count || 0) + 1;
+      saveLocalNotebooks(notebooks);
+    }
+  },
+
+  async removeSourceFromNotebook(notebookId: string, sourceId: string): Promise<void> {
+    try {
+      await requestNotebookApi(
+        `/notebooks/${notebookId}/sources/${sourceId}`,
+        { method: 'DELETE' },
+        5000
+      );
+    } catch {}
+
+    const srcs = getLocalSourcesByNotebook(notebookId).filter((s) => s.id !== sourceId);
+    saveLocalSourcesByNotebook(notebookId, srcs);
+    const notebooks = getLocalNotebooks();
+    const nb = notebooks.find((n) => n.id === notebookId);
+    if (nb && nb.source_count > 0) {
+      nb.source_count -= 1;
+      saveLocalNotebooks(notebooks);
+    }
+  },
+
   // =========================================================================
-  // 3. CHỨC NĂNG ASK & SEARCH (HỎI ĐÁP & TÌM KIẾM NGỮ NGHĨA RAG SIÊU TỐC)
+  // SEARCH
   // =========================================================================
 
   async searchKnowledgeBase(
@@ -517,110 +609,169 @@ export const notebookService = {
     type: 'text' | 'vector' = 'text',
     notebookIds?: string[]
   ): Promise<SearchResult[]> {
+    // 1. Thử vector search trên Container
     try {
-      const res = await requestWithFallback('/search', {
-        method: 'POST',
-        body: JSON.stringify({
-          query,
-          type,
-          scope_notebook_ids: notebookIds && notebookIds.length > 0 ? notebookIds : undefined,
-        }),
-      }, 2500);
+      const res = await requestNotebookApi(
+        '/search',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            query,
+            type,
+            scope_notebook_ids:
+              notebookIds && notebookIds.length > 0 ? notebookIds : undefined,
+          }),
+        },
+        8000
+      );
 
       if (res.ok && isJsonResponse(res)) {
         const data = await safeJson<{ results?: SearchResult[] }>(res, {});
-        if (Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data.results) && data.results.length > 0) return data.results;
       }
     } catch {}
 
-    // Fallback tìm kiếm cục bộ tức thì
+    // 2. Fallback: full-text search trên local sources
     const q = query.toLowerCase();
-    const localSources = getLocalSources();
-    const matches: SearchResult[] = localSources
-      .filter((s) => s.title.toLowerCase().includes(q) || (s.full_text && s.full_text.toLowerCase().includes(q)))
+    const allSources = getAllLocalSources();
+    return allSources
+      .filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          (s.full_text && s.full_text.toLowerCase().includes(q))
+      )
       .map((s) => ({
         id: s.id,
-        relevance: 0.95,
+        relevance: 0.85,
         title: s.title,
-        content: s.full_text ? s.full_text.substring(0, 300) + '...' : undefined,
+        content: s.full_text ? s.full_text.substring(0, 400) + '...' : undefined,
       }));
-
-    return matches;
   },
 
-  async askQuestion(notebookId: string, question: string): Promise<string> {
-    const localSources = getLocalSources();
-    const contextText = localSources
-      .map((s) => `[Tài liệu: ${s.title}]\n${s.full_text || ''}`)
-      .join('\n\n');
+  // =========================================================================
+  // ASK AI - KẾT NỐI SQL THỰC TẾ
+  // Pipeline: Backend API (với SQL context) → Gemini Direct (với local context) → Offline message
+  // =========================================================================
 
-    // 1. Thử gọi Cổng Backend AI Gateway trước (nếu backend đang chạy và không bị quá tải)
+  /**
+   * Hỏi đáp AI với context bài học THỰC TẾ từ database
+   * @param notebookId - ID notebook đang dùng
+   * @param question - Câu hỏi của học viên
+   * @param lessonId - ID bài học thật từ SQL (truyền vào để AI lấy ngữ cảnh)
+   * @param courseId - ID khóa học thật từ SQL
+   */
+  async askQuestion(
+    notebookId: string,
+    question: string,
+    lessonId?: number,
+    courseId?: number
+  ): Promise<string> {
+    // Lấy context từ local sources đã cache
+    const localSources = notebookId
+      ? getLocalSourcesByNotebook(notebookId)
+      : getAllLocalSources();
+
+    const localContextText =
+      localSources.length > 0
+        ? localSources
+            .slice(0, 5) // Giới hạn 5 sources để tránh vượt token limit
+            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 800)}`)
+            .join('\n\n')
+        : '';
+
+    // =========================================================
+    // BƯỚC 1: Gọi Backend AI Gateway (.NET) - HỌA LẠI THỰC TẾ TỪ SQL
+    // =========================================================
     try {
-      const BACKEND_BASE = (
-        import.meta.env.VITE_BACKEND_URL ||
-        (import.meta.env.PROD ? 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net' : '')
-      ).replace(/\/$/, '');
+      const payload: Record<string, unknown> = { question };
+      if (lessonId && lessonId > 0) payload.lessonId = lessonId;
+      if (courseId && courseId > 0) payload.courseId = courseId;
+      if (localContextText) payload.customContext = localContextText;
 
       const res = await timeoutFetch(
         `${BACKEND_BASE}/api/AiAssistant/ask`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question,
-            customContext: contextText.length > 0 ? contextText : undefined,
-          }),
+          body: JSON.stringify(payload),
         },
-        5000
+        15000 // Tăng lên 15s để backend kịp query SQL + gọi Gemini
       );
 
       if (res.ok && isJsonResponse(res)) {
-        const data = await safeJson<{ answer?: string }>(res, {});
-        // Chỉ chấp nhận nếu câu trả lời thật từ AI, không chấp nhận thông báo tải cao
+        const data = await safeJson<{ answer?: string; success?: boolean }>(res, {});
         if (
           data.answer &&
-          !data.answer.includes('Hiện tại hệ thống AI đang xử lý tải cao') &&
+          data.answer.trim().length > 20 &&
+          // Loại bỏ các câu trả lời fallback vô nghĩa từ backend cũ
           !data.answer.includes('đã được ghi nhận. Vui lòng thử lại')
         ) {
           return data.answer;
         }
       }
     } catch {
-      // Tiếp tục fallback ngay lập tức
+      // Backend offline hoặc timeout → thử Gemini Direct
     }
 
-    // 2. GỌI TRỰC TIẾP GOOGLE GEMINI TỪ TRÌNH DUYỆT (0.8s, CORS hoàn hảo, không qua trung gian)
+    // =========================================================
+    // BƯỚC 2: Gọi Gemini trực tiếp từ Browser với context local
+    // =========================================================
     try {
-      const directAnswer = await callGeminiDirect(question, contextText);
-      if (directAnswer && directAnswer.trim().length > 0) {
+      const directAnswer = await callGeminiDirect(
+        question,
+        localContextText || undefined,
+        undefined,
+        12000
+      );
+      if (directAnswer && directAnswer.trim().length > 20) {
         return directAnswer;
       }
     } catch {
-      // Tiếp tục bước 3
+      // Gemini cũng lỗi → offline message
     }
 
-    // 3. Fallback câu trả lời thông minh dựa trên dữ liệu bài giảng
-    if (contextText.length > 0) {
-      return (
-        `Dựa trên tài liệu bài học trong Sổ tay, câu hỏi "${question}" liên quan trực tiếp đến nội dung cốt lõi của môn học. ` +
-        `Bạn hãy tham khảo các ghi chú và bài giảng trong mục "Sources" để nắm vững kiến thức nhé!`
+    // =========================================================
+    // BƯỚC 3: Thông báo offline thông minh (không fake trả lời)
+    // =========================================================
+    if (localSources.length > 0) {
+      const relevantSource = localSources.find(
+        (s) =>
+          s.title.toLowerCase().includes(question.toLowerCase().substring(0, 15)) ||
+          (s.full_text && s.full_text.toLowerCase().includes(question.toLowerCase().substring(0, 20)))
       );
+      if (relevantSource) {
+        return (
+          `⚠️ AI đang không thể kết nối, nhưng tôi tìm thấy tài liệu liên quan:\n\n` +
+          `📄 **${relevantSource.title}**\n\n` +
+          `${(relevantSource.full_text || '').substring(0, 500)}...\n\n` +
+          `_Vui lòng thử lại sau khi kết nối được khôi phục để nhận câu trả lời AI đầy đủ._`
+        );
+      }
     }
 
-    return `Chào bạn! Tôi là Trợ lý AI MicroLearning. Về câu hỏi "${question}", bạn có thể cung cấp thêm ngữ cảnh hoặc chọn một bài học cụ thể để tôi giải thích chi tiết hơn nhé!`;
+    return (
+      `⚠️ Hiện tại không thể kết nối tới AI (backend và Gemini đều không phản hồi).\n\n` +
+      `Câu hỏi của bạn: **"${question}"** đã được ghi nhận.\n\n` +
+      `Để nhận được câu trả lời:\n` +
+      `1. Kiểm tra kết nối internet\n` +
+      `2. Đảm bảo đã cấu hình **VITE_GEMINI_API_KEY** trong file \`.env\`\n` +
+      `3. Thử lại sau vài giây`
+    );
   },
 
   // =========================================================================
-  // 4. CHỨC NĂNG PODCASTS (TẠO & PHÁT PODCAST ÂM THANH BÀI GIẢNG)
+  // PODCASTS
   // =========================================================================
 
   async getPodcastEpisodes(): Promise<PodcastEpisode[]> {
     const localList = getLocalPodcasts();
+
     try {
-      const res = await requestWithFallback('/podcasts/episodes', { method: 'GET' }, 1500);
+      const res = await requestNotebookApi('/podcasts/episodes', { method: 'GET' }, 5000);
       if (res.ok && isJsonResponse(res)) {
         const remoteList = await safeJson<PodcastEpisode[]>(res, []);
         if (Array.isArray(remoteList) && remoteList.length > 0) {
+          // Merge: ưu tiên local (có audio URL đã sinh)
           const merged = [...localList];
           for (const rem of remoteList) {
             if (!merged.some((m) => m.id === rem.id)) {
@@ -638,7 +789,7 @@ export const notebookService = {
 
   async getEpisodeProfiles(): Promise<EpisodeProfile[]> {
     try {
-      const res = await requestWithFallback('/episode-profiles', { method: 'GET' }, 1500);
+      const res = await requestNotebookApi('/episode-profiles', { method: 'GET' }, 5000);
       if (res.ok && isJsonResponse(res)) {
         const data = await safeJson<EpisodeProfile[]>(res, []);
         if (Array.isArray(data) && data.length > 0) return data;
@@ -671,16 +822,28 @@ export const notebookService = {
     content?: string,
     voiceName: string = 'vi-VN-HoaiMyNeural'
   ): Promise<{ job_id: string; message: string }> {
-    // 1. Sinh kịch bản thoại sinh động với AI Gemini
+    // 1. Lấy context thực tế từ notebook nếu không có content
+    let lessonContext = content;
+    if (!lessonContext && notebookId) {
+      const srcs = getLocalSourcesByNotebook(notebookId);
+      if (srcs.length > 0) {
+        lessonContext = srcs
+          .slice(0, 3)
+          .map((s) => `${s.title}:\n${(s.full_text || '').substring(0, 600)}`)
+          .join('\n\n');
+      }
+    }
+
+    // 2. Sinh kịch bản với AI Gemini (có context thật)
     let script = '';
     try {
-      script = await generatePodcastScript(episodeName, episodeProfile, content);
+      script = await generatePodcastScript(episodeName, episodeProfile, lessonContext);
     } catch {
       script = `### Kịch bản Podcast: ${episodeName}\n\n**Host:** Chào mừng các bạn đến với tập Podcast hôm nay!\n**Chuyên gia:** Cùng nhau điểm qua các kiến thức quan trọng nhất của bài học nhé!`;
     }
 
-    // 2. Tự động sinh tệp giọng đọc Edge-TTS tiếng Việt nếu chọn giọng Azure Neural
-    let audioUrl = '/audio/podcast_demo.mp3';
+    // 3. Sinh file âm thanh Edge-TTS tiếng Việt
+    let audioUrl = '';
     if (voiceName.startsWith('vi-VN-')) {
       try {
         const cleanText = script
@@ -688,8 +851,6 @@ export const notebookService = {
           .replace(/\[.*?\]/g, '')
           .replace(/\*\*(.*?)\*\*/g, '$1')
           .replace(/\*(.*?)\*/g, '$1')
-          .replace(/__(.*?)__/g, '$1')
-          .replace(/_(.*?)_/g, '$1')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
 
@@ -701,49 +862,44 @@ export const notebookService = {
           }
         }
       } catch (err) {
-        console.warn('Tạo file Edge-TTS lúc sinh podcast không thành công, dùng audio mặc định:', err);
+        console.warn('TTS thất bại khi sinh podcast:', err);
       }
     }
 
-    // 3. Tạo tập podcast và lưu trữ vĩnh viễn vào LocalStorage
+    // 4. Lưu podcast vào local storage
     const newEpisode: PodcastEpisode = {
-      id: `pod-${Date.now()}`,
+      id: `pod-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       name: episodeName,
       episode_profile: episodeProfile,
       speaker_profile: speakerProfile,
       status: 'completed',
       created: new Date().toISOString(),
-      audio_url: audioUrl,
+      audio_url: audioUrl || undefined,
       transcript: script,
     };
 
     const currentList = getLocalPodcasts();
-    const updated = [newEpisode, ...currentList.filter((p) => p.id !== newEpisode.id)];
-    saveLocalPodcasts(updated);
+    saveLocalPodcasts([newEpisode, ...currentList]);
 
-    // 4. Gửi đồng bộ lên Cloud container (chạy ngầm, không block UI)
-    try {
-      await requestWithFallback(
-        '/podcasts/generate',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            episode_name: episodeName,
-            episode_profile: episodeProfile,
-            speaker_profile: speakerProfile,
-            notebook_id: notebookId,
-            content: content,
-          }),
-        },
-        2000
-      );
-    } catch {
-      // Ignored - client đã lưu thành công
-    }
+    // 5. Gửi lên Container (background, không block UI)
+    requestNotebookApi(
+      '/podcasts/generate',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          episode_name: episodeName,
+          episode_profile: episodeProfile,
+          speaker_profile: speakerProfile,
+          notebook_id: notebookId,
+          content: lessonContext,
+        }),
+      },
+      5000
+    ).catch(() => {});
 
     return {
       job_id: newEpisode.id,
-      message: 'Tập Podcast và kịch bản thoại AI tiếng Việt đã được khởi tạo thành công!',
+      message: 'Tập Podcast AI tiếng Việt đã được khởi tạo thành công!',
     };
   },
 
@@ -759,17 +915,20 @@ export const notebookService = {
   },
 
   async deletePodcastEpisode(episodeId: string): Promise<boolean> {
-    const list = getLocalPodcasts();
-    const updated = list.filter((p) => p.id !== episodeId);
-    saveLocalPodcasts(updated);
+    const list = getLocalPodcasts().filter((p) => p.id !== episodeId);
+    saveLocalPodcasts(list);
+
+    try {
+      await requestNotebookApi(`/podcasts/episodes/${episodeId}`, { method: 'DELETE' }, 4000);
+    } catch {}
     return true;
   },
 
   getPodcastAudioUrl(episodeId: string): string {
-    const list = getLocalPodcasts();
-    const ep = list.find((p) => p.id === episodeId);
-    if (ep?.audio_url && ep.audio_url.endsWith('.mp3')) return ep.audio_url;
-    return '/audio/podcast_demo.mp3';
+    const ep = getLocalPodcasts().find((p) => p.id === episodeId);
+    return ep?.audio_url || '';
   },
 };
 
+// Re-export helper để các component khác có thể dùng
+export { getLocalNotebooks, getLocalSourcesByNotebook, saveLocalNotebooks };
