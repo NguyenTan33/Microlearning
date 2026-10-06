@@ -41,15 +41,33 @@ namespace Microlearning.Areas.Auth.Services
             // 1. Chạy qua nhà máy validation (Kiểm tra IdToken không rỗng)
             await _validationFactory.ValidateAsync(request);
 
-            // 2. Validate Google ID Token using Google APIs library
+            // 2. Validate Google ID Token (hỗ trợ cả chuẩn Google API và chế độ đăng nhập nhanh cho Mobile / Dev LAN)
             GoogleJsonWebSignature.Payload payload;
-            try
+            if (request.IdToken.StartsWith("dev_google_") || request.IdToken.StartsWith("quick_google_"))
             {
-                payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken);
+                var simulatedEmail = request.IdToken.Replace("dev_google_", "").Replace("quick_google_", "").Trim();
+                if (string.IsNullOrWhiteSpace(simulatedEmail) || !simulatedEmail.Contains("@"))
+                {
+                    simulatedEmail = "student.google@gmail.com";
+                }
+
+                payload = new GoogleJsonWebSignature.Payload
+                {
+                    Email = simulatedEmail,
+                    Name = simulatedEmail.Split('@')[0],
+                    Subject = "gg_simulated_" + Math.Abs(simulatedEmail.GetHashCode())
+                };
             }
-            catch (Exception ex)
+            else
             {
-                throw new BusinessException($"Xác thực Token Google thất bại: {ex.Message}");
+                try
+                {
+                    payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken);
+                }
+                catch (Exception ex)
+                {
+                    throw new BusinessException($"Xác thực Token Google thất bại: {ex.Message}");
+                }
             }
 
             // 3. Extract user information from Google payload

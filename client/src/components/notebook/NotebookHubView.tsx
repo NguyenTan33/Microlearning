@@ -76,6 +76,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     createNotebook,
     removeNotebook,
     syncLessonSource,
+    syncCurrentLessonFull,
     uploadFileSource,
     attachSourceToNotebook,
     detachSourceFromNotebook,
@@ -85,7 +86,11 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     askQuestion,
     createPodcast,
     removePodcast,
-  } = useNotebook(currentCourse?.title);
+  } = useNotebook({
+    initialCourseName: currentCourse?.title,
+    activeLesson,
+    currentCourse,
+  });
 
   // States cho Modals & Forms
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
@@ -332,13 +337,15 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Xử lý nạp nhanh bài giảng Microlearning hiện tại
+  // Nạp nhanh bài giảng hiện tại vào Notebook với đầy đủ context SQL thực tế
   const handleQuickSyncCurrentLesson = async (customNbId?: string) => {
-    if (!activeLesson) return;
-    const durationMin = Math.round((activeLesson.durationSeconds || 0) / 60);
-    const lessonTitle = `Bài giảng: ${activeLesson.title}`;
-    const lessonContent = `Khóa học: ${currentCourse?.title || 'Chưa phân loại'}\nBài học: ${activeLesson.title}\nMô tả nội dung: ${activeLesson.description || 'Nội dung cốt lõi của bài học.'}\nThời lượng: ${durationMin} phút.`;
-    await syncLessonSource(lessonTitle, lessonContent, customNbId || activeNotebook?.id);
+    if (!activeLesson || !currentCourse) return;
+    await syncCurrentLessonFull(
+      activeLesson,
+      currentCourse,
+      undefined, // subjectTitle (optional)
+      customNbId || activeNotebook?.id
+    );
   };
 
   // Xử lý tạo mới từ Modal
@@ -372,11 +379,14 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
           setNewSourceContent('');
           setIsNewModalOpen(false);
         } else if (sourceAddMode === 'LESSON') {
-          if (!activeLesson) return;
-          const durationMin = Math.round((activeLesson.durationSeconds || 0) / 60);
-          const lessonTitle = `Bài giảng: ${activeLesson.title}`;
-          const lessonContent = `Khóa học: ${currentCourse?.title || 'Chưa phân loại'}\nBài học: ${activeLesson.title}\nMô tả nội dung: ${activeLesson.description || 'Nội dung cốt lõi của bài học.'}\nThời lượng: ${durationMin} phút.`;
-          await syncLessonSource(lessonTitle, lessonContent, targetNotebookId || undefined);
+          // Dùng syncCurrentLessonFull để có lessonId/courseId thật
+          if (!activeLesson || !currentCourse) return;
+          await syncCurrentLessonFull(
+            activeLesson,
+            currentCourse,
+            undefined,
+            targetNotebookId || undefined
+          );
           setIsNewModalOpen(false);
         }
       } else if (modalType === 'PODCAST' && newPodcastName.trim()) {
@@ -384,12 +394,16 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
         const resolvedSpeaker =
           selectedProfile?.speaker_config_name || selectedProfile?.speaker_config || 'solo_expert';
 
+        // Ưu tiên content người dùng nhập, sau đó lấy từ bài học thực tế
         let contentToUse = newPodcastContent.trim();
         if (!contentToUse && activeLesson) {
-          contentToUse = `Bài giảng: ${activeLesson.title}. Nội dung cốt lõi: ${activeLesson.description || ''}`;
-        }
-        if (!contentToUse && !podcastTargetNbId && !activeNotebook) {
-          contentToUse = `Tập podcast thảo luận chuyên sâu về chủ đề: ${newPodcastName.trim()}. Trình bày các kiến thức cốt lõi, ví dụ áp dụng thực tế và đúc kết kinh nghiệm quan trọng.`;
+          contentToUse = [
+            `Bài giảng: ${activeLesson.title}`,
+            activeLesson.description ? `Nội dung: ${activeLesson.description}` : '',
+            currentCourse ? `Khóa học: ${currentCourse.title}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n');
         }
 
         await createPodcast(
@@ -408,6 +422,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
       // Error handled by hook
     }
   };
+
 
   const QUICK_PROMPTS = [
     'Tóm tắt các điểm quan trọng nhất trong bài học này',
