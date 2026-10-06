@@ -243,7 +243,9 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       const percent = Math.min(100, (time / total) * 100);
 
       // Ghi nhận đoạn đang xem liên tục vào intervals
-      if (segmentStartRef.current !== null && time > segmentStartRef.current) {
+      if (segmentStartRef.current === null) {
+        segmentStartRef.current = time;
+      } else if (time > segmentStartRef.current) {
         watchedIntervalsRef.current.push({
           start: Math.round(segmentStartRef.current * 10) / 10,
           end: Math.round(time * 10) / 10,
@@ -327,7 +329,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           const cur = ytPlayerRef.current.getCurrentTime();
           const dur = ytPlayerRef.current.getDuration();
           handleSaveProgress(cur, dur, true);
+          segmentStartRef.current = null;
         } else {
+          try {
+            segmentStartRef.current = ytPlayerRef.current.getCurrentTime();
+          } catch {}
           ytPlayerRef.current.playVideo();
           setIsPlaying(true);
         }
@@ -593,18 +599,23 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (isCancelled) return;
               if (event.data === YT.PlayerState.PLAYING) {
                 setIsPlaying(true);
+                try {
+                  segmentStartRef.current = event.target.getCurrentTime();
+                } catch {}
               } else if (event.data === YT.PlayerState.PAUSED) {
                 setIsPlaying(false);
                 try {
                   const cur = event.target.getCurrentTime();
                   const dur = event.target.getDuration();
                   handleSaveProgressRef.current(cur, dur, true);
+                  segmentStartRef.current = null;
                 } catch {}
               } else if (event.data === YT.PlayerState.ENDED) {
                 setIsPlaying(false);
                 try {
                   const dur = event.target.getDuration();
                   handleSaveProgressRef.current(dur, dur, true);
+                  segmentStartRef.current = null;
                 } catch {}
               }
             },
