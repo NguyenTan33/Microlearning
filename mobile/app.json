@@ -18,6 +18,7 @@
         "backgroundColor": "#070B17"
       },
       "package": "com.microlearning.app",
+      "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
