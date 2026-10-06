@@ -59,6 +59,22 @@ export const progressApi = {
   },
 
   /**
+   * Lấy danh sách ID các bài học đã hoàn thành của người dùng (khôi phục tiến độ chính xác chống mất khi tải lại)
+   */
+  async getCompletedLessonIds(courseId?: number): Promise<number[]> {
+    try {
+      const url = courseId ? `/api/progress/completed?courseId=${courseId}` : '/api/progress/completed';
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      return await handleResponse<number[]>(res);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Ghi nhận tiến độ xem kèm dải xem thời gian (Interval Union) chống gian lận tua (> 30% tua bỏ)
    */
   async recordVideoCoverage(
