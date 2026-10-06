@@ -36,7 +36,6 @@ import { UserProfileModal } from '../profile/UserProfileModal';
 import { StreakCrownBadge } from '../common/StreakCrownBadge';
 import { MistakeVaultModal } from '../quiz/MistakeVaultModal';
 import { FavoriteSubjectsDrawer } from '../common/FavoriteSubjectsDrawer';
-import { HistoryNavigationControls } from '../common/HistoryNavigationControls';
 import { useAppHistoryNavigation } from '../../hooks/useAppHistoryNavigation';
 import type { UserProfile } from '../../types/userProfile.types';
 import { getCurrentUser } from '../../utils/tokenHelper';
@@ -155,19 +154,16 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     loadInitialCourse();
   }, [loadInitialCourse]);
 
-  // Feature 5: In-app history navigation stack & breadcrumbs
-  const {
-    canGoBack,
-    canGoForward,
-    goBack,
-    goForward,
-    pushState,
-    breadcrumbs,
-  } = useAppHistoryNavigation(
+  // Feature 5: Native Browser History Navigation stack & breadcrumbs
+  const { pushState, breadcrumbs } = useAppHistoryNavigation(
     { view: 'catalog', title: 'Khám phá khóa học' },
     (targetState) => {
       if (targetState.view === 'catalog') {
         setCurrentView('CATALOG');
+      } else if (targetState.view === 'notebook') {
+        setCurrentView('NOTEBOOK');
+      } else if (targetState.view === 'bookmarks') {
+        setCurrentView('BOOKMARKS');
       } else if (targetState.view === 'lesson' || targetState.view === 'course') {
         if (targetState.courseId && targetState.courseId !== currentCourse?.id) {
           loadInitialCourse(targetState.courseId);
@@ -409,7 +405,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             <button
               onClick={() => {
                 setCurrentView('NOTEBOOK');
-                pushState({ view: 'course', courseId: effectiveCourse.id, title: 'NoteBook AI' });
+                pushState({ view: 'notebook', title: 'NoteBook AI' });
               }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'NOTEBOOK'
@@ -428,7 +424,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             <button
               onClick={() => {
                 setCurrentView('BOOKMARKS');
-                pushState({ view: 'course', courseId: effectiveCourse.id, title: 'Mục đánh dấu' });
+                pushState({ view: 'bookmarks', title: 'Mục đánh dấu' });
               }}
               className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                 currentView === 'BOOKMARKS'
@@ -446,32 +442,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </button>
           </nav>
 
-          {/* Desktop Action Buttons & User Menu */}
+          {/* Desktop Action Buttons & User Menu (Lược bớt Yêu thích & Sổ câu sai theo yêu cầu để giảm tải Header) */}
           <div className="hidden md:flex items-center gap-2 sm:gap-2.5">
             {/* Feature 8: Streak 🔥 & Master Crown 👑 */}
             <StreakCrownBadge />
-
-            {/* Feature 10: Môn học yêu thích ❤️ */}
-            <button
-              type="button"
-              onClick={() => setIsFavoriteDrawerOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-rose-950/80 border border-white/10 hover:border-rose-500/40 text-xs font-semibold text-rose-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Danh sách môn học yêu thích"
-            >
-              <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-500/80" />
-              <span className="hidden xl:inline">Yêu thích</span>
-            </button>
-
-            {/* Feature 9: Sổ tay câu hỏi sai 📖 */}
-            <button
-              type="button"
-              onClick={() => setIsMistakeVaultOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-amber-950/80 border border-white/10 hover:border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Sổ tay câu sai & Ôn luyện trắc nghiệm"
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden xl:inline">Sổ câu sai</span>
-            </button>
 
             {/* Nút Studio Đăng Tải Bài Giảng & Quiz (Chỉ hiện cho Teacher & Admin) */}
             {isTeacherOrAdmin && (
@@ -625,7 +599,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 onClick={() => {
                   setCurrentView('NOTEBOOK');
-                  pushState({ view: 'course', courseId: effectiveCourse.id, title: 'NoteBook AI' });
+                  pushState({ view: 'notebook', title: 'NoteBook AI' });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
@@ -641,7 +615,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <button
                 onClick={() => {
                   setCurrentView('BOOKMARKS');
-                  pushState({ view: 'course', courseId: effectiveCourse.id, title: 'Mục đánh dấu' });
+                  pushState({ view: 'bookmarks', title: 'Mục đánh dấu' });
                   setIsMobileMenuOpen(false);
                 }}
                 className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 ${
@@ -720,15 +694,22 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           MAIN CONTENT AREA
       ========================================================================= */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 flex-1">
-        {/* Feature 5: In-app History Navigation Controls & Breadcrumbs */}
+        {/* Feature 5: Breadcrumbs & Quick Access Controls (Tích hợp nút Lùi / Tiến gốc của trình duyệt web) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 p-2 sm:p-2.5 rounded-2xl bg-[#090D1A]/90 border border-white/5 backdrop-blur-sm shadow-sm">
-          <HistoryNavigationControls
-            canGoBack={canGoBack}
-            canGoForward={canGoForward}
-            onGoBack={goBack}
-            onGoForward={goForward}
-            breadcrumbs={breadcrumbs}
-          />
+          {/* Breadcrumb vị trí hiện tại */}
+          <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-400 overflow-x-auto whitespace-nowrap px-2 py-1">
+            {breadcrumbs.map((crumb, idx) => {
+              const isLast = idx === breadcrumbs.length - 1;
+              return (
+                <React.Fragment key={idx}>
+                  {idx > 0 && <span className="text-slate-600">/</span>}
+                  <span className={isLast ? 'font-semibold text-white truncate max-w-[260px]' : 'text-slate-400 hover:text-slate-200 truncate max-w-[180px]'}>
+                    {crumb}
+                  </span>
+                </React.Fragment>
+              );
+            })}
+          </nav>
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
             <button
               onClick={() => setIsFavoriteDrawerOpen(true)}
