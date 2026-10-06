@@ -15,6 +15,8 @@ import {
 import type { Course, Enrollment } from '../../types/catalog.types';
 import { catalogApi } from '../../services/catalogApi';
 import { enrollmentApi } from '../../services/enrollmentApi';
+import { courseAccessApi } from '../../services/courseAccessApi';
+import { UnlockCourseModal } from './UnlockCourseModal';
 
 interface CourseCatalogViewProps {
   onSelectCourse: (courseId: number) => void;
@@ -31,6 +33,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
   const [activeTab, setActiveTab] = useState<'ALL' | 'OFFICE' | 'IT' | 'ENROLLED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [enrollingId, setEnrollingId] = useState<number | null>(null);
+  const [unlockModalCourse, setUnlockModalCourse] = useState<Course | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -65,6 +68,28 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
 
   const isEnrolled = (courseId: number) => {
     return enrollments.some((e) => e.courseId === courseId);
+  };
+
+  const handleCourseAction = async (course: Course) => {
+    if (course.isPrivate) {
+      try {
+        const access = await courseAccessApi.checkAccess(course.id);
+        if (!access.hasAccess) {
+          setUnlockModalCourse(course);
+          return;
+        }
+      } catch {
+        // Fallback open modal
+        setUnlockModalCourse(course);
+        return;
+      }
+    }
+
+    if (isEnrolled(course.id)) {
+      onSelectCourse(course.id);
+    } else {
+      handleEnroll(course.id);
+    }
   };
 
   const getEnrollmentProgress = (courseId: number) => {
@@ -226,7 +251,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-[#090D1A] via-transparent to-transparent" />
 
                   {/* Badges trên Thumbnail */}
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                  <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md border ${
                         isOffice
@@ -236,6 +261,12 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                     >
                       {isOffice ? 'Tin học văn phòng' : 'Lập trình & IT'}
                     </span>
+
+                    {course.isPrivate && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md border bg-amber-950/80 border-amber-500/50 text-amber-300 flex items-center gap-1 shadow-sm">
+                        <span>🔒 Riêng tư</span>
+                      </span>
+                    )}
                   </div>
 
                   {enrolled && (
@@ -287,7 +318,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                     <div className="pt-1">
                       {enrolled ? (
                         <button
-                          onClick={() => onSelectCourse(course.id)}
+                          onClick={() => handleCourseAction(course)}
                           className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-600/20 cursor-pointer active:scale-98"
                         >
                           <span>Tiếp tục học bài giảng</span>
@@ -295,7 +326,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                         </button>
                       ) : (
                         <button
-                          onClick={() => handleEnroll(course.id)}
+                          onClick={() => handleCourseAction(course)}
                           disabled={enrollingId === course.id}
                           className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                         >
@@ -319,6 +350,25 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
             );
           })}
         </div>
+      )}
+
+      {/* Modal mở khóa khóa học riêng tư */}
+      {unlockModalCourse && (
+        <UnlockCourseModal
+          isOpen={Boolean(unlockModalCourse)}
+          onClose={() => setUnlockModalCourse(null)}
+          courseId={unlockModalCourse.id}
+          courseTitle={unlockModalCourse.title}
+          onUnlocked={() => {
+            const target = unlockModalCourse;
+            setUnlockModalCourse(null);
+            if (isEnrolled(target.id)) {
+              onSelectCourse(target.id);
+            } else {
+              handleEnroll(target.id);
+            }
+          }}
+        />
       )}
     </div>
   );
