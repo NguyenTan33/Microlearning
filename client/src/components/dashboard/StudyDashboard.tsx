@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   GraduationCap,
   LogOut,
@@ -151,6 +152,21 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   // Trạng thái Responsive Mobile Drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState<boolean>(false);
+
+  // Khóa cuộn trang nền khi mở danh mục bài giảng toàn màn hình trên Mobile để tránh cuộn kép
+  useEffect(() => {
+    if (isMobileCurriculumOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalOverscroll = document.body.style.overscrollBehavior;
+      document.body.style.overflow = 'hidden';
+      document.body.style.overscrollBehavior = 'none';
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.overscrollBehavior = originalOverscroll;
+      };
+    }
+  }, [isMobileCurriculumOpen]);
 
   // 1. Tải khóa học và bài học ban đầu trực tuyến & Đồng bộ Max Tiến Độ Chuẩn
   const loadInitialCourse = useCallback(async (courseId?: number) => {
@@ -990,37 +1006,56 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               </span>
             </div>
 
-            {/* Mobile Curriculum Drawer Modal */}
-            {isMobileCurriculumOpen && (
-              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-fadeIn">
-                <div className="w-full sm:max-w-md max-h-[85vh] bg-[#0A0F1F] border border-white/10 rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl">
-                  <div className="p-4 border-b border-white/10 flex items-center justify-between bg-slate-900/90">
-                    <span className="text-sm font-bold text-white flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-cyan-400" />
-                      <span>Danh sách bài giảng khóa học</span>
-                    </span>
+            {/* Mobile Curriculum Fullscreen Portal Overlay */}
+            {isMobileCurriculumOpen &&
+              typeof document !== 'undefined' &&
+              createPortal(
+                <div className="fixed inset-0 z-[9999] w-screen h-screen h-[100dvh] bg-[#070B18] flex flex-col overflow-hidden animate-fadeIn select-none">
+                  {/* Top Bar toàn màn hình chuẩn Mobile với Safe Area */}
+                  <div className="shrink-0 pt-[max(env(safe-area-inset-top,0px),0.75rem)] px-4 pb-3 border-b border-white/10 bg-[#090D1A]/95 backdrop-blur-md flex items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-extrabold text-white truncate leading-tight">
+                          Danh sách bài giảng khóa học
+                        </h3>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {effectiveCourse?.title || 'Khóa học'} • {flatLessons.length} bài
+                        </p>
+                      </div>
+                    </div>
+
                     <button
+                      type="button"
                       onClick={() => setIsMobileCurriculumOpen(false)}
-                      className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"
+                      className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer border border-white/10 shrink-0"
+                      title="Đóng danh mục bài giảng"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="p-4 overflow-y-auto flex-1">
+
+                  {/* Vùng danh sách bài giảng cuộn độc lập (overscroll-contain ngăn lướt lan trang bên dưới) */}
+                  <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 pb-[max(env(safe-area-inset-bottom,0px),2rem)]">
                     <LessonSidebar
                       course={effectiveCourse}
                       activeLessonId={effectiveLesson.id}
                       completedLessonIds={completedLessonIds}
-                      onSelectLesson={handleSelectLesson}
+                      onSelectLesson={(lesson) => {
+                        handleSelectLesson(lesson);
+                        setIsMobileCurriculumOpen(false);
+                      }}
                       onBackToCatalog={() => {
                         setIsMobileCurriculumOpen(false);
                         setCurrentView('CATALOG');
                       }}
                     />
                   </div>
-                </div>
-              </div>
-            )}
+                </div>,
+                document.body
+              )}
 
             {/* Workspace Grid Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
