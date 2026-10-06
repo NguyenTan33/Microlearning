@@ -119,8 +119,8 @@ export const userProfileService = {
     stats: UserLearningStats;
     courseList: CourseLearningProgress[];
   } {
-    // 1. Lọc ra các khóa học mà học viên đã ghi danh
-    const activeEnrolledIds = enrolledCourseIds.length > 0 ? enrolledCourseIds : [1, 3];
+    // 1. Lọc ra các khóa học mà học viên đã ghi danh thực tế
+    const activeEnrolledIds = enrolledCourseIds;
     const userCourses = allCourses.filter((c) => activeEnrolledIds.includes(c.id));
 
     let totalLessonsCount = 0;
@@ -145,22 +145,16 @@ export const userProfileService = {
         });
       });
 
-      // Đảm bảo có giá trị tối thiểu nếu khóa học chưa có bài
+      // Đảm bảo số bài tối thiểu nếu khóa học chưa có bài
       if (courseTotalLessons === 0) {
-        courseTotalLessons = 6;
+        courseTotalLessons = 1;
       }
 
-      // Giả lập hoặc tính % thực tế
-      let progressPercent = 0;
-      if (courseCompletedLessons > 0) {
-        progressPercent = Math.min(100, Math.round((courseCompletedLessons / courseTotalLessons) * 100));
-      } else {
-        // Fallback tự nhiên theo bài mẫu
-        progressPercent = course.id === 1 ? 45 : course.id === 3 ? 20 : 10;
-        const simulatedCompleted = Math.max(1, Math.round((progressPercent / 100) * courseTotalLessons));
-        courseCompletedLessons = simulatedCompleted;
-        totalWatchMinutes += simulatedCompleted * 8;
-      }
+      // Tính % tiến độ thực tế chính xác
+      const progressPercent =
+        courseCompletedLessons > 0
+          ? Math.min(100, Math.round((courseCompletedLessons / courseTotalLessons) * 100))
+          : 0;
 
       totalLessonsCount += courseTotalLessons;
       completedLessonsInEnrolled += courseCompletedLessons;
@@ -176,7 +170,7 @@ export const userProfileService = {
         progressPercent,
         completedLessons: courseCompletedLessons,
         totalLessons: courseTotalLessons,
-        lastAccessedAt: new Date(Date.now() - (course.id === 1 ? 3600000 : 86400000)).toISOString(),
+        lastAccessedAt: new Date().toISOString(),
       };
     });
 
@@ -186,27 +180,26 @@ export const userProfileService = {
         ? Math.round(courseList.reduce((acc, curr) => acc + curr.progressPercent, 0) / courseList.length)
         : 0;
 
-    // 3. Tính % làm đúng câu hỏi trắc nghiệm (% accuracy)
-    // Nếu có bài hoàn thành, tính dựa trên điểm số trung bình (ước lượng từ 80% đến 95%)
-    let quizAccuracyPercent = 88;
+    // 3. Tính % làm đúng câu hỏi trắc nghiệm (% accuracy) thực tế
+    let quizAccuracyPercent = 0;
     try {
       const storedResults = localStorage.getItem('microlearning_quiz_results');
       if (storedResults) {
         const parsed = JSON.parse(storedResults);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const sum = parsed.reduce((acc: number, item: { score?: number }) => acc + (item.score || 80), 0);
+          const sum = parsed.reduce((acc: number, item: { score?: number }) => acc + (item.score || 0), 0);
           quizAccuracyPercent = Math.round(sum / parsed.length);
         }
       }
     } catch {
-      quizAccuracyPercent = 88;
+      quizAccuracyPercent = 0;
     }
 
     const totalBookmarks = mediaBookmarkService.getAllBookmarksCount();
 
     const stats: UserLearningStats = {
       averageProgressPercent,
-      totalStudyTimeMinutes: Math.max(35, totalWatchMinutes),
+      totalStudyTimeMinutes: totalWatchMinutes,
       quizAccuracyPercent,
       totalEnrolledCourses: courseList.length,
       completedLessonsCount: completedLessonsInEnrolled,

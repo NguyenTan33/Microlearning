@@ -134,7 +134,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         .catch(() => {
           const { stats: fallbackStats, courseList } = userProfileService.calculateLearningStats(
             allCourses,
-            [1, 3],
+            [],
             completedLessonIds
           );
           setStats(fallbackStats);

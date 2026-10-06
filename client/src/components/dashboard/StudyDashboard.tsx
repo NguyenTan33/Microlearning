@@ -84,12 +84,21 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     }
   });
 
+  // Đồng bộ lại mốc tiến độ và số lượng cắm cờ theo đúng tài khoản người dùng khi chuyển acc / đăng nhập
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageProgressKey);
+      setCompletedLessonIds(raw ? JSON.parse(raw) : []);
+    } catch {
+      setCompletedLessonIds([]);
+    }
+    setTotalBookmarksCount(mediaBookmarkService.getAllBookmarksCount());
+  }, [storageProgressKey]);
+
   // Tự động sao lưu tiến độ khi danh sách bài học hoàn thành thay đổi
   useEffect(() => {
     try {
-      if (completedLessonIds.length > 0) {
-        localStorage.setItem(storageProgressKey, JSON.stringify(completedLessonIds));
-      }
+      localStorage.setItem(storageProgressKey, JSON.stringify(completedLessonIds));
     } catch {
       // ignore
     }
