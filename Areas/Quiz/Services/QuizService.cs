@@ -10,10 +10,14 @@ namespace Microlearning.Areas.Quiz.Services
     public class QuizService : IQuizService
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly IQuizMistakeVaultService _mistakeVaultService;
 
-        public QuizService(ApplicationDbContext dbContext)
+        public QuizService(
+            ApplicationDbContext dbContext,
+            IQuizMistakeVaultService mistakeVaultService)
         {
             _dbContext = dbContext;
+            _mistakeVaultService = mistakeVaultService;
         }
 
         public async Task<QuizDetailResponse> GetQuizByLessonIdAsync(int lessonId)
@@ -102,6 +106,7 @@ namespace Microlearning.Areas.Quiz.Services
             decimal totalScore = 0;
             int correctAnswers = 0;
             var quizAnswers = new List<QuizAnswer>();
+            var evaluatedAnswers = new List<(int questionId, int selectedOptionId, bool isCorrect)>();
 
             foreach (var answerDto in request.Answers)
             {
@@ -121,6 +126,9 @@ namespace Microlearning.Areas.Quiz.Services
 
                 totalScore += earnedScore;
                 if (isCorrect) correctAnswers++;
+
+                var firstSelectedId = selectedIds.FirstOrDefault();
+                evaluatedAnswers.Add((question.Id, firstSelectedId, isCorrect));
 
                 var quizAnswer = new QuizAnswer
                 {
@@ -154,6 +162,16 @@ namespace Microlearning.Areas.Quiz.Services
 
             _dbContext.QuizAttempts.Add(newAttempt);
             await _dbContext.SaveChangesAsync();
+
+            // Ghi nhận lỗi sai vào Sổ tay ôn tập (Mistake Review Vault)
+            try
+            {
+                await _mistakeVaultService.RecordMistakesFromAttemptAsync(accountId, quiz.Id, quiz.LessonId, evaluatedAnswers);
+            }
+            catch
+            {
+                // Không chặn hoàn thành bài thi nếu việc lưu sổ tay gặp lỗi tạm thời
+            }
 
             return new QuizAttemptResultResponse(
                 newAttempt.Id,
