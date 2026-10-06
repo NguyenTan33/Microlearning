@@ -578,7 +578,7 @@ namespace Microlearning.Areas.Media.Services
             if (ytMatch.Success)
             {
                 var videoId = ytMatch.Groups[1].Value;
-                return ("youtube", $"https://www.youtube.com/embed/{videoId}?rel=0", "video/youtube");
+                return ("youtube", $"https://www.youtube.com/embed/{videoId}?enablejsapi=1&rel=0", "video/youtube");
             }
 
             // 2. Vimeo
