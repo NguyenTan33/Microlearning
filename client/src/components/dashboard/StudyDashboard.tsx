@@ -24,7 +24,7 @@ import {
   ChevronUp,
   Sparkles,
 } from 'lucide-react';
-import type { CourseDetail, Lesson } from '../../types/catalog.types';
+import type { Course, CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
 import { VideoLessonPlayer } from '../player/VideoLessonPlayer';
 import { AudioTtsPlayer } from '../player/AudioTtsPlayer';
@@ -47,6 +47,7 @@ import { mediaBookmarkService } from '../../services/mediaBookmarkService';
 import { userProfileService } from '../../services/userProfileService';
 import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
+import { enrollmentApi } from '../../services/enrollmentApi';
 import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
 
 interface StudyDashboardProps {
@@ -113,6 +114,9 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [isMistakeVaultOpen, setIsMistakeVaultOpen] = useState<boolean>(false);
   const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState<boolean>(false);
 
+  // Danh mục toàn bộ khóa học thực tế từ API catalog
+  const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
+
   // Khóa học và bài học hiện tại đang học
   const [currentCourse, setCurrentCourse] = useState<CourseDetail | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -154,16 +158,36 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       let targetCourse: CourseDetail | null = null;
       let targetLesson: Lesson | null = null;
 
+      // 1. Tải danh mục khóa học thật từ server
+      let courses: Course[] = [];
+      try {
+        courses = await catalogApi.getAllCourses();
+        if (courses.length > 0) {
+          setCatalogCourses(courses);
+        }
+      } catch {
+        // ignore
+      }
+
+      // 2. Xác định ID khóa học cần mở:
+      // (1) param courseId truyền vào -> (2) localStorage lưu lần học gần nhất -> (3) khóa đầu tiên trong danh mục -> (4) default 1
       let targetId = courseId;
       if (!targetId) {
         try {
-          const courses = await catalogApi.getAllCourses();
-          if (courses.length > 0) {
-            targetId = courses[0].id;
+          const lastCourseId = localStorage.getItem('microlearning_last_course_id');
+          if (lastCourseId) {
+            const parsed = parseInt(lastCourseId, 10);
+            if (!isNaN(parsed) && (courses.length === 0 || courses.some((c) => c.id === parsed))) {
+              targetId = parsed;
+            }
           }
         } catch {
           // ignore
         }
+      }
+
+      if (!targetId && courses.length > 0) {
+        targetId = courses[0].id;
       }
 
       if (targetId) {
@@ -177,6 +201,14 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       // Nếu targetCourse chưa có hoặc không có học phần, dùng ngay SAMPLE_COURSES
       if (!targetCourse || !targetCourse.subjects || targetCourse.subjects.length === 0) {
         targetCourse = SAMPLE_COURSES[0];
+      }
+
+      // Lưu lại khóa học đang học để khi F5 / mở lại app không bị nhảy sai khóa và tự động ghi danh
+      if (targetCourse?.id) {
+        try {
+          localStorage.setItem('microlearning_last_course_id', String(targetCourse.id));
+        } catch {}
+        enrollmentApi.enrollCourse(targetCourse.id).catch(() => {});
       }
 
       // Tìm bài học đầu tiên trong targetCourse
@@ -195,14 +227,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       setCurrentCourse(targetCourse);
       setActiveLesson(targetLesson);
 
-      // Đồng bộ Max tiến độ từ Máy Chủ (chống mất tiến độ khi F5 hoặc vào lại web)
+      // Đồng bộ Max tiến độ từ Máy Chủ cho TẤT CẢ các khóa học (không truyền courseId để tránh bị xóa sạch tiến độ các khóa khác)
       try {
-        const completedIdsFromServer = await progressApi.getCompletedLessonIds(targetCourse?.id);
-        if (completedIdsFromServer) {
-          setCompletedLessonIds(completedIdsFromServer);
-          try {
-            localStorage.setItem(storageProgressKey, JSON.stringify(completedIdsFromServer));
-          } catch {}
+        const completedIdsFromServer = await progressApi.getCompletedLessonIds();
+        if (completedIdsFromServer && completedIdsFromServer.length > 0) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...completedIdsFromServer]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       } catch {
         // ignore
@@ -266,12 +301,15 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     const handleProgressUpdate = async () => {
       try {
-        const serverIds = await progressApi.getCompletedLessonIds(currentCourse?.id);
-        if (serverIds) {
-          setCompletedLessonIds(serverIds);
-          try {
-            localStorage.setItem(storageProgressKey, JSON.stringify(serverIds));
-          } catch {}
+        const serverIds = await progressApi.getCompletedLessonIds();
+        if (serverIds && serverIds.length > 0) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...serverIds]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       } catch {
         // ignore
@@ -281,7 +319,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     return () => {
       window.removeEventListener('lesson-progress-updated', handleProgressUpdate);
     };
-  }, [currentCourse?.id, storageProgressKey]);
+  }, [storageProgressKey]);
 
   // Feature 5: Native Browser History Navigation stack
   const { pushState } = useAppHistoryNavigation(
@@ -345,6 +383,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
   // Chọn khóa học từ danh mục
   const handleSelectCourseFromCatalog = async (courseId: number) => {
+    try {
+      localStorage.setItem('microlearning_last_course_id', String(courseId));
+    } catch {}
+    enrollmentApi.enrollCourse(courseId).catch(() => {});
     await loadInitialCourse(courseId);
     setCurrentView('WORKSPACE');
     pushState({
@@ -396,6 +438,9 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   // Ghi nhận hoàn thành bài học
   const handleLessonCompleted = () => {
     if (activeLesson) {
+      if (currentCourse?.id) {
+        enrollmentApi.enrollCourse(currentCourse.id).catch(() => {});
+      }
       setCompletedLessonIds((prev) => {
         const merged = Array.from(new Set([...prev, activeLesson.id]));
         try {
@@ -1250,7 +1295,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
-        allCourses={SAMPLE_COURSES}
+        allCourses={catalogCourses.length > 0 ? catalogCourses : SAMPLE_COURSES}
         completedLessonIds={completedLessonIds}
         onSelectCourse={handleSelectCourseFromCatalog}
         onProfileUpdated={(updated) => setUserProfile(updated)}
