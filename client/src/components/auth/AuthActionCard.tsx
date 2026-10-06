@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AuthMode, LoginRequest, RegisterRequest, ResetPasswordRequest } from '../../types/auth.types';
 import { authApi } from '../../services/authApi';
 import { LoginForm } from './LoginForm';
@@ -7,6 +7,8 @@ import { ForgotPasswordForm } from './ForgotPasswordForm';
 import { OtpVerifyForm } from './OtpVerifyForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
 import { SocialAuthButtons } from './SocialAuthButtons';
+import { GoogleAuthModal } from './GoogleAuthModal';
+import { getAndClearPendingOAuthToken, requestFacebookAccessToken } from '../../services/socialAuth';
 import { CheckCircle2 } from 'lucide-react';
 
 export const AuthActionCard: React.FC = () => {
@@ -16,6 +18,7 @@ export const AuthActionCard: React.FC = () => {
   const [otpPurpose, setOtpPurpose] = useState<'Register' | 'ForgotPassword'>('Register');
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
@@ -127,23 +130,32 @@ export const AuthActionCard: React.FC = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isFacebookLoading, setIsFacebookLoading] = useState(false);
 
-  // 7. Social Logins
-  const handleGoogleLogin = async () => {
+  // Tự động kiểm tra nếu có token OAuth chuyển tiếp về (Đặc biệt trên Mobile Web)
+  useEffect(() => {
+    const { idToken, error } = getAndClearPendingOAuthToken();
+    if (error) {
+      setServerError(`Đăng nhập Google thất bại: ${error}`);
+      return;
+    }
+    if (idToken) {
+      handleExecuteGoogleLogin(idToken);
+    }
+  }, []);
+
+  const handleExecuteGoogleLogin = async (idToken: string) => {
     clearMessages();
     setIsGoogleLoading(true);
     try {
-      const { requestGoogleIdToken } = await import('../../services/socialAuth');
-      const idToken = await requestGoogleIdToken();
-
       setSuccessNotice('Đang xác thực tài khoản Google với hệ thống...');
       const response = await authApi.googleLogin({ idToken });
 
       localStorage.setItem('accessToken', response.accessToken);
       localStorage.setItem('refreshToken', response.refreshToken);
       setSuccessNotice('Đăng nhập bằng Google thành công! Đang chuyển hướng...');
+      setIsGoogleModalOpen(false);
       setTimeout(() => {
         window.location.href = '/';
-      }, 1000);
+      }, 800);
     } catch (err: unknown) {
       setServerError(err instanceof Error ? err.message : 'Đăng nhập Google thất bại.');
     } finally {
@@ -155,8 +167,8 @@ export const AuthActionCard: React.FC = () => {
     clearMessages();
     setIsFacebookLoading(true);
     try {
-      const { requestFacebookAccessToken } = await import('../../services/socialAuth');
       const accessToken = await requestFacebookAccessToken();
+      if (!accessToken) return;
 
       setSuccessNotice('Đang xác thực tài khoản Facebook với hệ thống...');
       const response = await authApi.facebookLogin({ accessToken });
@@ -166,7 +178,7 @@ export const AuthActionCard: React.FC = () => {
       setSuccessNotice('Đăng nhập bằng Facebook thành công! Đang chuyển hướng...');
       setTimeout(() => {
         window.location.href = '/';
-      }, 1000);
+      }, 800);
     } catch (err: unknown) {
       setServerError(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại.');
     } finally {
@@ -268,13 +280,20 @@ export const AuthActionCard: React.FC = () => {
 
         {(mode === 'LOGIN' || mode === 'REGISTER') && (
           <SocialAuthButtons
-            onGoogleClick={handleGoogleLogin}
+            onGoogleClick={() => setIsGoogleModalOpen(true)}
             onFacebookClick={handleFacebookLogin}
             disabled={isLoading}
             isGoogleLoading={isGoogleLoading}
             isFacebookLoading={isFacebookLoading}
           />
         )}
+
+        <GoogleAuthModal
+          isOpen={isGoogleModalOpen}
+          onClose={() => setIsGoogleModalOpen(false)}
+          onSuccess={handleExecuteGoogleLogin}
+          isLoading={isGoogleLoading}
+        />
       </div>
     </div>
   );
