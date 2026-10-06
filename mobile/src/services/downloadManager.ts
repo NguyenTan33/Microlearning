@@ -45,25 +45,47 @@ class DownloadManager {
         throw new Error('Bài học không có tệp media đính kèm.');
       }
 
-      const videoAsset = pkg.mediaAssets.find((a) => a.type === 1) || pkg.mediaAssets[0];
-      const fileName = `lesson_${lessonId}_${videoAsset.id}.mp4`;
+      const videoAsset = pkg.mediaAssets?.find((a) => a.type === 1) || pkg.mediaAssets?.[0];
+      const mediaId = videoAsset?.id || lessonId;
+      const fileName = `lesson_${lessonId}_${mediaId}.mp4`;
       const localPath = `${VIDEO_DIR}${fileName}`;
+      const fileSize = videoAsset?.sizeBytes || 0;
+      const checksum = videoAsset?.checksum || '';
 
       // Lưu trạng thái DOWNLOADING vào SQLite
       await downloadRepository.saveDownloadedMedia({
-        mediaId: videoAsset.id,
+        mediaId,
         lessonId,
         fileName,
         localPath,
-        fileSizeBytes: videoAsset.sizeBytes,
-        checksum: videoAsset.checksum,
+        fileSizeBytes: fileSize,
+        checksum,
         status: 'DOWNLOADING',
       });
 
-      // 3. Khởi tạo tác vụ tải tệp
-      const downloadUrl =
-        videoAsset.downloadUrl ||
-        `${process.env.EXPO_PUBLIC_API_URL || 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api'}/media/${videoAsset.id}/stream`;
+      // 3. Khởi tạo tác vụ tải tệp: Ưu tiên link Azure Blob Storage trực tiếp
+      let downloadUrl = '';
+      if (videoAsset?.blobKey?.startsWith('http://') || videoAsset?.blobKey?.startsWith('https://')) {
+        downloadUrl = videoAsset.blobKey;
+      } else {
+        try {
+          const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+          if (mediaInfo.sourceType === 'direct_url' && mediaInfo.externalUrl) {
+            downloadUrl = mediaInfo.externalUrl;
+          } else if (mediaInfo.streamUrl) {
+            downloadUrl = mediaInfo.streamUrl;
+          }
+        } catch {
+          // Bỏ qua lỗi
+        }
+      }
+
+      if (!downloadUrl) {
+        const apiUrl =
+          process.env.EXPO_PUBLIC_API_URL ||
+          'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
+        downloadUrl = `${apiUrl}/media/lesson/${lessonId}/stream`;
+      }
 
       const downloadResumable = FileSystem.createDownloadResumable(
         downloadUrl,
@@ -177,10 +199,23 @@ class DownloadManager {
       return { uri: onlineStreamUrl, isOffline: false };
     }
 
+    // Tra cứu nguồn video chính xác từ Server (Azure Blob Storage trực tiếp hoặc HTTP 206 Stream)
+    try {
+      const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+      if (mediaInfo.sourceType === 'direct_url' && mediaInfo.externalUrl) {
+        return { uri: mediaInfo.externalUrl, isOffline: false };
+      }
+      if (mediaInfo.streamUrl) {
+        return { uri: mediaInfo.streamUrl, isOffline: false };
+      }
+    } catch {
+      // Bỏ qua lỗi tra cứu, fallback sang endpoint stream theo LessonId
+    }
+
     const apiUrl =
       process.env.EXPO_PUBLIC_API_URL ||
       'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
-    return { uri: `${apiUrl}/media/1/stream`, isOffline: false };
+    return { uri: `${apiUrl}/media/lesson/${lessonId}/stream`, isOffline: false };
   }
 }
 
