@@ -51,6 +51,13 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
 
   useEffect(() => {
     loadData();
+    const handleProgressUpdate = () => {
+      enrollmentApi.getMyEnrollments().then(setEnrollments).catch(() => {});
+    };
+    window.addEventListener('lesson-progress-updated', handleProgressUpdate);
+    return () => {
+      window.removeEventListener('lesson-progress-updated', handleProgressUpdate);
+    };
   }, [loadData]);
 
   const handleEnroll = async (courseId: number) => {
