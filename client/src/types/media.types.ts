@@ -37,7 +37,7 @@ export function parseVideoUrl(rawUrl: string): {
     const videoId = ytMatch[1];
     return {
       sourceType: 'youtube',
-      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&modestbranding=1`,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?rel=0`,
       videoId,
       platformName: 'YouTube',
     };
