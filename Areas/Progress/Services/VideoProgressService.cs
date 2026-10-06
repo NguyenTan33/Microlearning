@@ -40,11 +40,31 @@ namespace Microlearning.Areas.Progress.Services
 
             var lesson = await _dbContext.Lessons
                 .AsNoTracking()
+                .Include(l => l.Subject)
                 .FirstOrDefaultAsync(l => l.Id == request.LessonId, cancellationToken);
 
             if (lesson == null)
             {
                 throw new BusinessException($"Không tìm thấy bài học với mã {request.LessonId}.");
+            }
+
+            // Tự động ghi danh học viên vào khóa học khi tham gia học bài giảng
+            if (lesson.Subject != null && lesson.Subject.CourseId > 0)
+            {
+                var courseId = lesson.Subject.CourseId;
+                var isEnrolled = await _dbContext.Enrollments
+                    .AnyAsync(e => e.AccountId == accountId && e.CourseId == courseId, cancellationToken);
+
+                if (!isEnrolled)
+                {
+                    _dbContext.Enrollments.Add(new Model.Entities.Enrollment
+                    {
+                        AccountId = accountId,
+                        CourseId = courseId,
+                        Status = Model.Entities.Enums.EnrollmentStatus.Active,
+                        EnrolledAt = DateTime.UtcNow
+                    });
+                }
             }
 
             var duration = request.TotalDuration > 0 ? request.TotalDuration : lesson.DurationSeconds;
