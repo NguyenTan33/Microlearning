@@ -26,6 +26,7 @@ import type { LessonMediaInfo } from '../../types/media.types';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
+import { LessonAttachmentsTab } from './LessonAttachmentsTab';
 
 interface VideoLessonPlayerProps {
   mediaId: number;
@@ -68,6 +69,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [flagNoteInput, setFlagNoteInput] = useState<string>('');
   const [flagTimestamp, setFlagTimestamp] = useState<number>(0);
 
+  // Anti-cheat Interval Union tracking (Feature 2) & Bottom Tabs (Feature 1)
+  const [antiCheatWarning, setAntiCheatWarning] = useState<string | null>(null);
+  const [activeBottomTab, setActiveBottomTab] = useState<'info' | 'attachments'>('info');
+  const watchedIntervalsRef = useRef<Array<{ start: number; end: number }>>([]);
+  const segmentStartRef = useRef<number | null>(null);
+
   const lastSavedPercentRef = useRef<number>(0);
 
   // 1. Tải URL phát trực tuyến HTTP 206 (hoặc phát từ Offline Blob) & nạp danh sách cắm cờ
@@ -78,6 +85,9 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     setInitialSeekDone(false);
     setIsPlaying(false);
     setVideoError(null);
+    setAntiCheatWarning(null);
+    watchedIntervalsRef.current = [];
+    segmentStartRef.current = null;
 
     const streamTargetId = lessonId || mediaId;
 
@@ -133,11 +143,20 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     };
   }, [mediaId, lessonId]);
 
-  // 2. Lưu tiến độ trực tuyến lên hệ thống
+  // 2. Lưu tiến độ trực tuyến lên hệ thống (Tích hợp Interval Union Anti-Cheat)
   const handleSaveProgress = useCallback(
     async (time: number, total: number, forceSave: boolean = false) => {
       if (total <= 0) return;
       const percent = Math.min(100, (time / total) * 100);
+
+      // Ghi nhận đoạn đang xem liên tục vào intervals
+      if (segmentStartRef.current !== null && time > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(time * 10) / 10,
+        });
+        segmentStartRef.current = time;
+      }
 
       // Lưu khi đạt mốc tăng >= 10% hoặc hoàn thành bài hoặc khi học viên tạm dừng (forceSave)
       const diff = percent - lastSavedPercentRef.current;
@@ -145,12 +164,41 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         lastSavedPercentRef.current = percent;
 
         try {
-          await progressApi.saveProgress(lessonId, time, percent);
-          setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
+          // Gọi API kiểm tra độ phủ dải xem chống tua (Interval Union Anti-cheat)
+          const coverageRes = await progressApi.recordVideoCoverage(
+            lessonId,
+            total,
+            time,
+            watchedIntervalsRef.current
+          );
+
+          if (!coverageRes.isEligibleForCompletion && coverageRes.skippedRatio > 0.3) {
+            setAntiCheatWarning(
+              `⚠️ Cảnh báo chống tua: Bạn đã tua bỏ qua ${(coverageRes.skippedRatio * 100).toFixed(0)}% thời lượng video. Bài học chưa đủ điều kiện tính hoàn thành. Hãy xem đầy đủ nội dung nhé!`
+            );
+          } else {
+            setAntiCheatWarning(null);
+          }
+
+          if (coverageRes.isCompleted) {
+            setSaveNotice('🎉 Chúc mừng! Bạn đã hoàn thành bài học này.');
+            window.dispatchEvent(new Event('lesson-progress-updated'));
+          } else {
+            setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}% (Xem thực: ${coverageRes.watchedCoveragePercent.toFixed(0)}%)`);
+          }
+
           setTimeout(() => setSaveNotice(null), 3000);
           if (onProgressSaved) onProgressSaved();
         } catch {
-          // Bỏ qua lỗi mạng tức thời
+          // Fallback lưu cơ bản nếu coverage API tạm gián đoạn
+          try {
+            await progressApi.saveProgress(lessonId, time, percent);
+            setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
+            setTimeout(() => setSaveNotice(null), 3000);
+            if (onProgressSaved) onProgressSaved();
+          } catch {
+            // Bỏ qua lỗi mạng tức thời
+          }
         }
       }
     },
@@ -161,8 +209,16 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
+      if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(videoRef.current.currentTime * 10) / 10,
+        });
+        segmentStartRef.current = null;
+      }
       handleSaveProgress(videoRef.current.currentTime, videoRef.current.duration, true);
     } else {
+      segmentStartRef.current = videoRef.current.currentTime;
       videoRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
@@ -193,6 +249,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);
     if (videoRef.current) {
+      if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(videoRef.current.currentTime * 10) / 10,
+        });
+      }
+      segmentStartRef.current = targetTime;
       videoRef.current.currentTime = targetTime;
       setCurrentTime(targetTime);
     }
@@ -576,6 +639,48 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Cảnh báo Chống Gian Lận Tua Video (> 30%) */}
+      {antiCheatWarning && (
+        <div className="mx-3 my-2 p-3 bg-amber-950/80 border border-amber-500/40 rounded-xl text-amber-200 text-xs flex items-center gap-2 animate-fadeIn shadow-md">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{antiCheatWarning}</span>
+        </div>
+      )}
+
+      {/* Tabs Bên Dưới Video: Tổng quan vs Tài liệu đính kèm */}
+      <div className="p-4 border-t border-white/5 space-y-4">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('info')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+              activeBottomTab === 'info'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Thông tin bài học
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('attachments')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              activeBottomTab === 'attachments'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>📁 Tài liệu đính kèm (Word/PDF)</span>
+          </button>
+        </div>
+
+        {activeBottomTab === 'attachments' && (
+          <div className="pt-1 animate-fadeIn">
+            <LessonAttachmentsTab lessonId={lessonId} />
+          </div>
+        )}
       </div>
     </div>
 
