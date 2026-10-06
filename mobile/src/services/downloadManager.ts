@@ -63,7 +63,7 @@ class DownloadManager {
       // 3. Khởi tạo tác vụ tải tệp
       const downloadUrl =
         videoAsset.downloadUrl ||
-        `${process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5124/api'}/media/${videoAsset.id}/stream`;
+        `${process.env.EXPO_PUBLIC_API_URL || 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api'}/media/${videoAsset.id}/stream`;
 
       const downloadResumable = FileSystem.createDownloadResumable(
         downloadUrl,
@@ -177,7 +177,9 @@ class DownloadManager {
       return { uri: onlineStreamUrl, isOffline: false };
     }
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5124/api';
+    const apiUrl =
+      process.env.EXPO_PUBLIC_API_URL ||
+      'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
     return { uri: `${apiUrl}/media/1/stream`, isOffline: false };
   }
 }
