@@ -9,8 +9,6 @@ import {
   LogOut,
   Wifi,
   WifiOff,
-  CloudCheck,
-  Clock,
 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { useAuthStore } from '../../src/store/useAuthStore';
