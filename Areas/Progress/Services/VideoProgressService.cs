@@ -86,11 +86,23 @@ namespace Microlearning.Areas.Progress.Services
                 progress.LastPlayedAt = DateTime.UtcNow;
                 progress.UpdatedAt = DateTime.UtcNow;
 
-                if (evaluation.IsCompleted && !progress.IsCompleted)
+                if (evaluation.IsCompleted)
                 {
-                    progress.IsCompleted = true;
-                    progress.CompletedAt = DateTime.UtcNow;
-                    justBecameCompleted = true;
+                    if (!progress.IsCompleted)
+                    {
+                        progress.IsCompleted = true;
+                        progress.CompletedAt = DateTime.UtcNow;
+                        justBecameCompleted = true;
+                    }
+                }
+                else
+                {
+                    // Nếu thời gian xem thực tế chưa đạt 80%, tuyệt đối không tính là hoàn thành
+                    if (progress.WatchedCoveragePercent < 80.0)
+                    {
+                        progress.IsCompleted = false;
+                        progress.CompletedAt = null;
+                    }
                 }
             }
 
@@ -110,7 +122,7 @@ namespace Microlearning.Areas.Progress.Services
             }
 
             string message = !evaluation.IsEligibleForCompletion
-                ? "Cảnh báo: Bạn đã tua video vượt quá 30% thời lượng. Bài học chưa đủ điều kiện tính hoàn thành."
+                ? $"Cảnh báo chống tua: Bạn đã tua bỏ qua {(evaluation.SkippedRatio * 100):0}% thời lượng video. Bài học yêu cầu xem thực tế tối thiểu 80% để tính hoàn thành."
                 : evaluation.IsCompleted
                     ? "Chúc mừng! Bạn đã hoàn thành bài học này."
                     : "Tiến độ học tập đã được cập nhật thành công.";
@@ -137,13 +149,15 @@ namespace Microlearning.Areas.Progress.Services
                 return null;
             }
 
+            bool isActuallyCompleted = progress.IsCompleted && (progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+
             return new VideoCoverageResponse(
                 progress.LessonId,
                 progress.WatchedCoveragePercent,
                 progress.SkippedRatio,
                 progress.IsEligibleForCompletion,
-                progress.IsCompleted,
-                progress.CompletedAt,
+                isActuallyCompleted,
+                isActuallyCompleted ? progress.CompletedAt : null,
                 null
             );
         }

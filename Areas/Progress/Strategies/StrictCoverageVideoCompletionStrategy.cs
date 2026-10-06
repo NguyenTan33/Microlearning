@@ -4,8 +4,8 @@ namespace Microlearning.Areas.Progress.Strategies
 {
     public class StrictCoverageVideoCompletionStrategy : IVideoCompletionStrategy
     {
-        private const double MAX_ALLOWED_SKIP_RATIO = 0.30; // Tua bỏ tối đa 30% thời lượng
-        private const double MIN_COMPLETION_PERCENT = 70.0; // Phải xem ít nhất 70% để đủ điều kiện xét hoàn thành
+        private const double MAX_ALLOWED_SKIP_RATIO = 0.20; // Tua bỏ tối đa 20% thời lượng
+        private const double MIN_COMPLETION_PERCENT = 80.0; // Bắt buộc xem thực tế từ 80% trở lên để tính hoàn thành
 
         public VideoCompletionEvaluation Evaluate(double totalDuration, IReadOnlyList<TimeRangeDto> watchedIntervals, double currentPosition)
         {
@@ -19,13 +19,11 @@ namespace Microlearning.Areas.Progress.Strategies
             var coveragePercent = Math.Round(coverageRatio * 100.0, 2);
             var skippedRatio = Math.Round(1.0 - coverageRatio, 4);
 
-            // Kiểm tra điều kiện chống gian lận tua: Nếu tua bỏ > 30% thì không đủ điều kiện
-            bool isEligible = skippedRatio <= MAX_ALLOWED_SKIP_RATIO;
+            // Kiểm tra điều kiện chống gian lận tua: Thời gian xem thực tế phải đạt từ 80% trở lên
+            bool isEligible = coveragePercent >= MIN_COMPLETION_PERCENT && skippedRatio <= MAX_ALLOWED_SKIP_RATIO;
 
-            // Bài học được tính là hoàn thành khi:
-            // 1. Đủ điều kiện không gian lận (isEligible == true)
-            // 2. Và người học đã xem đạt từ 85% trở lên hoặc đã xem đến gần hết video (>= 90%) với độ phủ >= 70%
-            bool isCompleted = isEligible && (coveragePercent >= 85.0 || (currentPosition >= totalDuration * 0.90 && coveragePercent >= MIN_COMPLETION_PERCENT));
+            // BẮT BUỘC: Chỉ công nhận hoàn thành khi thời gian xem thực tế từ 80% trở lên
+            bool isCompleted = isEligible && coveragePercent >= MIN_COMPLETION_PERCENT;
 
             return new VideoCompletionEvaluation(
                 coverageSeconds,
