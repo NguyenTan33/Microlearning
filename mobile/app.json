@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "MicroLearn",
+    "slug": "microlearning-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "microlearn",
+    "splash": {
+      "backgroundColor": "#070B17"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.microlearning.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#070B17"
+      },
+      "package": "com.microlearning.app",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
