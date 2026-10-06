@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { catalogApi } from './catalogApi';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 import { quizRepository } from '../db/repositories/quizRepository';
@@ -88,7 +88,7 @@ class DownloadManager {
       }
 
       // 4. Kiểm tra kích thước và sự toàn vẹn của tệp đã tải
-      const fileInfo = await FileSystem.getInfoAsync(localPath, { size: true });
+      const fileInfo = await FileSystem.getInfoAsync(localPath);
       if (!fileInfo.exists || !fileInfo.size || fileInfo.size < 1000) {
         await FileSystem.deleteAsync(localPath, { idempotent: true });
         throw new Error('Tệp tải về bị hỏng hoặc có kích thước bất thường.');

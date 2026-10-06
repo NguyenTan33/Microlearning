@@ -4,7 +4,6 @@
     "slug": "microlearning-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "microlearn",
     "splash": {
@@ -29,7 +28,9 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-asset",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

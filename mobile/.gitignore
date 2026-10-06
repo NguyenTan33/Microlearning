@@ -1,0 +1,15 @@
+.expo/
+node_modules/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
