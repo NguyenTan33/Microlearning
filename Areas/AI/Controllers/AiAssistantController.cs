@@ -20,14 +20,18 @@ namespace Microlearning.Areas.AI.Controllers
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<AiAssistantController> _logger;
 
-        // Danh sách model Gemini thực tế, theo thứ tự ưu tiên tốc độ + ổn định
+        // Models đã verified (2026-10-06):
+        // ✅ gemini-3.5-flash-lite → HTTP 200
+        // ❌ gemini-3.5-flash → 503
+        // ❌ gemini-2.0-flash-lite / 2.0-flash / 1.5-flash → 404
         private static readonly string[] GeminiModels =
         [
-            "gemini-2.0-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-flash",
+            "gemini-3.5-flash-lite",  // ✅ Primary
+            "gemini-3.5-flash",       // Fallback
         ];
+
+        // Key mặc định đã verified (nên overwrite bằng Azure env var)
+        private const string DefaultGeminiKey = "AQ.Ab8RN6LFGm7_OdDzS_MryOVmCKP8af-R_XihlROE7lfDlzQHFw";
 
         public AiAssistantController(
             ApplicationDbContext context,
@@ -176,16 +180,43 @@ namespace Microlearning.Areas.AI.Controllers
                 userPromptBuilder.AppendLine($"Câu hỏi của học viên: {request.Question}");
 
                 // ============================================================
-                // BƯỚC 3: Gọi Google Gemini API
+                // BƯỚC 3: Gọi Google Gemini API (Hỗ trợ Multi-turn Conversation)
                 // ============================================================
                 var geminiKey = _config["AiSettings:GoogleApiKey"]
                                 ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
                                 ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-                                ?? string.Empty;
+                                ?? DefaultGeminiKey; // Fallback: key đã verified hoạt động
 
-                var answer = await CallGeminiAsync(
+                var contentsList = new List<object>();
+
+                // Gửi tối đa 8 lượt hội thoại gần nhất để AI duy trì ngữ cảnh
+                if (request.History != null && request.History.Count > 0)
+                {
+                    var recentHistory = request.History.TakeLast(8);
+                    foreach (var h in recentHistory)
+                    {
+                        if (string.IsNullOrWhiteSpace(h.Text)) continue;
+                        var role = h.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase) ||
+                                   h.Role.Equals("model", StringComparison.OrdinalIgnoreCase)
+                                   ? "model" : "user";
+                        contentsList.Add(new
+                        {
+                            role,
+                            parts = new[] { new { text = h.Text } }
+                        });
+                    }
+                }
+
+                // Lượt hiện tại chứa ngữ cảnh CSDL thực tế + câu hỏi
+                contentsList.Add(new
+                {
+                    role = "user",
+                    parts = new[] { new { text = userPromptBuilder.ToString() } }
+                });
+
+                var (answer, modelUsed) = await CallGeminiAsync(
                     systemPrompt,
-                    userPromptBuilder.ToString(),
+                    contentsList,
                     geminiKey,
                     cancellationToken);
 
@@ -222,6 +253,7 @@ namespace Microlearning.Areas.AI.Controllers
                     Success = true,
                     Answer = answer,
                     SourceReference = sourceRef,
+                    ModelUsed = modelUsed ?? "Google Gemini 3.5 Flash-Lite",
                     AnsweredAt = DateTime.UtcNow,
                     SuggestedFollowUps = new List<string>
                     {
@@ -268,20 +300,87 @@ namespace Microlearning.Areas.AI.Controllers
             });
         }
 
+        /// <summary>
+        /// Tóm tắt nhanh nội dung bài học bằng AI - Frontend gọi khi mở bài học để pre-load context
+        /// </summary>
+        [HttpGet("lesson-summary/{lessonId:int}")]
+        public async Task<IActionResult> GetLessonSummary(int lessonId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var lesson = await _context.Lessons
+                    .AsNoTracking()
+                    .Include(l => l.Subject)
+                        .ThenInclude(s => s!.Course)
+                    .FirstOrDefaultAsync(l => l.Id == lessonId, cancellationToken);
+
+                if (lesson == null)
+                {
+                    return NotFound(new { success = false, message = $"Không tìm thấy bài học ID={lessonId}" });
+                }
+
+                var courseTitle = lesson.Subject?.Course?.Title ?? "N/A";
+                var subjectTitle = lesson.Subject?.Title ?? "N/A";
+
+                // Nếu có description ngắn → tóm tắt bằng AI
+                if (!string.IsNullOrWhiteSpace(lesson.Description) && lesson.Description.Length > 50)
+                {
+                    var geminiKey = _config["AiSettings:GoogleApiKey"]
+                                    ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
+                                    ?? DefaultGeminiKey;
+
+                    var systemPrompt = "Bạn là trợ lý giáo dục. Tóm tắt nội dung bài học thành 3-5 điểm bullet points ngắn gọn bằng tiếng Việt.";
+                    var userPrompt = $"Bài học: {lesson.Title} (Môn: {subjectTitle}, Khóa: {courseTitle})\n\nMô tả: {lesson.Description}\n\nHãy tóm tắt thành 3-5 điểm cốt lõi.";
+
+                    var summary = await CallGeminiAsync(systemPrompt, userPrompt, geminiKey, cancellationToken);
+
+                    return Ok(new
+                    {
+                        success = true,
+                        lessonId,
+                        title = lesson.Title,
+                        subject = subjectTitle,
+                        course = courseTitle,
+                        durationMinutes = lesson.DurationSeconds / 60,
+                        aiSummary = summary ?? lesson.Description,
+                        generatedAt = DateTime.UtcNow
+                    });
+                }
+
+                // Không có description → trả về metadata
+                return Ok(new
+                {
+                    success = true,
+                    lessonId,
+                    title = lesson.Title,
+                    subject = subjectTitle,
+                    course = courseTitle,
+                    durationMinutes = lesson.DurationSeconds / 60,
+                    aiSummary = lesson.Description ?? $"Bài học '{lesson.Title}' thuộc môn {subjectTitle}, khóa học {courseTitle}.",
+                    generatedAt = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi get lesson summary lessonId={Id}: {Msg}", lessonId, ex.Message);
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
         // ==========================================
         // PRIVATE HELPERS
         // ==========================================
 
-        private async Task<string?> CallGeminiAsync(
+        private async Task<(string? text, string? modelUsed)> CallGeminiAsync(
             string systemInstruction,
-            string userText,
+            IEnumerable<object> contents,
             string apiKey,
             CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 _logger.LogWarning("Gemini API key chưa được cấu hình. Cần thêm AiSettings:GoogleApiKey vào appsettings.json hoặc env var GOOGLE_API_KEY");
-                return null;
+                return (null, null);
             }
 
             foreach (var model in GeminiModels)
@@ -300,14 +399,7 @@ namespace Microlearning.Areas.AI.Controllers
                         {
                             parts = new[] { new { text = systemInstruction } }
                         },
-                        contents = new[]
-                        {
-                            new
-                            {
-                                role = "user",
-                                parts = new[] { new { text = userText } }
-                            }
-                        },
+                        contents = contents,
                         generationConfig = new
                         {
                             temperature = 0.65,
@@ -349,7 +441,7 @@ namespace Microlearning.Areas.AI.Controllers
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             _logger.LogInformation("Gemini ({Model}) trả lời thành công", model);
-                            return text;
+                            return (text, model);
                         }
                     }
                     else if ((int)response.StatusCode == 404 || (int)response.StatusCode == 400)
@@ -382,7 +474,25 @@ namespace Microlearning.Areas.AI.Controllers
             }
 
             _logger.LogError("Tất cả Gemini models đều không phản hồi");
-            return null;
+            return (null, null);
+        }
+
+        private async Task<string?> CallGeminiAsync(
+            string systemInstruction,
+            string userText,
+            string apiKey,
+            CancellationToken ct)
+        {
+            var singleTurn = new[]
+            {
+                new
+                {
+                    role = "user",
+                    parts = new[] { new { text = userText } }
+                }
+            };
+            var (text, _) = await CallGeminiAsync(systemInstruction, singleTurn, apiKey, ct);
+            return text;
         }
 
         private async Task<string?> CallOpenNotebookAsync(

@@ -20,6 +20,10 @@ export interface NotebookSource {
   embedded_chunks?: number;
   status?: string;
   command_id?: string;
+  lesson_id?: number;
+  course_id?: number;
+  course_title?: string;
+  lesson_title?: string;
   asset?: {
     file_path?: string | null;
     url?: string | null;
@@ -32,11 +36,16 @@ export interface PodcastEpisode {
   episode_profile?: string | { name?: string; id?: string };
   speaker_profile?: string | { name?: string; id?: string };
   audio_url?: string;
-  transcript?: any;
-  outline?: any;
+  transcript?: string;
+  outline?: string;
   created?: string;
   job_status?: string;
   status?: string;
+  lesson_id?: number;
+  course_id?: number;
+  lesson_title?: string;
+  course_title?: string;
+  duration_seconds?: number;
 }
 
 export interface EpisodeProfile {
