@@ -23,10 +23,32 @@ namespace Microlearning.Areas.Progress.Services
                 throw new BusinessException("Mã bài học không hợp lệ.");
             }
 
-            var lessonExists = await _dbContext.Lessons.AnyAsync(l => l.Id == request.LessonId);
-            if (!lessonExists)
+            var lesson = await _dbContext.Lessons
+                .Include(l => l.Subject)
+                .FirstOrDefaultAsync(l => l.Id == request.LessonId);
+
+            if (lesson == null)
             {
                 throw new BusinessException($"Không tìm thấy bài học với mã {request.LessonId}.");
+            }
+
+            // Tự động ghi danh học viên vào khóa học khi tham gia học bài giảng
+            if (lesson.Subject != null && lesson.Subject.CourseId > 0)
+            {
+                var courseId = lesson.Subject.CourseId;
+                var isEnrolled = await _dbContext.Enrollments
+                    .AnyAsync(e => e.AccountId == accountId && e.CourseId == courseId);
+
+                if (!isEnrolled)
+                {
+                    _dbContext.Enrollments.Add(new Model.Entities.Enrollment
+                    {
+                        AccountId = accountId,
+                        CourseId = courseId,
+                        Status = Model.Entities.Enums.EnrollmentStatus.Active,
+                        EnrolledAt = DateTime.UtcNow
+                    });
+                }
             }
 
             var progress = await _dbContext.LessonProgresses
