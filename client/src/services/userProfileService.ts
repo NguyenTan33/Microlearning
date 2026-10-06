@@ -1,5 +1,6 @@
 import type { UserProfile, UserLearningStats, CourseLearningProgress } from '../types/userProfile.types';
-import type { CourseDetail } from '../types/catalog.types';
+import type { Course, CourseDetail, Enrollment } from '../types/catalog.types';
+import { SAMPLE_COURSES } from './sampleCatalogData';
 import { mediaBookmarkService } from './mediaBookmarkService';
 
 const PROFILE_STORAGE_PREFIX = 'microlearning_user_profile_';
@@ -110,69 +111,134 @@ export const userProfileService = {
 
   /**
    * Tính toán các chỉ số Dashboard học tập: Tỉ lệ học %, Tổng thời gian học, % Làm đúng quizz
+   * Hỗ trợ nhận trực tiếp danh sách Enrollment thực tế từ API để đồng bộ 100% dữ liệu khóa học.
    */
   calculateLearningStats(
-    allCourses: CourseDetail[],
-    enrolledCourseIds: number[],
+    enrolledOrCourses: CourseDetail[] | Enrollment[],
+    enrolledIdsOrAllCourses: number[] | Array<Course | CourseDetail>,
     completedLessonIds: number[]
   ): {
     stats: UserLearningStats;
     courseList: CourseLearningProgress[];
   } {
-    // 1. Lọc ra các khóa học mà học viên đã ghi danh thực tế
-    const activeEnrolledIds = enrolledCourseIds;
-    const userCourses = allCourses.filter((c) => activeEnrolledIds.includes(c.id));
+    const isEnrollmentList =
+      Array.isArray(enrolledOrCourses) &&
+      enrolledOrCourses.length > 0 &&
+      'overallProgressPercent' in enrolledOrCourses[0];
 
-    let totalLessonsCount = 0;
-    let completedLessonsInEnrolled = 0;
+    let courseList: CourseLearningProgress[] = [];
     let totalWatchMinutes = 0;
+    let completedLessonsInEnrolled = 0;
 
-    const courseList: CourseLearningProgress[] = userCourses.map((course) => {
-      let courseTotalLessons = 0;
-      let courseCompletedLessons = 0;
-      let courseDurationMinutes = 0;
+    if (isEnrollmentList) {
+      const enrollments = enrolledOrCourses as Enrollment[];
+      const catalogCourses = (enrolledIdsOrAllCourses as Array<Course | CourseDetail>) || [];
 
-      course.subjects?.forEach((subject) => {
-        subject.lessons?.forEach((lesson) => {
-          courseTotalLessons += 1;
-          const duration = Math.round((lesson.durationSeconds || 300) / 60) || 5;
-          courseDurationMinutes += duration;
+      courseList = enrollments.map((enr) => {
+        const foundCourse =
+          catalogCourses.find((c) => c.id === enr.courseId) ||
+          SAMPLE_COURSES.find((c) => c.id === enr.courseId);
 
-          if (completedLessonIds.includes(lesson.id)) {
-            courseCompletedLessons += 1;
-            totalWatchMinutes += duration;
-          }
-        });
+        let courseTotalLessons = 0;
+        let courseCompletedLessons = 0;
+
+        const subjects = (foundCourse as CourseDetail)?.subjects;
+        if (subjects && subjects.length > 0) {
+          subjects.forEach((subj) => {
+            subj.lessons?.forEach((lesson) => {
+              courseTotalLessons += 1;
+              const lessonDuration = Math.round((lesson.durationSeconds || 300) / 60) || 5;
+              if (completedLessonIds.includes(lesson.id)) {
+                courseCompletedLessons += 1;
+                totalWatchMinutes += lessonDuration;
+              }
+            });
+          });
+        }
+
+        const serverPercent = Number(enr.overallProgressPercent) || 0;
+
+        // Nếu không có môn học chi tiết, suy diễn từ số bài và % của server
+        if (courseTotalLessons === 0) {
+          courseTotalLessons = Math.max(1, (foundCourse?.totalSubjects || 1) * 3);
+        }
+
+        // Tiến độ % ưu tiên giá trị thực tế max giữa server và client
+        let progressPercent = serverPercent;
+        if (courseCompletedLessons > 0 && courseTotalLessons > 0) {
+          const clientPercent = Math.min(100, Math.round((courseCompletedLessons / courseTotalLessons) * 100));
+          progressPercent = Math.max(serverPercent, clientPercent);
+        } else if (serverPercent > 0 && courseTotalLessons > 0) {
+          courseCompletedLessons = Math.min(
+            courseTotalLessons,
+            Math.max(1, Math.round((serverPercent / 100) * courseTotalLessons))
+          );
+          totalWatchMinutes += courseCompletedLessons * 5;
+        }
+
+        completedLessonsInEnrolled += courseCompletedLessons;
+
+        return {
+          courseId: enr.courseId,
+          courseTitle: enr.courseTitle || foundCourse?.title || `Khóa học #${enr.courseId}`,
+          courseThumbnail:
+            enr.courseThumbnail ||
+            foundCourse?.thumbnailUrl ||
+            'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop',
+          author: 'Đội ngũ Giảng viên MicroLearning',
+          category: 'Kỹ năng số',
+          progressPercent,
+          completedLessons: courseCompletedLessons,
+          totalLessons: courseTotalLessons,
+          lastAccessedAt: enr.enrolledAt || new Date().toISOString(),
+        };
       });
+    } else {
+      // Nhánh dự phòng theo mảng CourseDetail[]
+      const allCourses = (enrolledOrCourses as CourseDetail[]) || [];
+      const enrolledCourseIds = (enrolledIdsOrAllCourses as number[]) || [];
+      const userCourses = allCourses.filter((c) => enrolledCourseIds.includes(c.id));
 
-      // Đảm bảo số bài tối thiểu nếu khóa học chưa có bài
-      if (courseTotalLessons === 0) {
-        courseTotalLessons = 1;
-      }
+      courseList = userCourses.map((course) => {
+        let courseTotalLessons = 0;
+        let courseCompletedLessons = 0;
 
-      // Tính % tiến độ thực tế chính xác
-      const progressPercent =
-        courseCompletedLessons > 0
-          ? Math.min(100, Math.round((courseCompletedLessons / courseTotalLessons) * 100))
-          : 0;
+        course.subjects?.forEach((subject) => {
+          subject.lessons?.forEach((lesson) => {
+            courseTotalLessons += 1;
+            const duration = Math.round((lesson.durationSeconds || 300) / 60) || 5;
 
-      totalLessonsCount += courseTotalLessons;
-      completedLessonsInEnrolled += courseCompletedLessons;
+            if (completedLessonIds.includes(lesson.id)) {
+              courseCompletedLessons += 1;
+              totalWatchMinutes += duration;
+            }
+          });
+        });
 
-      return {
-        courseId: course.id,
-        courseTitle: course.title,
-        courseThumbnail:
-          course.thumbnailUrl ||
-          'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop',
-        author: 'Đội ngũ Giảng viên MicroLearning',
-        category: 'Kỹ năng số',
-        progressPercent,
-        completedLessons: courseCompletedLessons,
-        totalLessons: courseTotalLessons,
-        lastAccessedAt: new Date().toISOString(),
-      };
-    });
+        if (courseTotalLessons === 0) courseTotalLessons = 1;
+
+        const progressPercent =
+          courseCompletedLessons > 0
+            ? Math.min(100, Math.round((courseCompletedLessons / courseTotalLessons) * 100))
+            : 0;
+
+        completedLessonsInEnrolled += courseCompletedLessons;
+
+        return {
+          courseId: course.id,
+          courseTitle: course.title,
+          courseThumbnail:
+            course.thumbnailUrl ||
+            'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop',
+          author: 'Đội ngũ Giảng viên MicroLearning',
+          category: 'Kỹ năng số',
+          progressPercent,
+          completedLessons: courseCompletedLessons,
+          totalLessons: courseTotalLessons,
+          lastAccessedAt: new Date().toISOString(),
+        };
+      });
+    }
 
     // 2. Tính Tỉ lệ học trung bình (%)
     const averageProgressPercent =
