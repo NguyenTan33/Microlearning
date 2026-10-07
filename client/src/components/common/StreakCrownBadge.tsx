@@ -5,6 +5,7 @@ import { streakApi, type UserStreak } from '../../services/streakApi';
 export const StreakCrownBadge: React.FC = () => {
   const [streak, setStreak] = useState<UserStreak | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLandingPulse, setIsLandingPulse] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -20,14 +21,27 @@ export const StreakCrownBadge: React.FC = () => {
     }
 
     loadStreak();
+
+    // Lắng nghe sự kiện ngọn lửa hạ cánh từ Duolingo Streak celebration
+    const handleFlameLanded = () => {
+      setIsLandingPulse(true);
+      loadStreak();
+      setTimeout(() => {
+        setIsLandingPulse(false);
+      }, 1500);
+    };
+
     // Lắng nghe sự kiện hoàn thành bài học từ video player để cập nhật streak
     const handleProgressUpdate = () => {
       loadStreak();
     };
+
+    window.addEventListener('streak-flame-landed', handleFlameLanded);
     window.addEventListener('lesson-progress-updated', handleProgressUpdate);
 
     return () => {
       isMounted = false;
+      window.removeEventListener('streak-flame-landed', handleFlameLanded);
       window.removeEventListener('lesson-progress-updated', handleProgressUpdate);
     };
   }, []);
@@ -39,19 +53,25 @@ export const StreakCrownBadge: React.FC = () => {
       <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Nút ngọn lửa Streak 🔥 */}
         <button
+          data-streak-target="header-streak-badge"
           type="button"
           onClick={() => setIsModalOpen(true)}
-          className={`h-9 flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap ${
-            streak.currentStreak > 0
+          className={`h-9 flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap relative ${
+            isLandingPulse
+              ? 'scale-125 ring-4 ring-amber-400 bg-amber-500/30 text-amber-200 shadow-xl shadow-amber-500/60 duration-300 z-50'
+              : streak.currentStreak > 0
               ? 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-500/30 shadow-amber-500/10'
               : 'bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/10'
           }`}
           title={`Chuỗi học tập hiện tại: ${streak.currentStreak} ngày liên tiếp`}
         >
-          <span className="text-sm filter drop-shadow-sm animate-bounce" style={{ animationDuration: '2s' }}>
+          <span
+            className={`text-sm filter drop-shadow-sm ${isLandingPulse ? 'animate-bounce text-base' : 'animate-bounce'}`}
+            style={{ animationDuration: isLandingPulse ? '0.4s' : '2s' }}
+          >
             🔥
           </span>
-          <span className="font-extrabold">{streak.currentStreak}</span>
+          <span className={`font-extrabold ${isLandingPulse ? 'text-amber-200 text-sm' : ''}`}>{streak.currentStreak}</span>
           <span className="hidden sm:inline font-medium text-[11px] opacity-80">ngày</span>
         </button>
 
