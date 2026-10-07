@@ -93,6 +93,7 @@ namespace Microlearning.Areas.Progress.Services
                         progress.IsCompleted = true;
                         progress.CompletedAt = DateTime.UtcNow;
                     }
+                    progress.WatchedCoveragePercent = Math.Max(progress.WatchedCoveragePercent, 100.0);
                 }
                 else if (progress.WatchedCoveragePercent > 0 && progress.WatchedCoveragePercent < 80)
                 {
@@ -120,7 +121,7 @@ namespace Microlearning.Areas.Progress.Services
                 }
             }
 
-            bool isActuallyCompleted = progress.IsCompleted && (progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+            bool isActuallyCompleted = progress.IsCompleted && (progress.Percent >= 80 || progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
 
             return new LessonProgressResponse(
                 progress.LessonId,
@@ -143,7 +144,7 @@ namespace Microlearning.Areas.Progress.Services
                 return null;
             }
 
-            bool isActuallyCompleted = progress.IsCompleted && (progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+            bool isActuallyCompleted = progress.IsCompleted && (progress.Percent >= 80 || progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
 
             return new LessonProgressResponse(
                 progress.LessonId,
@@ -169,7 +170,7 @@ namespace Microlearning.Areas.Progress.Services
 
             var completedLessons = await _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
                 .CountAsync();
 
             decimal overallPercent = Math.Round(((decimal)completedLessons / totalLessons) * 100, 2);
@@ -186,7 +187,7 @@ namespace Microlearning.Areas.Progress.Services
         {
             var query = _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80));
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80));
 
             if (courseId.HasValue && courseId.Value > 0)
             {
