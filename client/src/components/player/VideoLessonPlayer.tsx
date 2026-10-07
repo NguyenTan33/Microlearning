@@ -303,7 +303,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             await progressApi.saveProgress(lessonId, time, percent);
             setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
             setTimeout(() => setSaveNotice(null), 3000);
-            if (onProgressSaved) onProgressSaved(false);
+            if (percent >= 90 || forceSave) {
+              if (onProgressSaved) onProgressSaved(true);
+            } else {
+              if (onProgressSaved) onProgressSaved(false);
+            }
           } catch {
             // Bỏ qua lỗi mạng tức thời
           }
@@ -315,6 +319,9 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   const handleSaveProgressRef = useRef(handleSaveProgress);
   handleSaveProgressRef.current = handleSaveProgress;
+
+  const onProgressSavedRef = useRef(onProgressSaved);
+  onProgressSavedRef.current = onProgressSaved;
 
   const onWatchedPercentChangeRef = useRef(onWatchedPercentChange);
   onWatchedPercentChangeRef.current = onWatchedPercentChange;
@@ -633,6 +640,9 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                   const dur = event.target.getDuration();
                   handleSaveProgressRef.current(dur, dur, true);
                   segmentStartRef.current = null;
+                  if (onProgressSavedRef.current) {
+                    onProgressSavedRef.current(true);
+                  }
                 } catch {}
               }
             },
@@ -884,7 +894,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             }}
             onEnded={() => {
               setIsPlaying(false);
-              if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
+              if (videoRef.current) {
+                handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
+              }
+              if (onProgressSaved) {
+                onProgressSaved(true);
+              }
             }}
             onError={() => {
               if (videoSrc && !videoSrc.includes('test.mp4')) {
