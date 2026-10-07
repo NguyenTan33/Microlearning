@@ -27,6 +27,17 @@ namespace Microlearning.Areas.Catalog.Controllers
         }
 
         /// <summary>
+        /// Lấy toàn bộ danh sách tệp tài liệu đính kèm (Word/PDF) của tất cả bài học trong khóa học
+        /// </summary>
+        [HttpGet("/api/courses/{courseId:int}/attachments")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCourseAttachments(int courseId, CancellationToken cancellationToken)
+        {
+            var attachments = await _attachmentService.GetAttachmentsByCourseIdAsync(courseId, cancellationToken);
+            return Ok(attachments);
+        }
+
+        /// <summary>
         /// Tải lên tệp tài liệu đính kèm (Word/PDF) cho bài học (Yêu cầu quyền Giáo viên hoặc Admin)
         /// </summary>
         [HttpPost]
