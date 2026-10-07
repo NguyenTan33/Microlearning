@@ -83,6 +83,46 @@
   animation: pulseGlow 6s ease-in-out infinite;
 }
 
+@keyframes floatBob {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes floatBobReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1.5deg);
+  }
+}
+
+@keyframes shimmerGlow {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-float-bob {
+  animation: floatBob 4s ease-in-out infinite;
+}
+
+.animate-float-bob-delay {
+  animation: floatBobReverse 5s ease-in-out infinite 1.2s;
+}
+
+.animate-shimmer {
+  background-size: 200% auto;
+  animation: shimmerGlow 3s linear infinite;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
