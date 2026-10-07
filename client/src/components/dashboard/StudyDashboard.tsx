@@ -42,6 +42,7 @@ import { UserProfileModal } from '../profile/UserProfileModal';
 import { StreakCrownBadge } from '../common/StreakCrownBadge';
 import { MistakeVaultModal } from '../quiz/MistakeVaultModal';
 import { FavoriteSubjectsDrawer } from '../common/FavoriteSubjectsDrawer';
+import { DuolingoStreakCelebrationModal } from '../common/DuolingoStreakCelebrationModal';
 import { useAppHistoryNavigation } from '../../hooks/useAppHistoryNavigation';
 import type { UserProfile } from '../../types/userProfile.types';
 import { getCurrentUser } from '../../utils/tokenHelper';
@@ -543,9 +544,6 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           message: streakData.statusMessage || 'Bạn đã hoàn thành bài học mới và duy trì chuỗi học tập hôm nay!',
         });
         setShowStreakFlyUp(true);
-        setTimeout(() => {
-          setShowStreakFlyUp(false);
-        }, 3400);
       } catch (err) {
         console.warn('Lỗi khi ghi nhận streak:', err);
       }
@@ -1510,35 +1508,16 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         onSelectSubject={handleNavigateToFavoriteSubject}
       />
 
-      {/* HIỆU ỨNG HOẠT HỌA BAY LÊN CHÚC MỪNG TĂNG STREAK (TỰ ĐỘNG CHẠY NGẦM) */}
-      {showStreakFlyUp && streakFlyUpInfo && (
-        <aside
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-24 sm:bottom-12 left-1/2 z-[100] pointer-events-none animate-streak-fly-up flex items-center gap-3.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 text-white shadow-2xl shadow-orange-500/50 border border-amber-300/40 backdrop-blur-md max-w-sm sm:max-w-md w-max"
-        >
-          <div className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-black/25 backdrop-blur-sm border border-white/20 shrink-0">
-            <Flame className="w-6 h-6 text-amber-200 animate-bounce fill-amber-300" />
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-black tracking-wide text-white drop-shadow-sm">
-                +1 STREAK HÔM NAY!
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-white/20 font-black text-amber-100">
-                🔥 {streakFlyUpInfo.currentStreak} ngày
-              </span>
-            </div>
-            <p className="text-xs text-amber-100/90 font-medium line-clamp-1 max-w-[280px]">
-              {streakFlyUpInfo.message}
-            </p>
-          </div>
-        </aside>
-      )}
+      {/* HIỆU ỨNG DUOLINGO ĂN MỪNG STREAK (LUNG LINH, XOAY BÙNG CHÁY, ĐẾM SỐ & BAY VÀO HEADER) */}
+      <DuolingoStreakCelebrationModal
+        isOpen={showStreakFlyUp && Boolean(streakFlyUpInfo)}
+        targetStreak={streakFlyUpInfo?.currentStreak ?? 1}
+        message={streakFlyUpInfo?.message}
+        onClose={() => {
+          setShowStreakFlyUp(false);
+          setStreakFlyUpInfo(null);
+        }}
+      />
     </div>
   );
 };
