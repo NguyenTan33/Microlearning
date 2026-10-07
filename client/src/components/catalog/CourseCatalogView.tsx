@@ -11,6 +11,14 @@ import {
   FolderPlus,
   Layers,
   GraduationCap,
+  Play,
+  Flame,
+  Trophy,
+  CheckCircle2,
+  Tv,
+  FileSpreadsheet,
+  Code2,
+  Zap,
 } from 'lucide-react';
 import type { Course, Enrollment } from '../../types/catalog.types';
 import { catalogApi } from '../../services/catalogApi';
@@ -136,30 +144,164 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Tiêu đề */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 sm:p-8 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-900 to-[#0A0F1F] border border-white/10 shadow-xl">
-        <div className="space-y-2 max-w-2xl">
-          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
-            <BookOpen className="w-4 h-4" />
-            <span>Nền tảng Đào tạo Trực tuyến</span>
-          </div>
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">
-            Khám Phá Các Khóa Học Chuyên Sâu
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Học tập thực chiến qua video HD bài bản về Tin học văn phòng (Excel, Word) và Công nghệ thông tin (React, SQL Server, .NET 8). Làm bài kiểm tra trắc nghiệm nhận kết quả tức thì.
-          </p>
-        </div>
+      {/* Top Banner & Tiêu đề - Hiệu ứng Hoạt họa & Hoạt ảnh Sinh động */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950/85 via-slate-900/90 to-[#0A0F1F] border border-indigo-500/20 p-6 sm:p-8 md:p-10 shadow-2xl backdrop-blur-xl">
+        {/* Hào quang hoạt ảnh chuyển động mềm mại (Ambient Glowing Orbs) */}
+        <div aria-hidden="true" className="pointer-events-none absolute -top-24 -left-20 w-80 h-80 rounded-full bg-indigo-600/20 blur-3xl animate-pulse-glow" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -right-16 w-80 h-80 rounded-full bg-cyan-500/15 blur-3xl animate-pulse-glow" style={{ animationDelay: '2s' }} />
+        <div aria-hidden="true" className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-purple-600/10 blur-3xl animate-pulse-glow" style={{ animationDelay: '4s' }} />
 
-        {onOpenStudio && (
-          <button
-            onClick={onOpenStudio}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95 shrink-0 self-start md:self-auto"
-          >
-            <FolderPlus className="w-4 h-4" />
-            <span>Đăng tải bài giảng &amp; Quiz mới</span>
-          </button>
-        )}
+        {/* Lưới công nghệ vi mô nền (Cyber Grid Accent Pattern) */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.035] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]"
+        />
+
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* CỘT TRÁI (7 cols): Tiêu đề sinh động, Huy hiệu hoạt họa & Feature tags */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* Live Indicator Pill với hiệu ứng radar ping */}
+            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-indigo-950/90 border border-indigo-500/30 text-indigo-300 text-xs font-bold shadow-lg shadow-indigo-950/50">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400" />
+              </span>
+              <span className="tracking-wide">HỆ THỐNG ĐÀO TẠO THỰC CHIẾN 4.0</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '8s' }} />
+            </div>
+
+            {/* Tiêu đề chính dạng Gradient đa sắc rực rỡ */}
+            <div className="space-y-2.5">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-100 to-cyan-300 tracking-tight leading-tight">
+                Khám Phá Các Khóa Học Chuyên Sâu
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal max-w-xl">
+                Lộ trình chuẩn doanh nghiệp: Kết hợp video thực hành Full HD, bài tập lab và hệ thống bài kiểm tra trắc nghiệm chấm điểm tự động.
+              </p>
+            </div>
+
+            {/* Các thẻ tính năng hoạt họa tương tác (Feature Badges) */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/50 border border-purple-500/30 text-purple-200 text-xs font-semibold hover:border-purple-400/50 hover:bg-purple-900/50 transition-all cursor-default shadow-sm group">
+                <Tv className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+                <span>Video HD 1080p</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/50 border border-cyan-500/30 text-cyan-200 text-xs font-semibold hover:border-cyan-400/50 hover:bg-cyan-900/50 transition-all cursor-default shadow-sm group">
+                <Zap className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                <span>Quiz Chấm Tức Thì</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-950/50 border border-blue-500/30 text-blue-200 text-xs font-semibold hover:border-blue-400/50 hover:bg-blue-900/50 transition-all cursor-default shadow-sm group">
+                <Code2 className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+                <span>React &amp; .NET 8</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-200 text-xs font-semibold hover:border-emerald-400/50 hover:bg-emerald-900/50 transition-all cursor-default shadow-sm group">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>Excel &amp; Word Chuyên Sâu</span>
+              </div>
+            </div>
+
+            {/* Nút Đăng tải bài giảng (Studio) nếu có quyền */}
+            {onOpenStudio && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={onOpenStudio}
+                  className="group relative inline-flex items-center gap-2.5 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white text-xs sm:text-sm font-bold transition-all shadow-xl shadow-indigo-600/30 cursor-pointer active:scale-95 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                  <FolderPlus className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
+                  <span>Đăng tải bài giảng &amp; Quiz mới</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* CỘT PHẢI (5 cols): KHỐI HOẠT HỌA TRỰC QUAN (ANIMATED 3D LEARNING HUB MOCKUP) */}
+          <div className="lg:col-span-5 flex items-center justify-center relative py-6 lg:py-2">
+            {/* Floating Badge 1: Top-Left (XP & Điểm thưởng) */}
+            <div className="absolute -top-1 left-2 sm:left-6 z-20 animate-float-bob">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-amber-500/40 text-amber-300 text-[11px] font-bold shadow-xl shadow-amber-500/15 backdrop-blur-md">
+                <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+                <span>+150 XP Mastery</span>
+              </div>
+            </div>
+
+            {/* Floating Badge 2: Top-Right (Quiz Đạt điểm tối đa) */}
+            <div className="absolute -top-2 right-2 sm:right-6 z-20 animate-float-bob-delay">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold shadow-xl shadow-emerald-500/15 backdrop-blur-md">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>100% Đạt Chuẩn</span>
+              </div>
+            </div>
+
+            {/* Floating Badge 3: Bottom-Left (Streak ngọn lửa) */}
+            <div className="absolute -bottom-2 left-4 sm:left-8 z-20 animate-float-bob-delay">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-rose-500/40 text-rose-300 text-[11px] font-bold shadow-xl shadow-rose-500/15 backdrop-blur-md">
+                <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400/20" />
+                <span>Chuỗi Học Tập 🔥</span>
+              </div>
+            </div>
+
+            {/* Thẻ mô phỏng trung tâm Glassmorphism (Interactive Micro-Learning Card) */}
+            <div className="w-full max-w-[340px] rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950/95 border border-white/15 p-4 sm:p-5 shadow-2xl backdrop-blur-2xl space-y-4 relative group hover:border-indigo-500/40 transition-all">
+              {/* Window Controls Mockup */}
+              <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-cyan-300 font-mono bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
+                  <span>MicroLearning Hub</span>
+                </div>
+              </div>
+
+              {/* Video Player Mockup with Glowing Play Button */}
+              <div className="relative rounded-xl overflow-hidden bg-gradient-to-tr from-slate-950 via-indigo-950/70 to-slate-900 border border-white/10 aspect-video flex items-center justify-center group-hover:border-cyan-500/30 transition-all">
+                {/* Visual grid / tech lines */}
+                <div className="absolute inset-0 opacity-20 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:14px_14px]" />
+                
+                {/* Glowing Play Icon Button with Pulse */}
+                <div className="relative z-10 w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-cyan-500/40 group-hover:scale-110 transition-transform cursor-pointer">
+                  <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                  <span className="absolute -inset-1 rounded-full bg-cyan-400/30 animate-ping pointer-events-none" />
+                </div>
+
+                {/* Subtitle tag overlay */}
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between px-2 py-1 rounded bg-black/60 backdrop-blur-sm text-[10px] text-slate-300">
+                  <span className="font-mono truncate">Lesson: Thực hành Chuyên sâu</span>
+                  <span className="text-cyan-400 font-bold shrink-0">1080p 60fps</span>
+                </div>
+              </div>
+
+              {/* Progress & Status Indicators */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-medium">Tiến độ bài học:</span>
+                  <span className="text-emerald-400 font-bold">Hoàn tất 85%</span>
+                </div>
+                {/* Animated progress bar */}
+                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/5">
+                  <div className="h-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 rounded-full w-[85%] animate-pulse" />
+                </div>
+              </div>
+
+              {/* Interactive micro tags */}
+              <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                <div className="flex items-center gap-1 text-slate-300">
+                  <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Chứng nhận số</span>
+                </div>
+                <div className="flex items-center gap-1 text-cyan-300">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  <span>AI Mentor Hỗ trợ</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Bộ lọc tab & Ô tìm kiếm */}
