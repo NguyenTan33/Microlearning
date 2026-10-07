@@ -158,9 +158,20 @@ export const userProfileService = {
 
         const serverPercent = Number(enr.overallProgressPercent) || 0;
 
-        // Nếu không có môn học chi tiết, suy diễn từ số bài và % của server
+        // Ưu tiên tổng số bài học chuẩn xác từ Server hoặc từ Course metadata
         if (courseTotalLessons === 0) {
-          courseTotalLessons = Math.max(1, (foundCourse?.totalSubjects || 1) * 3);
+          if (enr.totalLessons && enr.totalLessons > 0) {
+            courseTotalLessons = enr.totalLessons;
+          } else if ((foundCourse as any)?.totalLessons && (foundCourse as any).totalLessons > 0) {
+            courseTotalLessons = (foundCourse as any).totalLessons;
+          } else {
+            courseTotalLessons = Math.max(1, (foundCourse?.totalSubjects || 1) * 3);
+          }
+        }
+
+        // Ưu tiên số bài đã hoàn thành từ Server nếu có
+        if (enr.completedLessons !== undefined && enr.completedLessons > 0) {
+          courseCompletedLessons = Math.max(courseCompletedLessons, enr.completedLessons);
         }
 
         // Tiến độ % ưu tiên giá trị thực tế max giữa server và client
@@ -174,6 +185,12 @@ export const userProfileService = {
             Math.max(1, Math.round((serverPercent / 100) * courseTotalLessons))
           );
           totalWatchMinutes += courseCompletedLessons * 5;
+        }
+
+        // Đồng bộ tuyệt đối: nếu tiến độ đạt 100%, số bài hoàn thành bắt buộc bằng tổng số bài
+        if (progressPercent >= 100 && courseTotalLessons > 0) {
+          progressPercent = 100;
+          courseCompletedLessons = courseTotalLessons;
         }
 
         completedLessonsInEnrolled += courseCompletedLessons;
