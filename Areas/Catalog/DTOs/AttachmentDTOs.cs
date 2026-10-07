@@ -18,19 +18,4 @@ namespace Microlearning.Areas.Catalog.DTOs
         long FileSizeBytes,
         string Sha256Checksum
     );
-
-    public record CourseAttachmentDto(
-        int Id,
-        int LessonId,
-        string LessonTitle,
-        int SubjectId,
-        string SubjectTitle,
-        string FileName,
-        string OriginalFileName,
-        string FileType,
-        string FileUrl,
-        long FileSizeBytes,
-        string Sha256Checksum,
-        DateTime CreatedAt
-    );
 }

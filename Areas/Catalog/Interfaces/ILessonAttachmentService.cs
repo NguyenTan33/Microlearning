@@ -13,6 +13,5 @@ namespace Microlearning.Areas.Catalog.Interfaces
         Task<LessonAttachmentDto> AddAttachmentAsync(int lessonId, IFormFile file, CancellationToken cancellationToken = default);
         Task<bool> DeleteAttachmentAsync(int attachmentId, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<LessonAttachmentDto>> GetAttachmentsByLessonIdAsync(int lessonId, CancellationToken cancellationToken = default);
-        Task<IReadOnlyList<CourseAttachmentDto>> GetAttachmentsByCourseIdAsync(int courseId, CancellationToken cancellationToken = default);
     }
 }
