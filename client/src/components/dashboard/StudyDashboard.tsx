@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Flame,
 } from 'lucide-react';
 import type { Course, CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -128,20 +129,44 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [lessonWatchedPercent, setLessonWatchedPercent] = useState<number>(0);
   const [isQuizOpen, setIsQuizOpen] = useState<boolean>(false);
 
+  // Trạng thái Hiệu ứng Hoạt họa bay lên chúc mừng Streak
+  const [showStreakFlyUp, setShowStreakFlyUp] = useState<boolean>(false);
+  const [streakFlyUpInfo, setStreakFlyUpInfo] = useState<{ currentStreak: number; message: string } | null>(null);
+
+  // Ref lưu trạng thái bắt đầu của bài học hiện tại (để kiểm tra bài chưa học 0% hoặc < 60%)
+  const lessonInitialStateRef = React.useRef<{
+    lessonId: number;
+    initialPercent: number;
+    wasCompleted: boolean;
+  }>({
+    lessonId: 0,
+    initialPercent: 0,
+    wasCompleted: false,
+  });
+
   // Khi chuyển bài giảng, đồng bộ tiến độ đã xem của bài học đó và thu gọn quiz
   useEffect(() => {
     setIsQuizOpen(false);
     if (activeLesson) {
+      const wasComp = completedLessonIds.includes(activeLesson.id);
       progressApi
         .getLessonProgress(activeLesson.id)
         .then((prog) => {
-          if (prog) {
-            setLessonWatchedPercent(Number(prog.percent) || 0);
-          } else {
-            setLessonWatchedPercent(0);
-          }
+          const currentP = prog ? Number(prog.percent) || 0 : 0;
+          const isComp = prog ? Boolean(prog.isCompleted) || wasComp : wasComp;
+          lessonInitialStateRef.current = {
+            lessonId: activeLesson.id,
+            initialPercent: currentP,
+            wasCompleted: isComp,
+          };
+          setLessonWatchedPercent(currentP);
         })
         .catch(() => {
+          lessonInitialStateRef.current = {
+            lessonId: activeLesson.id,
+            initialPercent: 0,
+            wasCompleted: wasComp,
+          };
           setLessonWatchedPercent(0);
         });
     } else {
@@ -452,7 +477,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  // Ghi nhận hoàn thành bài học của môn học trong khóa học và tự động kích hoạt tăng Streak trong ngày
+  // Ghi nhận hoàn thành bài học và tự động tăng Streak ngầm nếu đủ điều kiện (chống farm tay)
   const handleLessonCompleted = async () => {
     if (!activeLesson) return;
 
@@ -480,12 +505,40 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       console.warn('Lỗi khi lưu tiến độ bài học:', err);
     }
 
-    // 2. Kích hoạt điểm danh Streak học tập hàng ngày
-    try {
-      await streakApi.pingDailyActivity();
-    } catch (err) {
-      console.warn('Lỗi khi ghi nhận streak:', err);
+    // 2. Kiểm tra điều kiện tiên quyết để tăng Streak ngầm (chống farm tay):
+    // - Điều kiện 1: Bài học mới (lần đầu học 0% hoặc trước phiên này học dở dưới 60%, chưa từng hoàn thành trước đó)
+    // - Điều kiện 2: Mỗi ngày chỉ được tính tối đa 1 lần duy nhất
+    const initialPercent = lessonInitialStateRef.current.initialPercent;
+    const wasCompletedBefore = lessonInitialStateRef.current.wasCompleted;
+    const isLessonEligible = !wasCompletedBefore && initialPercent < 60;
+
+    const todayDateKey = new Date().toISOString().slice(0, 10);
+    const lastAwardedDate = localStorage.getItem('microlearn_streak_awarded_date');
+    const isNewDayForStreak = lastAwardedDate !== todayDateKey;
+
+    if (isLessonEligible && isNewDayForStreak) {
+      try {
+        const streakData = await streakApi.pingDailyActivity();
+        localStorage.setItem('microlearn_streak_awarded_date', todayDateKey);
+        setStreakFlyUpInfo({
+          currentStreak: streakData.currentStreak,
+          message: streakData.statusMessage || 'Bạn đã hoàn thành bài học mới và duy trì chuỗi học tập hôm nay!',
+        });
+        setShowStreakFlyUp(true);
+        setTimeout(() => {
+          setShowStreakFlyUp(false);
+        }, 3400);
+      } catch (err) {
+        console.warn('Lỗi khi ghi nhận streak:', err);
+      }
     }
+
+    // Đánh dấu lại trạng thái bài hiện tại đã hoàn thành để không kích hoạt lặp lại trong phiên
+    lessonInitialStateRef.current = {
+      lessonId: activeLesson.id,
+      initialPercent: 100,
+      wasCompleted: true,
+    };
 
     // 3. Phát sự kiện cập nhật tiến độ toàn cục để Header cập nhật ngọn lửa Streak ngay lập tức
     if (typeof window !== 'undefined') {
@@ -1122,26 +1175,26 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                         <span className="hidden sm:inline">Bài trước</span>
                       </button>
 
-                      {/* Nút Hoàn thành bài học để tăng Streak ngày ngay lập tức */}
+                      {/* Nút Đánh dấu hoàn thành bài học */}
                       <button
                         type="button"
                         onClick={handleLessonCompleted}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md ${
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md ${
                           completedLessonIds.includes(effectiveLesson.id)
                             ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50'
-                            : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white shadow-orange-600/20 active:scale-95'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 active:scale-95'
                         }`}
                         title={
                           completedLessonIds.includes(effectiveLesson.id)
-                            ? 'Bài học đã hoàn thành! Bấm để cập nhật lại Streak nếu hôm nay là ngày mới.'
-                            : 'Hoàn thành bài học này để tăng chuỗi Streak hôm nay!'
+                            ? 'Bài giảng đã được hoàn thành'
+                            : 'Đánh dấu hoàn thành bài học này'
                         }
                       >
-                        <CheckCircle className={`w-4 h-4 shrink-0 ${completedLessonIds.includes(effectiveLesson.id) ? 'text-emerald-400' : 'text-amber-200'}`} />
+                        <CheckCircle className={`w-4 h-4 shrink-0 ${completedLessonIds.includes(effectiveLesson.id) ? 'text-emerald-400' : 'text-indigo-200'}`} />
                         <span>
                           {completedLessonIds.includes(effectiveLesson.id)
                             ? 'Đã hoàn thành'
-                            : 'Hoàn thành bài (+1 🔥)'}
+                            : 'Đánh dấu hoàn thành'}
                         </span>
                       </button>
 
@@ -1398,6 +1451,36 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         onClose={() => setIsFavoriteDrawerOpen(false)}
         onSelectSubject={handleNavigateToFavoriteSubject}
       />
+
+      {/* HIỆU ỨNG HOẠT HỌA BAY LÊN CHÚC MỪNG TĂNG STREAK (TỰ ĐỘNG CHẠY NGẦM) */}
+      {showStreakFlyUp && streakFlyUpInfo && (
+        <aside
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 sm:bottom-12 left-1/2 z-[100] pointer-events-none animate-streak-fly-up flex items-center gap-3.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 text-white shadow-2xl shadow-orange-500/50 border border-amber-300/40 backdrop-blur-md max-w-sm sm:max-w-md w-max"
+        >
+          <div className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-black/25 backdrop-blur-sm border border-white/20 shrink-0">
+            <Flame className="w-6 h-6 text-amber-200 animate-bounce fill-amber-300" />
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
+            </span>
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-black tracking-wide text-white drop-shadow-sm">
+                +1 STREAK HÔM NAY!
+              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-white/20 font-black text-amber-100">
+                🔥 {streakFlyUpInfo.currentStreak} ngày
+              </span>
+            </div>
+            <p className="text-xs text-amber-100/90 font-medium line-clamp-1 max-w-[280px]">
+              {streakFlyUpInfo.message}
+            </p>
+          </div>
+        </aside>
+      )}
     </div>
   );
 };
