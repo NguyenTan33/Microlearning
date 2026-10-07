@@ -524,24 +524,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       console.warn('Lỗi khi lưu tiến độ bài học:', err);
     }
 
-    // 2. Kiểm tra điều kiện tiên quyết để tăng Streak ngầm (chống farm tay):
-    // - Điều kiện 1: Bài học mới (lần đầu học 0% hoặc trước phiên này học dở dưới 60%, chưa từng hoàn thành trước đó)
-    // - Điều kiện 2: Mỗi ngày chỉ được tính tối đa 1 lần duy nhất
+    // 2. Kích hoạt điểm danh Streak và mở màn hình ăn mừng phong cách Duolingo
     const initialPercent = lessonInitialStateRef.current.initialPercent;
     const wasCompletedBefore = lessonInitialStateRef.current.wasCompleted;
-    const isLessonEligible = !wasCompletedBefore && initialPercent < 60;
+    const isLessonEligible = !wasCompletedBefore || initialPercent < 80;
 
-    const todayDateKey = new Date().toISOString().slice(0, 10);
-    const lastAwardedDate = localStorage.getItem('microlearn_streak_awarded_date');
-    const isNewDayForStreak = lastAwardedDate !== todayDateKey;
-
-    if (isLessonEligible && isNewDayForStreak) {
+    if (isLessonEligible) {
       try {
         const streakData = await streakApi.pingDailyActivity();
-        localStorage.setItem('microlearn_streak_awarded_date', todayDateKey);
         setStreakFlyUpInfo({
-          currentStreak: streakData.currentStreak,
-          message: streakData.statusMessage || 'Bạn đã hoàn thành bài học mới và duy trì chuỗi học tập hôm nay!',
+          currentStreak: Math.max(1, streakData.currentStreak || 1),
+          message: streakData.statusMessage || 'Bạn đã hoàn thành bài học và duy trì ngọn lửa học tập hôm nay!',
         });
         setShowStreakFlyUp(true);
       } catch (err) {
@@ -1200,33 +1193,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                         onClick={() => prevLesson && handleSelectLesson(prevLesson)}
                         disabled={!prevLesson}
                         title={prevLesson ? `Bài trước: ${prevLesson.title}` : 'Đã ở bài học đầu tiên'}
-                        className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 disabled:opacity-30 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-white/20 disabled:opacity-30 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
                       >
                         <ChevronLeft className="w-4 h-4" />
                         <span className="hidden sm:inline">Bài trước</span>
-                      </button>
-
-                      {/* Nút Đánh dấu hoàn thành bài học */}
-                      <button
-                        type="button"
-                        onClick={handleLessonCompleted}
-                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md ${
-                          completedLessonIds.includes(effectiveLesson.id)
-                            ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/50'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 active:scale-95'
-                        }`}
-                        title={
-                          completedLessonIds.includes(effectiveLesson.id)
-                            ? 'Bài giảng đã được hoàn thành'
-                            : 'Đánh dấu hoàn thành bài học này'
-                        }
-                      >
-                        <CheckCircle className={`w-4 h-4 shrink-0 ${completedLessonIds.includes(effectiveLesson.id) ? 'text-emerald-400' : 'text-indigo-200'}`} />
-                        <span>
-                          {completedLessonIds.includes(effectiveLesson.id)
-                            ? 'Đã hoàn thành'
-                            : 'Đánh dấu hoàn thành'}
-                        </span>
                       </button>
 
                       <button
