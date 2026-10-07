@@ -9,7 +9,8 @@ import type {
   EpisodeProfile,
   SearchResult,
 } from '../types/notebook.types';
-import type { Course, Lesson } from '../types/catalog.types';
+import type { Course, CourseDetail, Lesson, CourseAttachment } from '../types/catalog.types';
+import { attachmentApi } from '../services/attachmentApi';
 
 export type NotebookTab = 'SOURCES' | 'NOTEBOOKS' | 'ASK_SEARCH' | 'PODCASTS';
 
@@ -18,7 +19,7 @@ interface UseNotebookOptions {
   /** Bài học đang xem - dùng để truyền context thực tế vào AI */
   activeLesson?: Lesson;
   /** Khóa học đang xem - dùng để truyền context thực tế vào AI */
-  currentCourse?: Course;
+  currentCourse?: CourseDetail | Course;
 }
 
 export function useNotebook(options: UseNotebookOptions = {}) {
@@ -35,6 +36,16 @@ export function useNotebook(options: UseNotebookOptions = {}) {
   const [podcasts, setPodcasts] = useState<PodcastEpisode[]>([]);
   const [episodeProfiles, setEpisodeProfiles] = useState<EpisodeProfile[]>([]);
 
+  // BỘ CHỌN PHẠM VI NGỮ CẢNH (SCOPE SELECTOR): Môn học & Bài học
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
+    activeLesson?.subjectId || null
+  );
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(
+    activeLesson?.id || null
+  );
+  const [courseAttachments, setCourseAttachments] = useState<CourseAttachment[]>([]);
+  const [isLoadingAttachments, setIsLoadingAttachments] = useState<boolean>(false);
+
   const [status, setStatus] = useState<NotebookStatus>({
     isOnline: false,
     apiUrl: '',
@@ -48,6 +59,35 @@ export function useNotebook(options: UseNotebookOptions = {}) {
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [isGeneratingPodcast, setIsGeneratingPodcast] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Đồng bộ khi activeLesson thay đổi từ bên ngoài
+  useEffect(() => {
+    if (activeLesson) {
+      setSelectedLessonId(activeLesson.id);
+      if (activeLesson.subjectId) {
+        setSelectedSubjectId(activeLesson.subjectId);
+      }
+    }
+  }, [activeLesson]);
+
+  // Tự động tải danh sách tài liệu đính kèm (PDF/Word) từ CSDL của khóa học
+  const loadCourseAttachments = useCallback(async (courseId: number) => {
+    setIsLoadingAttachments(true);
+    try {
+      const list = await attachmentApi.getCourseAttachments(courseId);
+      setCourseAttachments(list);
+    } catch (err) {
+      console.warn('Lỗi tải tài liệu đính kèm khóa học:', err);
+    } finally {
+      setIsLoadingAttachments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentCourse?.id) {
+      void loadCourseAttachments(currentCourse.id);
+    }
+  }, [currentCourse?.id, loadCourseAttachments]);
 
   // Ref để tránh gọi loadInitialData nhiều lần
   const hasLoadedRef = useRef<boolean>(false);
@@ -272,6 +312,54 @@ export function useNotebook(options: UseNotebookOptions = {}) {
     [activeNotebook]
   );
 
+  /**
+   * Tự động nạp toàn bộ bài giảng và tệp tài liệu đính kèm (PDF/Word) từ CSDL vào Notebook
+   */
+  const syncAllCourseMaterialsToNotebook = useCallback(
+    async (targetNotebookId?: string) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
+      if (!nbId || !currentCourse) return;
+      setIsSyncing(true);
+      setError(null);
+      try {
+        const detailedCourse = currentCourse as CourseDetail;
+        const subjects = detailedCourse.subjects || [];
+
+        // 1. Nạp bài giảng
+        for (const subj of subjects) {
+          for (const l of subj.lessons || []) {
+            await notebookService.addLessonSourceFromSql(
+              nbId,
+              l,
+              currentCourse,
+              subj.title
+            );
+          }
+        }
+
+        // 2. Nạp tài liệu đính kèm (PDF/Word)
+        for (const att of courseAttachments) {
+          await notebookService.addAttachmentSource(
+            nbId,
+            att,
+            currentCourse.title
+          );
+        }
+
+        // 3. Reload sources
+        await loadNotebookSources(nbId);
+        const allSrcs = await notebookService.getAllSources();
+        setAllSources(allSrcs);
+      } catch (err) {
+        console.error('Lỗi khi nạp tài liệu khóa học:', err);
+        setError('Không thể tự động nạp tất cả tài liệu. Vui lòng thử lại!');
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [activeNotebook, currentCourse, courseAttachments, loadNotebookSources]
+  );
+
   const uploadFileSource = useCallback(
     async (file: File, targetNotebookId?: string, customTitle?: string) => {
       const nbId = targetNotebookId || activeNotebook?.id;
@@ -418,8 +506,8 @@ export function useNotebook(options: UseNotebookOptions = {}) {
   );
 
   /**
-   * Hỏi đáp AI - tự động truyền lessonId và courseId từ bài học đang xem
-   * để AI nhận được context SQL thực tế từ database
+   * Hỏi đáp AI - tự động truyền lessonId, subjectId và courseId theo phạm vi đang chọn
+   * để AI nhận được context SQL thực tế và tài liệu đính kèm (PDF/Word)
    */
   const askQuestion = useCallback(
     async (questionText: string) => {
@@ -448,7 +536,6 @@ export function useNotebook(options: UseNotebookOptions = {}) {
       setIsAsking(true);
       setError(null);
 
-
       try {
         // Lấy lịch sử 6 tin nhắn trước đó (bỏ tin nhắn lỗi) để AI duy trì mạch hội thoại
         const chatHistory = messages
@@ -459,13 +546,40 @@ export function useNotebook(options: UseNotebookOptions = {}) {
             text: m.text,
           }));
 
-        // Truyền lessonId, courseId và chatHistory thực tế để backend query SQL & duy trì ngữ cảnh
+        // Xác định tên phạm vi tham chiếu
+        let activeScopeName = currentCourse?.title || 'Toàn khóa học';
+        const detailedCourse = currentCourse as CourseDetail | undefined;
+        if (selectedLessonId) {
+          const matchedLesson = detailedCourse?.subjects
+            ?.flatMap((s) => s.lessons || [])
+            .find((l) => l.id === selectedLessonId) || (activeLesson?.id === selectedLessonId ? activeLesson : null);
+          if (matchedLesson) {
+            activeScopeName = `Bài: ${matchedLesson.title}`;
+          }
+        } else if (selectedSubjectId) {
+          const matchedSubject = detailedCourse?.subjects?.find((s) => s.id === selectedSubjectId);
+          if (matchedSubject) {
+            activeScopeName = `Môn: ${matchedSubject.title}`;
+          }
+        }
+
+        // Lấy danh sách tài liệu đính kèm liên quan đến scope đang chọn
+        const relevantAttachments = courseAttachments.filter((att) => {
+          if (selectedLessonId) return att.lessonId === selectedLessonId;
+          if (selectedSubjectId) return att.subjectId === selectedSubjectId;
+          return true;
+        });
+
+        const attSourceLabels = relevantAttachments.map((a) => `${a.originalFileName} [${a.fileType}]`);
+
+        // Truyền lessonId, subjectId, courseId và chatHistory thực tế để backend query SQL & duy trì ngữ cảnh
         const aiAnswer = await notebookService.askQuestion(
           activeNotebook.id,
           questionText,
-          activeLesson?.id,    // ID bài học từ SQL
-          currentCourse?.id,   // ID khóa học từ SQL
-          chatHistory
+          selectedLessonId || undefined,
+          currentCourse?.id,
+          chatHistory,
+          selectedSubjectId || undefined
         );
 
         const aiMsg: NotebookChatMessage = {
@@ -477,9 +591,10 @@ export function useNotebook(options: UseNotebookOptions = {}) {
             minute: '2-digit',
           }),
           // Hiển thị nguồn tham khảo nếu có
-          sources: activeLesson
-            ? [`Bài học: ${activeLesson.title}`]
-            : undefined,
+          sources: [
+            activeScopeName,
+            ...attSourceLabels.slice(0, 3),
+          ],
         };
 
         setMessages((prev) => [...prev, aiMsg]);
@@ -503,7 +618,15 @@ export function useNotebook(options: UseNotebookOptions = {}) {
         isAskingRef.current = false;
       }
     },
-    [activeNotebook, activeLesson, currentCourse, messages]
+    [
+      activeNotebook,
+      activeLesson,
+      currentCourse,
+      messages,
+      selectedLessonId,
+      selectedSubjectId,
+      courseAttachments,
+    ]
   );
 
   // =========================================================================
@@ -620,5 +743,14 @@ export function useNotebook(options: UseNotebookOptions = {}) {
     askQuestion,
     createPodcast,
     removePodcast,
+    // BỘ CHỌN PHẠM VI NGỮ CẢNH & TÀI LIỆU KHÓA HỌC
+    selectedSubjectId,
+    setSelectedSubjectId,
+    selectedLessonId,
+    setSelectedLessonId,
+    courseAttachments,
+    isLoadingAttachments,
+    loadCourseAttachments,
+    syncAllCourseMaterialsToNotebook,
   };
 }
