@@ -42,7 +42,7 @@ namespace Microlearning.Areas.Enrollment.Services
                 var completedLessons = totalLessons > 0
                     ? await _dbContext.LessonProgresses
                         .AsNoTracking()
-                        .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
+                        .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
                         .CountAsync()
                     : 0;
 
@@ -56,7 +56,9 @@ namespace Microlearning.Areas.Enrollment.Services
                     course.ThumbnailUrl,
                     existing.Status,
                     existing.EnrolledAt,
-                    progress
+                    progress,
+                    completedLessons,
+                    totalLessons
                 );
             }
 
@@ -71,6 +73,11 @@ namespace Microlearning.Areas.Enrollment.Services
             _dbContext.Enrollments.Add(enrollment);
             await _dbContext.SaveChangesAsync();
 
+            var newTotalLessons = await _dbContext.Lessons
+                .AsNoTracking()
+                .Where(l => l.Subject!.CourseId == courseId && l.IsPublished)
+                .CountAsync();
+
             return new EnrollmentResponse(
                 enrollment.Id,
                 enrollment.AccountId,
@@ -79,7 +86,9 @@ namespace Microlearning.Areas.Enrollment.Services
                 course.ThumbnailUrl,
                 enrollment.Status,
                 enrollment.EnrolledAt,
-                0
+                0,
+                0,
+                newTotalLessons
             );
         }
 
@@ -108,7 +117,7 @@ namespace Microlearning.Areas.Enrollment.Services
 
             var completedCounts = await _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && courseIds.Contains(p.Lesson!.Subject!.CourseId))
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && courseIds.Contains(p.Lesson!.Subject!.CourseId))
                 .GroupBy(p => p.Lesson!.Subject!.CourseId)
                 .Select(g => new { CourseId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.CourseId, x => x.Count);
@@ -127,7 +136,9 @@ namespace Microlearning.Areas.Enrollment.Services
                     e.Course?.ThumbnailUrl,
                     e.Status,
                     e.EnrolledAt,
-                    progress
+                    progress,
+                    completed,
+                    total
                 );
             }).ToList();
         }
