@@ -80,17 +80,17 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     });
   };
 
+  // Số lượng câu hỏi đã được trả lời
+  const answeredCount = Object.keys(selectedAnswers).filter(
+    (k) => (selectedAnswers[Number(k)] || []).length > 0
+  ).length;
+
   const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
     if (!quiz || quiz.questions.length === 0 || submitting) return;
-
-    // Kiểm tra học viên đã chọn đủ câu hỏi chưa
-    const answeredCount = Object.keys(selectedAnswers).filter(
-      (k) => (selectedAnswers[Number(k)] || []).length > 0
-    ).length;
 
     // Chặn hoàn toàn trường hợp nộp giấy trắng (chưa chọn câu nào)
     if (answeredCount === 0) {
@@ -146,6 +146,12 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
       e.preventDefault();
       e.stopPropagation();
     }
+
+    // Xác nhận làm lại đề thi từ đầu, tách biệt hoàn toàn với hành vi nộp bài
+    if (!confirm('Bạn có chắc chắn muốn làm lại bài thi này không? Toàn bộ câu trả lời sẽ được làm mới.')) {
+      return;
+    }
+
     setAttemptResult(null);
     setSelectedAnswers({});
     setNoticeMessage(null);
@@ -401,7 +407,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
               <span>
                 Đã chọn:{' '}
                 <strong className="text-white">
-                  {Object.keys(selectedAnswers).filter((k) => (selectedAnswers[Number(k)] || []).length > 0).length}
+                  {answeredCount}
                 </strong>
                 /{quiz.questions.length} câu
               </span>
@@ -427,9 +433,10 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
               <button
                 key="btn-submit-quiz"
                 type="button"
-                disabled={submitting}
+                disabled={submitting || answeredCount === 0}
                 onClick={handleSubmit}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95"
+                title={answeredCount === 0 ? 'Vui lòng chọn câu trả lời trước khi nộp bài' : 'Nộp bài để chấm điểm'}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95"
               >
                 {submitting ? (
                   <>
