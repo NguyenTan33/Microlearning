@@ -30,19 +30,15 @@ import {
   Paperclip,
   Check,
   File,
-  GraduationCap,
-  Download,
-  Eye,
-  FolderGit2,
 } from 'lucide-react';
 import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
 import { ttsApi } from '../../services/ttsApi';
-import type { Course, CourseDetail, Lesson, CourseAttachment } from '../../types/catalog.types';
+import type { Course, Lesson } from '../../types/catalog.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 
 interface NotebookHubViewProps {
-  currentCourse?: CourseDetail | Course;
+  currentCourse?: Course;
   activeLesson?: Lesson;
   onBackToWorkspace?: () => void;
   currentUser?: UserTokenPayload | null;
@@ -90,31 +86,10 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     askQuestion,
     createPodcast,
     removePodcast,
-    selectedSubjectId,
-    setSelectedSubjectId,
-    selectedLessonId,
-    setSelectedLessonId,
-    courseAttachments,
-    isLoadingAttachments,
-    loadCourseAttachments,
-    syncAllCourseMaterialsToNotebook,
   } = useNotebook({
     initialCourseName: currentCourse?.title,
     activeLesson,
     currentCourse,
-  });
-
-  // TÍNH TOÁN NGỮ CẢNH KHÓA HỌC / MÔN HỌC / BÀI HỌC TỪ CSDL
-  const detailedCourse = currentCourse as CourseDetail | undefined;
-  const subjects = detailedCourse?.subjects || [];
-  const currentSubject = subjects.find((s) => s.id === selectedSubjectId);
-  const currentSubjectLessons = currentSubject?.lessons || (selectedSubjectId ? [] : subjects.flatMap((s) => s.lessons || []));
-  const currentSelectedLesson = currentSubjectLessons.find((l) => l.id === selectedLessonId) || (activeLesson?.id === selectedLessonId ? activeLesson : null);
-
-  const filteredAttachments = courseAttachments.filter((att) => {
-    if (selectedLessonId) return att.lessonId === selectedLessonId;
-    if (selectedSubjectId) return att.subjectId === selectedSubjectId;
-    return true;
   });
 
   // States cho Modals & Forms
@@ -449,25 +424,11 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   };
 
 
-  const dynamicQuickPrompts = selectedLessonId
-    ? [
-        `Tóm tắt các điểm cốt lõi trong bài "${currentSelectedLesson?.title || ''}"`,
-        'Giải thích các khái niệm trong bài bằng ví dụ dễ hiểu',
-        'Nội dung tài liệu đính kèm (PDF/Word) của bài này gồm những gì?',
-        'Tạo 3 câu hỏi trắc nghiệm ôn tập nhanh cho bài học này',
-      ]
-    : selectedSubjectId
-    ? [
-        `Tóm tắt kiến thức trọng tâm của môn "${currentSubject?.title || ''}"`,
-        'So sánh và liên kết các bài học trong môn này',
-        'Tổng hợp các lưu ý quan trọng để chuẩn bị thi môn này',
-        'Tạo đề ôn tập gồm 5 câu trắc nghiệm cho môn học này',
-      ]
-    : [
-        `Tổng quan lộ trình học và mục tiêu của khóa "${currentCourse?.title || ''}"`,
-        'Các khái niệm và kỹ năng cốt lõi học viên sẽ đạt được sau khóa này',
-        'Tóm tắt các bài học và tài liệu có trong khóa học này',
-      ];
+  const QUICK_PROMPTS = [
+    'Tóm tắt các điểm quan trọng nhất trong bài học này',
+    'Giải thích các khái niệm cốt lõi bằng ví dụ dễ hiểu',
+    'Tạo 3 câu hỏi trắc nghiệm ôn tập kèm đáp án',
+  ];
 
   return (
     <div className="flex-1 flex flex-col bg-[#070b18] text-slate-100 min-h-0">
@@ -669,261 +630,59 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
             </div>
           )}
 
-          {/* =========================================================================
-              SCOPE & CONTEXT SELECTOR BAR (BỘ CHỌN PHẠM VI ÔN TẬP & TÀI LIỆU CSDL)
-          ========================================================================= */}
-          <div className="mb-6 p-3.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-indigo-500/20 shadow-xl backdrop-blur-md">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-              {/* Cụm thông tin Khóa học & Bộ chọn Môn/Bài */}
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-950/70 border border-indigo-500/30 text-indigo-300 text-xs font-bold">
-                  <GraduationCap className="w-4 h-4 text-indigo-400 shrink-0" />
-                  <span className="truncate max-w-[160px] sm:max-w-[220px]" title={currentCourse?.title}>
-                    {currentCourse?.title || 'Khóa học'}
-                  </span>
-                </div>
-
-                {/* Dropdown Môn học */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-semibold text-slate-400 hidden sm:inline">Môn:</span>
-                  <select
-                    value={selectedSubjectId || ''}
-                    onChange={(e) => {
-                      const val = e.target.value ? Number(e.target.value) : null;
-                      setSelectedSubjectId(val);
-                      setSelectedLessonId(null);
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-white/10 text-xs font-medium text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer max-w-[180px] truncate"
-                  >
-                    <option value="">🌐 Tất cả môn học</option>
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        📚 {s.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Dropdown Bài học */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-semibold text-slate-400 hidden sm:inline">Bài:</span>
-                  <select
-                    value={selectedLessonId || ''}
-                    onChange={(e) => {
-                      const val = e.target.value ? Number(e.target.value) : null;
-                      setSelectedLessonId(val);
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-white/10 text-xs font-medium text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-400 cursor-pointer max-w-[200px] truncate"
-                  >
-                    <option value="">📖 Tất cả bài giảng</option>
-                    {currentSubjectLessons.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Cụm thông tin tài liệu & nút 1 chạm đồng bộ */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="px-3 py-1.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>
-                    {filteredAttachments.length} tài liệu ({filteredAttachments.filter((a) => a.fileType === 'PDF').length} PDF, {filteredAttachments.filter((a) => a.fileType === 'WORD').length} Word)
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => syncAllCourseMaterialsToNotebook()}
-                  disabled={isSyncing}
-                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 shadow-md shadow-indigo-600/20 cursor-pointer"
-                  title="Tự động nạp toàn bộ bài học và tệp tài liệu đính kèm từ CSDL vào Sổ tay AI"
-                >
-                  <Sparkles className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>{isSyncing ? 'Đang nạp...' : '⚡ Nạp tất cả tài liệu vào AI'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* =====================================================================
               VIEW 1: SOURCES (QUẢN LÝ TÀI LIỆU & NGUỒN TRI THỨC)
           ===================================================================== */}
           {currentTab === 'SOURCES' && (
-            <div className="space-y-8">
-              {/* PHÂN VÙNG 1: TÀI LIỆU BÀI GIẢNG ĐÍNH KÈM TỪ CSDL (PDF / WORD) */}
-              <div className="space-y-3.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      <FolderGit2 className="w-4 h-4 text-cyan-400" />
-                      <span>Tài Liệu Bài Giảng Đính Kèm từ CSDL</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/30 text-cyan-300 font-mono">
-                        {filteredAttachments.length} tệp
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {selectedLessonId
-                        ? `Tài liệu đính kèm của bài học "${currentSelectedLesson?.title || ''}"`
-                        : selectedSubjectId
-                        ? `Toàn bộ tài liệu đính kèm của môn học "${currentSubject?.title || ''}"`
-                        : `Toàn bộ tài liệu đính kèm trong khóa học "${currentCourse?.title || ''}"`}
-                    </p>
-                  </div>
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-emerald-400" />
+                    Quản Lý Nguồn Tri Thức (Sources)
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Toàn bộ tài liệu, slide, văn bản bài giảng đã được nạp để AI học và trích dẫn.
+                  </p>
                 </div>
 
-                {filteredAttachments.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl bg-slate-900/40 border border-white/5 text-slate-500">
-                    <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs font-semibold">
-                      Chưa có tệp tài liệu PDF/Word nào được đính kèm cho phạm vi đang chọn.
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Giảng viên có thể tải tài liệu lên trong tab "Tài liệu" của từng bài giảng.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {filteredAttachments.map((att) => {
-                      const isPdf = att.fileType === 'PDF';
-                      const sizeKb = (att.fileSizeBytes / 1024).toFixed(1);
-                      return (
-                        <div
-                          key={att.id}
-                          className="p-4 rounded-2xl bg-slate-900/70 border border-white/10 hover:border-cyan-500/40 transition-all flex flex-col justify-between group shadow-sm"
-                        >
-                          <div className="space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0 ${
-                                  isPdf
-                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                }`}
-                              >
-                                {att.fileType}
-                              </span>
+                {isTeacherOrAdmin && (
+                  <div className="flex items-center gap-2">
+                    {activeLesson && (
+                      <button
+                        onClick={() => handleQuickSyncCurrentLesson()}
+                        disabled={isSyncing}
+                        className="px-3 py-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                        title="Nạp bài giảng đang xem vào nguồn tài liệu"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>{isSyncing ? 'Đang nạp...' : 'Nạp bài giảng hiện tại'}</span>
+                      </button>
+                    )}
 
-                              <span className="text-[10px] text-emerald-400 font-medium bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                                Sẵn sàng cho AI
-                              </span>
-                            </div>
-
-                            <h3
-                              className="text-xs font-bold text-white line-clamp-2"
-                              title={att.originalFileName}
-                            >
-                              {att.originalFileName}
-                            </h3>
-
-                            <div className="text-[11px] text-slate-400 space-y-0.5">
-                              {att.lessonTitle && (
-                                <p className="truncate">
-                                  <span className="text-slate-500">Bài:</span> {att.lessonTitle}
-                                </p>
-                              )}
-                              {att.subjectTitle && (
-                                <p className="truncate">
-                                  <span className="text-slate-500">Môn:</span> {att.subjectTitle}
-                                </p>
-                              )}
-                              <p className="font-mono text-[10px] text-slate-500">
-                                Dung lượng: {sizeKb} KB
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/5">
-                            <a
-                              href={att.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Xem tệp</span>
-                            </a>
-
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await notebookService.addAttachmentSource(
-                                    activeNotebook?.id,
-                                    att,
-                                    currentCourse?.title
-                                  );
-                                  await refreshAll();
-                                  alert(`Đã nạp tài liệu "${att.originalFileName}" vào Sổ tay AI thành công!`);
-                                } catch {
-                                  alert('Không thể nạp tài liệu. Vui lòng thử lại!');
-                                }
-                              }}
-                              className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
-                              title="Nạp riêng tài liệu này vào Sổ tay AI"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Nạp vào AI</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <button
+                      onClick={() => openAddSourceModal(undefined, 'UPLOAD')}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-emerald-600/30"
+                    >
+                      <FileUp className="w-4 h-4" />
+                      <span>Thêm tài liệu (Tải file / Chữ)</span>
+                    </button>
                   </div>
                 )}
               </div>
 
-              {/* PHÂN VÙNG 2: NGUỒN TRI THỨC ĐÃ NẠP TRONG SỔ TAY AI (SOURCES) */}
-              <div className="space-y-4 pt-4 border-t border-white/10">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-emerald-400" />
-                      <span>Nguồn Tri Thức Đã Nạp Trong Sổ Tay AI</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-500/30 text-emerald-300 font-mono">
-                        {allSources.length} nguồn
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Toàn bộ nội dung văn bản, bài giảng và tài liệu AI đang trực tiếp đọc và trích dẫn.
-                    </p>
-                  </div>
-
-                  {isTeacherOrAdmin && (
-                    <div className="flex items-center gap-2">
-                      {activeLesson && (
-                        <button
-                          onClick={() => handleQuickSyncCurrentLesson()}
-                          disabled={isSyncing}
-                          className="px-3 py-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                          title="Nạp bài giảng đang xem vào nguồn tài liệu"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>{isSyncing ? 'Đang nạp...' : 'Nạp bài giảng hiện tại'}</span>
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => openAddSourceModal(undefined, 'UPLOAD')}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-emerald-600/30 cursor-pointer"
-                      >
-                        <FileUp className="w-4 h-4" />
-                        <span>Thêm tài liệu (Tải file / Chữ)</span>
-                      </button>
-                    </div>
-                  )}
+              {/* Grid danh sách Sources */}
+              {allSources.length === 0 ? (
+                <div className="p-12 text-center text-slate-500">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">Chưa có nguồn tài liệu nào</p>
+                  <p className="text-xs mt-1">
+                    {isTeacherOrAdmin
+                      ? 'Bấm "Thêm tài liệu" để tải file PDF, Word, TXT hoặc nạp bài giảng cho AI.'
+                      : 'Các tài liệu học tập sẽ được giảng viên cập nhật tại đây.'}
+                  </p>
                 </div>
-
-                {/* Grid danh sách Sources */}
-                {allSources.length === 0 ? (
-                  <div className="p-8 text-center rounded-2xl bg-slate-900/40 border border-white/5 text-slate-500">
-                    <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs font-semibold">Chưa có nguồn tri thức nào trong Sổ tay này.</p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Bấm nút "⚡ Nạp tất cả tài liệu vào AI" ở trên để tự động đưa toàn bộ bài giảng và tệp đính kèm vào Sổ tay.
-                    </p>
-                  </div>
-                ) : (
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                   {allSources.map((source) => {
                     const fileName = source.asset?.file_path ? source.asset.file_path.split('/').pop() : null;
@@ -995,8 +754,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
 
           {/* =====================================================================
               VIEW 2: NOTEBOOKS (QUẢN LÝ SỔ TAY BÀI HỌC)
@@ -1380,33 +1138,6 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               )}
 
-              {/* Thanh Thông Báo Ngữ Cảnh Đang Hỏi (Active Scope & Materials Strip) */}
-              <div className="mb-3 px-4 py-2.5 rounded-xl bg-indigo-950/40 border border-indigo-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span className="text-slate-400">Ngữ cảnh AI:</span>
-                  <span className="font-bold text-white">
-                    {selectedLessonId
-                      ? `Bài: ${currentSelectedLesson?.title || 'Đã chọn'}`
-                      : selectedSubjectId
-                      ? `Môn: ${currentSubject?.title || 'Đã chọn'}`
-                      : `Khóa học: ${currentCourse?.title || 'Toàn khóa'}`}
-                  </span>
-                  {selectedSubjectId && selectedLessonId && (
-                    <span className="text-[11px] text-indigo-300 font-medium">
-                      (Thuộc môn {currentSubject?.title})
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 font-mono">
-                    <FileText className="w-3 h-3" />
-                    {filteredAttachments.length} tài liệu đính kèm (PDF/Word)
-                  </span>
-                </div>
-              </div>
-
               {/* Khung Chat RAG với AI */}
               <div className="flex-1 flex flex-col bg-slate-900/40 rounded-2xl border border-white/10 min-h-0">
                 {/* Tin nhắn */}
@@ -1424,7 +1155,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       </p>
 
                       <div className="w-full space-y-2">
-                        {dynamicQuickPrompts.map((p, idx) => (
+                        {QUICK_PROMPTS.map((p, idx) => (
                           <button
                             key={idx}
                             onClick={() => {
@@ -1548,13 +1279,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                     type="text"
                     value={askQuestionInput}
                     onChange={(e) => setAskQuestionInput(e.target.value)}
-                    placeholder={
-                      selectedLessonId
-                        ? `Hỏi bất kỳ điều gì về bài học "${currentSelectedLesson?.title || ''}"...`
-                        : selectedSubjectId
-                        ? `Đặt câu hỏi ôn tập về môn học "${currentSubject?.title || ''}"...`
-                        : `Hỏi kiến thức về khóa học "${currentCourse?.title || ''}"...`
-                    }
+                    placeholder="Hỏi bất kỳ điều gì về bài học này..."
                     disabled={!activeNotebook || isAsking}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950/90 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
                   />

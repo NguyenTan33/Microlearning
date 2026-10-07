@@ -28,12 +28,6 @@ export interface LessonAttachment {
   createdAt: string;
 }
 
-export interface CourseAttachment extends LessonAttachment {
-  lessonTitle?: string;
-  subjectId?: number;
-  subjectTitle?: string;
-}
-
 export interface Subject {
   id: number;
   courseId: number;
