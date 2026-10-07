@@ -176,11 +176,15 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     let isCancelled = false;
 
     initialSeekDoneRef.current = false;
+    pendingSeekTimeRef.current = null;
     setIsPlaying(false);
     setVideoError(null);
     setAntiCheatWarning(null);
     watchedIntervalsRef.current = [];
     segmentStartRef.current = null;
+    setCurrentTime(0);
+    setDuration(0);
+    lastSavedPercentRef.current = 0;
 
     const streamTargetId = lessonId || mediaId;
 
@@ -222,11 +226,17 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     progressApi
       .getLessonProgress(lessonId)
       .then((prog) => {
-        if (prog && prog.watchedSeconds > 0 && videoRef.current) {
-          lastSavedPercentRef.current = Number(prog.percent);
+        if (isCancelled) return;
+        const currentP = prog ? Number(prog.percent) || 0 : 0;
+        lastSavedPercentRef.current = currentP;
+        if (prog && prog.watchedSeconds > 2 && currentP < 90) {
+          pendingSeekTimeRef.current = prog.watchedSeconds;
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (isCancelled) return;
+        lastSavedPercentRef.current = 0;
+      });
 
     return () => {
       isCancelled = true;
@@ -240,6 +250,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const handleSaveProgress = useCallback(
     async (time: number, total: number, forceSave: boolean = false) => {
       if (total <= 0) return;
+      // Không tự ý lưu tiến độ khi video chưa được phát (tránh lưu đè khi vừa tải video hoặc vừa chuyển bài)
+      if (!isPlaying && !forceSave) return;
       const percent = Math.min(100, (time / total) * 100);
 
       // Ghi nhận đoạn đang xem liên tục vào intervals
@@ -577,20 +589,25 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                 if (dur > 0) setDuration(dur);
 
                 if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
-                  event.target.seekTo(pendingSeekTimeRef.current, true);
-                  setCurrentTime(pendingSeekTimeRef.current);
+                  const targetTime = Math.min(Math.max(0, dur - 2), pendingSeekTimeRef.current);
+                  event.target.seekTo(targetTime, true);
+                  setCurrentTime(targetTime);
                   event.target.playVideo();
                   setIsPlaying(true);
-                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
+                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(targetTime)}`);
                   setTimeout(() => setSaveNotice(null), 3000);
                   pendingSeekTimeRef.current = null;
                   initialSeekDoneRef.current = true;
-                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0) {
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0 && lastSavedPercentRef.current < 90) {
                   const resumeTime = (lastSavedPercentRef.current / 100) * dur;
-                  if (resumeTime > 2) {
+                  if (resumeTime > 2 && resumeTime < dur - 5) {
                     event.target.seekTo(resumeTime, true);
                     setCurrentTime(resumeTime);
                   }
+                  initialSeekDoneRef.current = true;
+                } else {
+                  event.target.seekTo(0, true);
+                  setCurrentTime(0);
                   initialSeekDoneRef.current = true;
                 }
               } catch {}
@@ -841,20 +858,26 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                 const dur = videoRef.current.duration || 0;
                 setDuration(dur);
                 if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
-                  videoRef.current.currentTime = pendingSeekTimeRef.current;
-                  setCurrentTime(pendingSeekTimeRef.current);
+                  const targetTime = Math.min(Math.max(0, dur - 2), pendingSeekTimeRef.current);
+                  videoRef.current.currentTime = targetTime;
+                  setCurrentTime(targetTime);
                   videoRef.current.play().catch(() => {});
                   setIsPlaying(true);
-                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(pendingSeekTimeRef.current)}`);
+                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(targetTime)}`);
                   setTimeout(() => setSaveNotice(null), 3000);
                   pendingSeekTimeRef.current = null;
                   initialSeekDoneRef.current = true;
-                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0) {
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0 && lastSavedPercentRef.current < 90) {
                   const resumeTime = (lastSavedPercentRef.current / 100) * dur;
-                  if (resumeTime > 2) {
+                  if (resumeTime > 2 && resumeTime < dur - 5) {
                     videoRef.current.currentTime = resumeTime;
                     setCurrentTime(resumeTime);
                   }
+                  initialSeekDoneRef.current = true;
+                } else {
+                  // Mặc định bài mới bắt đầu từ 0:00
+                  videoRef.current.currentTime = 0;
+                  setCurrentTime(0);
                   initialSeekDoneRef.current = true;
                 }
               }

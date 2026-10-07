@@ -125,8 +125,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState<boolean>(true);
 
-  // Trạng thái mở khóa & hiển thị bài kiểm tra trắc nghiệm (yêu cầu xem >= 60%)
-  const [lessonWatchedPercent, setLessonWatchedPercent] = useState<number>(0);
+  // Trạng thái tiến độ xem từng bài học độc lập (lessonId -> percent) để chống tràn tiến độ chéo
+  const [lessonWatchedMap, setLessonWatchedMap] = useState<Record<number, number>>({});
   const [isQuizOpen, setIsQuizOpen] = useState<boolean>(false);
 
   // Trạng thái Hiệu ứng Hoạt họa bay lên chúc mừng Streak
@@ -148,29 +148,34 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     setIsQuizOpen(false);
     if (activeLesson) {
-      const wasComp = completedLessonIds.includes(activeLesson.id);
+      const lessonId = activeLesson.id;
+      const wasComp = completedLessonIds.includes(lessonId);
       progressApi
-        .getLessonProgress(activeLesson.id)
+        .getLessonProgress(lessonId)
         .then((prog) => {
           const currentP = prog ? Number(prog.percent) || 0 : 0;
           const isComp = prog ? Boolean(prog.isCompleted) || wasComp : wasComp;
           lessonInitialStateRef.current = {
-            lessonId: activeLesson.id,
+            lessonId,
             initialPercent: currentP,
             wasCompleted: isComp,
           };
-          setLessonWatchedPercent(currentP);
+          setLessonWatchedMap((prev) => ({
+            ...prev,
+            [lessonId]: currentP,
+          }));
         })
         .catch(() => {
           lessonInitialStateRef.current = {
-            lessonId: activeLesson.id,
+            lessonId,
             initialPercent: 0,
             wasCompleted: wasComp,
           };
-          setLessonWatchedPercent(0);
+          setLessonWatchedMap((prev) => ({
+            ...prev,
+            [lessonId]: 0,
+          }));
         });
-    } else {
-      setLessonWatchedPercent(0);
     }
   }, [activeLesson?.id]);
 
@@ -313,7 +318,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           .getLessonProgress(targetLesson.id)
           .then((p) => {
             if (p) {
-              setLessonWatchedPercent(p.percent);
+              setLessonWatchedMap((prev) => ({
+                ...prev,
+                [targetLesson!.id]: p.percent,
+              }));
               if (p.isCompleted) {
                 setCompletedLessonIds((prev) => {
                   const merged = Array.from(new Set([...prev, targetLesson!.id]));
@@ -396,7 +404,6 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     setActiveLesson(lesson);
     setCurrentView('WORKSPACE');
     setIsMobileCurriculumOpen(false); // Đóng drawer trên mobile khi đã chọn bài
-    setLessonWatchedPercent(0);
     pushState({
       view: 'lesson',
       courseId: currentCourse?.id,
@@ -407,20 +414,27 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     progressApi
       .getLessonProgress(lesson.id)
       .then((p) => {
-        if (p) {
-          setLessonWatchedPercent(p.percent);
-          if (p.isCompleted) {
-            setCompletedLessonIds((prev) => {
-              const merged = Array.from(new Set([...prev, lesson.id]));
-              try {
-                localStorage.setItem(storageProgressKey, JSON.stringify(merged));
-              } catch {}
-              return merged;
-            });
-          }
+        const currentP = p ? Number(p.percent) || 0 : 0;
+        setLessonWatchedMap((prev) => ({
+          ...prev,
+          [lesson.id]: currentP,
+        }));
+        if (p && p.isCompleted) {
+          setCompletedLessonIds((prev) => {
+            const merged = Array.from(new Set([...prev, lesson.id]));
+            try {
+              localStorage.setItem(storageProgressKey, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setLessonWatchedMap((prev) => ({
+          ...prev,
+          [lesson.id]: 0,
+        }));
+      });
   };
 
   // Chọn khóa học từ danh mục
@@ -492,7 +506,11 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       } catch {}
       return merged;
     });
-    setLessonWatchedPercent((prev) => Math.max(prev, 100));
+
+    setLessonWatchedMap((prev) => ({
+      ...prev,
+      [activeLesson.id]: 100,
+    }));
 
     // 1. Lưu tiến độ hoàn thành bài học lên máy chủ
     try {
@@ -563,10 +581,21 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
   const effectiveLesson = activeLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
 
+  // Tiến độ xem video của bài giảng hiện tại (cách ly độc lập từng bài, chống tràn tiến độ)
+  const currentLessonWatchedPercent = useMemo(() => {
+    if (!effectiveLesson) return 0;
+    if (completedLessonIds.includes(effectiveLesson.id)) return 100;
+    const mapped = lessonWatchedMap[effectiveLesson.id];
+    if (typeof mapped === 'number') {
+      return Math.min(100, Math.max(0, mapped));
+    }
+    return 0;
+  }, [effectiveLesson, completedLessonIds, lessonWatchedMap]);
+
   // Trạng thái mở khóa trắc nghiệm: Học viên đã hoàn thành bài hoặc đã xem >= 60%
   const isQuizUnlocked = Boolean(
     effectiveLesson &&
-      (completedLessonIds.includes(effectiveLesson.id) || lessonWatchedPercent >= 60)
+      (completedLessonIds.includes(effectiveLesson.id) || currentLessonWatchedPercent >= 60)
   );
 
   const flatLessons: Lesson[] = useMemo(() => {
@@ -1128,6 +1157,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 {/* 1. Trình phát Video trực tuyến thông minh */}
                 <div className="space-y-3">
                   <VideoLessonPlayer
+                    key={effectiveLesson.id}
                     mediaId={effectiveLesson.id}
                     lessonId={effectiveLesson.id}
                     lessonTitle={effectiveLesson.title}
@@ -1142,7 +1172,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                       }
                     }}
                     onWatchedPercentChange={(p) =>
-                      setLessonWatchedPercent((prev) => Math.max(prev, p))
+                      setLessonWatchedMap((prev) => ({
+                        ...prev,
+                        [effectiveLesson.id]: Math.min(100, Math.max(prev[effectiveLesson.id] || 0, Math.round(p))),
+                      }))
                     }
                   />
 
@@ -1221,48 +1254,73 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 {/* 3. Đề kiểm tra đánh giá trắc nghiệm trực tuyến (Mở khóa >= 60%) */}
                 <div className="rounded-2xl bg-[#090D1A] border border-white/10 shadow-xl overflow-hidden transition-all">
                   {/* Thanh Header điều khiển Mở / Đóng Quizz */}
-                  <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-[#0B1024] to-slate-950 border-b border-white/5">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-[#0B1024] to-slate-950 border-b border-white/5">
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0">
                           <BookOpen className="w-4 h-4" />
                         </span>
-                        <h3 className="text-sm sm:text-base font-extrabold text-white">
+                        <h3 className="text-sm sm:text-base font-extrabold text-white truncate">
                           Bài kiểm tra trắc nghiệm & Đánh giá
                         </h3>
-                        {isQuizUnlocked && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">
-                            Đã mở khóa
+                        {isQuizUnlocked ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 shadow-sm">
+                            <CheckCircle className="w-3 h-3 text-emerald-400" />
+                            Đã mở khóa ({Math.round(currentLessonWatchedPercent)}%)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-950/80 border border-amber-500/40 text-amber-300 shadow-sm">
+                            <Lock className="w-3 h-3 text-amber-400" />
+                            Chưa mở khóa ({Math.round(currentLessonWatchedPercent)}% / 60%)
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400">
+
+                      {/* Thanh hiển thị tiến độ thực tế của bài học */}
+                      <div className="space-y-1 max-w-md">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400 font-medium">Tiến độ bài học:</span>
+                          <span className="font-mono font-bold text-slate-200">
+                            {Math.round(currentLessonWatchedPercent)}%{' '}
+                            <span className="text-slate-500 text-[10px]">/ 60% mở khóa</span>
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-900 border border-white/10 rounded-full overflow-hidden p-0.5 relative">
+                          {/* Vạch mốc chỉ định 60% */}
+                          <div
+                            className="absolute top-0 bottom-0 left-[60%] w-0.5 bg-amber-400/90 z-10"
+                            title="Mốc tối thiểu: 60%"
+                          />
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              isQuizUnlocked
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                : 'bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-500'
+                            }`}
+                            style={{ width: `${Math.min(100, (currentLessonWatchedPercent / 60) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-400 leading-relaxed">
                         {isQuizUnlocked
-                          ? 'Bạn đã xem trên 60% thời lượng bài giảng và đủ điều kiện làm bài trắc nghiệm.'
-                          : 'Yêu cầu: Học viên cần xem tối thiểu 60% thời lượng video để mở khóa bài trắc nghiệm.'}
+                          ? `🎉 Bạn đã xem ${Math.round(currentLessonWatchedPercent)}% thời lượng bài giảng (đáp ứng điều kiện ≥ 60%). Bạn có thể bắt đầu làm bài trắc nghiệm ngay!`
+                          : `⚠️ Bạn mới xem ${Math.round(currentLessonWatchedPercent)}% bài giảng này. Cần xem thêm tối thiểu ${Math.max(0, 60 - Math.round(currentLessonWatchedPercent))}% thời lượng video để mở khóa bài kiểm tra trắc nghiệm.`}
                       </p>
                     </div>
 
                     {/* Nút bấm làm bài trắc nghiệm */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0">
                       {!isQuizUnlocked ? (
-                        <div className="flex flex-col items-end gap-1.5 w-full sm:w-auto">
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 opacity-60 cursor-not-allowed select-none shadow-inner"
-                            title="Bạn cần xem tối thiểu 60% video bài giảng để mở khóa bài kiểm tra"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Làm bài kiểm tra ({Math.round(lessonWatchedPercent)}% / 60%)</span>
-                          </button>
-                          <div className="w-full sm:w-36 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-amber-500 to-indigo-500 transition-all duration-300"
-                              style={{ width: `${Math.min(100, (lessonWatchedPercent / 60) * 100)}%` }}
-                            />
-                          </div>
-                        </div>
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900/80 border border-white/10 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-inner opacity-75"
+                          title={`Cần xem tối thiểu 60% video để mở khóa. Hiện tại: ${Math.round(currentLessonWatchedPercent)}%`}
+                        >
+                          <Lock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Chưa đủ điều kiện ({Math.round(currentLessonWatchedPercent)}% / 60%)</span>
+                        </button>
                       ) : (
                         <button
                           type="button"
