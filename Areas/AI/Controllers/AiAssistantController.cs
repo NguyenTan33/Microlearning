@@ -81,17 +81,17 @@ namespace Microlearning.Areas.AI.Controllers
 
                         sourceRef = $"Khóa học: {courseTitle} | Môn học: {subjectTitle} | Bài học: {lesson.Title}";
 
-                        contextBuilder.AppendLine("[THÔNG TIN BÀI HỌC TỪCSDL]");
+                        contextBuilder.AppendLine("[THÔNG TIN BÀI HỌC TỪ CSDL]");
                         contextBuilder.AppendLine($"Tên bài học: {lesson.Title}");
                         contextBuilder.AppendLine($"Môn học: {subjectTitle}");
                         contextBuilder.AppendLine($"Khóa học: {courseTitle}");
                         contextBuilder.AppendLine($"Thời lượng: {durationMin} phút");
                         if (!string.IsNullOrWhiteSpace(lesson.Description))
                         {
-                            contextBuilder.AppendLine($"Nội dung bài học: {lesson.Description}");
+                            contextBuilder.AppendLine($"Nội dung tóm tắt bài học: {lesson.Description}");
                         }
 
-                        // Lấy thêm các bài học cùng môn để có context rộng hơn
+                        // Lấy các bài học cùng môn để có context mở rộng
                         if (lesson.Subject != null)
                         {
                             var siblingLessons = await _context.Lessons
@@ -104,15 +104,60 @@ namespace Microlearning.Areas.AI.Controllers
 
                             if (siblingLessons.Count > 0)
                             {
-                                contextBuilder.AppendLine($"Các bài học khác trong môn: {string.Join(", ", siblingLessons)}");
+                                contextBuilder.AppendLine($"Các bài học liên quan trong môn: {string.Join(", ", siblingLessons)}");
                             }
                         }
 
-                        // Thêm tên file tài liệu đính kèm nếu có
+                        // Liệt kê tài liệu đính kèm (PDF/Word) của bài học này
                         if (lesson.Attachments.Count > 0)
                         {
-                            var attNames = lesson.Attachments.Select(a => a.OriginalFileName).Take(3);
-                            contextBuilder.AppendLine($"Tài liệu đính kèm: {string.Join(", ", attNames)}");
+                            contextBuilder.AppendLine("Tài liệu bài giảng đính kèm (PDF/Word):");
+                            foreach (var att in lesson.Attachments)
+                            {
+                                var sizeKb = att.FileSizeBytes > 0 ? $" ({att.FileSizeBytes / 1024} KB)" : "";
+                                contextBuilder.AppendLine($"- Tệp: {att.OriginalFileName} [{att.FileType}]{sizeKb} (Đường dẫn: {att.FileUrl})");
+                            }
+                        }
+                    }
+                }
+                else if (request.SubjectId.HasValue && request.SubjectId.Value > 0)
+                {
+                    var subject = await _context.Subjects
+                        .AsNoTracking()
+                        .Include(s => s.Course)
+                        .Include(s => s.Lessons)
+                            .ThenInclude(l => l.Attachments)
+                        .FirstOrDefaultAsync(s => s.Id == request.SubjectId.Value, cancellationToken);
+
+                    if (subject != null)
+                    {
+                        var courseTitle = subject.Course?.Title ?? "Chưa rõ khóa học";
+                        sourceRef = $"Khóa học: {courseTitle} | Môn học: {subject.Title}";
+
+                        contextBuilder.AppendLine("[THÔNG TIN MÔN HỌC TỪ CSDL]");
+                        contextBuilder.AppendLine($"Tên môn học: {subject.Title}");
+                        contextBuilder.AppendLine($"Thuộc khóa học: {courseTitle}");
+                        if (!string.IsNullOrWhiteSpace(subject.Description))
+                        {
+                            contextBuilder.AppendLine($"Mô tả môn học: {subject.Description}");
+                        }
+
+                        var publishedLessons = subject.Lessons.Where(l => l.IsPublished).OrderBy(l => l.SortOrder).ToList();
+                        contextBuilder.AppendLine($"Môn học gồm {publishedLessons.Count} bài giảng và tài liệu sau:");
+
+                        foreach (var l in publishedLessons)
+                        {
+                            var durMin = l.DurationSeconds / 60;
+                            contextBuilder.AppendLine($"• Bài học: {l.Title} ({durMin} phút)");
+                            if (!string.IsNullOrWhiteSpace(l.Description))
+                            {
+                                contextBuilder.AppendLine($"  Nội dung: {l.Description}");
+                            }
+                            if (l.Attachments.Count > 0)
+                            {
+                                var attDetails = l.Attachments.Select(a => $"{a.OriginalFileName} [{a.FileType}]");
+                                contextBuilder.AppendLine($"  Tài liệu đính kèm: {string.Join(", ", attDetails)}");
+                            }
                         }
                     }
                 }
@@ -122,6 +167,7 @@ namespace Microlearning.Areas.AI.Controllers
                         .AsNoTracking()
                         .Include(c => c.Subjects)
                             .ThenInclude(s => s.Lessons)
+                                .ThenInclude(l => l.Attachments)
                         .FirstOrDefaultAsync(c => c.Id == request.CourseId.Value, cancellationToken);
 
                     if (course != null)
@@ -134,16 +180,20 @@ namespace Microlearning.Areas.AI.Controllers
                             contextBuilder.AppendLine($"Mô tả khóa học: {course.Description}");
                         }
 
-                        // Liệt kê cấu trúc môn học và bài học
-                        foreach (var subject in course.Subjects.Take(5))
+                        // Liệt kê cấu trúc môn học, bài học và tài liệu
+                        foreach (var subject in course.Subjects.OrderBy(s => s.SortOrder).Take(6))
                         {
                             contextBuilder.AppendLine($"Môn học: {subject.Title}");
-                            var lessonTitles = subject.Lessons
+                            var publishedLessons = subject.Lessons
                                 .Where(l => l.IsPublished)
                                 .OrderBy(l => l.SortOrder)
-                                .Take(8)
-                                .Select(l => l.Title);
-                            contextBuilder.AppendLine($"  Bài học: {string.Join(" | ", lessonTitles)}");
+                                .ToList();
+
+                            foreach (var l in publishedLessons.Take(8))
+                            {
+                                var attInfo = l.Attachments.Count > 0 ? $" ({l.Attachments.Count} tệp đính kèm)" : "";
+                                contextBuilder.AppendLine($"  • Bài: {l.Title}{attInfo}");
+                            }
                         }
                     }
                 }
