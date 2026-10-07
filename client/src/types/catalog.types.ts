@@ -111,6 +111,8 @@ export interface Enrollment {
   status: number;
   enrolledAt: string;
   overallProgressPercent: number;
+  completedLessons?: number;
+  totalLessons?: number;
 }
 
 export interface LessonProgress {

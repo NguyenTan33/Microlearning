@@ -109,7 +109,13 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
 
   const getEnrollmentProgress = (courseId: number) => {
     const item = enrollments.find((e) => e.courseId === courseId);
-    return item ? Number(item.overallProgressPercent) : 0;
+    if (!item) return 0;
+    const serverPct = Number(item.overallProgressPercent) || 0;
+    if (item.totalLessons && item.totalLessons > 0 && item.completedLessons !== undefined) {
+      const clientPct = Math.min(100, Math.round((item.completedLessons / item.totalLessons) * 100));
+      return Math.max(serverPct, clientPct);
+    }
+    return serverPct;
   };
 
   const filteredCourses = courses.filter((c) => {
