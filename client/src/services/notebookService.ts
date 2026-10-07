@@ -675,19 +675,55 @@ export const notebookService = {
   // =========================================================================
 
   /**
+   * Nạp tự động tệp đính kèm bài học (PDF/Word) từ CSDL vào danh sách Sources của Notebook
+   */
+  async addAttachmentSource(
+    notebookId: string | undefined,
+    attachment: import('../types/catalog.types').CourseAttachment,
+    courseTitle?: string
+  ): Promise<NotebookSource> {
+    const title = `[Tài liệu ${attachment.fileType}] ${attachment.originalFileName}`;
+    const content = [
+      `TÀI LIỆU BÀI GIẢNG ĐÍNH KÈM`,
+      `Tên tệp: ${attachment.originalFileName}`,
+      `Định dạng: ${attachment.fileType}`,
+      `Dung lượng: ${(attachment.fileSizeBytes / 1024).toFixed(1)} KB`,
+      attachment.lessonTitle ? `Bài học: ${attachment.lessonTitle} (ID: ${attachment.lessonId})` : '',
+      attachment.subjectTitle ? `Môn học: ${attachment.subjectTitle}` : '',
+      courseTitle ? `Khóa học: ${courseTitle}` : '',
+      `Đường dẫn tải tài liệu: ${attachment.fileUrl}`,
+      `Ngày tạo: ${attachment.createdAt}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return this.addLessonSource(
+      notebookId,
+      title,
+      content,
+      attachment.lessonId,
+      undefined,
+      attachment.lessonTitle,
+      courseTitle
+    );
+  },
+
+  /**
    * Hỏi đáp AI với context bài học THỰC TẾ từ database
    * @param notebookId - ID notebook đang dùng
    * @param question - Câu hỏi của học viên
    * @param lessonId - ID bài học thật từ SQL (truyền vào để AI lấy ngữ cảnh)
    * @param courseId - ID khóa học thật từ SQL
    * @param history - Lịch sử hội thoại trước đó để AI duy trì mạch trò chuyện
+   * @param subjectId - ID môn học thật từ SQL
    */
   async askQuestion(
     notebookId: string,
     question: string,
     lessonId?: number,
     courseId?: number,
-    history?: Array<{ role: 'user' | 'assistant'; text: string }>
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>,
+    subjectId?: number
   ): Promise<string> {
     // Lấy context từ local sources đã cache
     const localSources = notebookId
@@ -708,6 +744,7 @@ export const notebookService = {
     try {
       const payload: Record<string, unknown> = { question };
       if (lessonId && lessonId > 0) payload.lessonId = lessonId;
+      if (subjectId && subjectId > 0) payload.subjectId = subjectId;
       if (courseId && courseId > 0) payload.courseId = courseId;
       if (localContextText) payload.customContext = localContextText;
       if (history && history.length > 0) {
