@@ -14,6 +14,8 @@ namespace Microlearning.Areas.Enrollment.DTOs
         string? CourseThumbnail,
         EnrollmentStatus Status,
         DateTime EnrolledAt,
-        decimal OverallProgressPercent = 0
+        decimal OverallProgressPercent = 0,
+        int CompletedLessons = 0,
+        int TotalLessons = 0
     );
 }
