@@ -1,4 +1,4 @@
-﻿using Microlearning.Areas.Media.Interfaces;
+using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microlearning.Model.Entities.Enums;
@@ -24,27 +24,37 @@ namespace Microlearning.Areas.Media.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("MediaJobBackgroundWorker đã khởi động và sẵn sàng quét tác vụ.");
+            _logger.LogInformation("MediaJobBackgroundWorker đã khởi động và sẵn sàng quét tác vụ (Chế độ Smart Polling).");
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                int processedCount = 0;
                 try
                 {
-                    await ProcessPendingJobsAsync(stoppingToken);
+                    processedCount = await ProcessPendingJobsAsync(stoppingToken);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Lỗi xảy ra trong chu kỳ quét của MediaJobBackgroundWorker.");
                 }
 
-                // Quét định kỳ mỗi 5 giây
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                if (processedCount > 0)
+                {
+                    // Nếu vừa xử lý xong tác vụ, quét tiếp chu kỳ ngắn (2 giây) để xả hàng đợi
+                    await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                }
+                else
+                {
+                    // Khi ứng dụng rảnh (không có tác vụ media nào chờ), ngủ sâu 5 phút 
+                    // hoặc thức dậy ngay tức thì (0ms) khi nhận tín hiệu từ MediaJobSignalNotifier.NotifyNewJob()
+                    await MediaJobSignalNotifier.WaitAsync(TimeSpan.FromMinutes(5), stoppingToken);
+                }
             }
 
             _logger.LogInformation("MediaJobBackgroundWorker đang dừng lại.");
         }
 
-        private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
+        private async Task<int> ProcessPendingJobsAsync(CancellationToken stoppingToken)
         {
             // Tạo Scope riêng biệt để lấy DbContext và Services Scoped
             using var scope = _scopeFactory.CreateScope();
@@ -63,7 +73,7 @@ namespace Microlearning.Areas.Media.Services
 
             if (!queuedJobs.Any())
             {
-                return;
+                return 0;
             }
 
             _logger.LogInformation("Phát hiện {Count} tác vụ MediaJob đang chờ xử lý.", queuedJobs.Count);
@@ -98,6 +108,8 @@ namespace Microlearning.Areas.Media.Services
 
                 await dbContext.SaveChangesAsync(stoppingToken);
             }
+
+            return queuedJobs.Count;
         }
 
         private async Task ExecuteJobLogicAsync(
