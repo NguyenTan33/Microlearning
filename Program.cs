@@ -123,6 +123,7 @@ builder.Services.AddRateLimiter(options =>
 
 // 5. Dependency Injections
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 
 // Auth Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
