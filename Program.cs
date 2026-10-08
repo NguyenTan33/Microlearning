@@ -262,6 +262,18 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
+// Tự động áp dụng Migration (Tạo toàn bộ bảng nếu là DB mới)
+try
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Không thể tự động áp dụng Migration khi khởi động: {Message}", ex.Message);
+}
+
 // Tự động nạp Roles (Admin, Teacher, Student) và tài khoản Admin/Teacher mặc định
 try
 {
