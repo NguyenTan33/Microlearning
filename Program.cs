@@ -262,36 +262,43 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
-// Tự động áp dụng Migration (Tạo toàn bộ bảng nếu là DB mới)
-try
+// Tự động khởi tạo CSDL (Migration & Seeding) với cơ chế Retry cho Azure SQL Serverless
+using (var scope = app.Services.CreateScope())
 {
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await dbContext.Database.MigrateAsync();
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Không thể tự động áp dụng Migration khi khởi động: {Message}", ex.Message);
-}
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var dbContext = services.GetRequiredService<ApplicationDbContext>();
 
-// Tự động nạp Roles (Admin, Teacher, Student) và tài khoản Admin/Teacher mặc định
-try
-{
-    await IdentityDbSeeder.SeedRolesAndAdminAsync(app.Services);
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Không thể tự động nạp vai trò và tài khoản quản trị khi khởi động: {Message}", ex.Message);
-}
+    int maxRetries = 5;
+    for (int retry = 1; retry <= maxRetries; retry++)
+    {
+        try
+        {
+            logger.LogInformation("Đang kết nối và khởi tạo CSDL Azure SQL (Lần thử {Retry}/{Max})...", retry, maxRetries);
 
-// Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
-try
-{
-    await CatalogDbSeeder.SeedAsync(app.Services);
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Không thể tự động nạp dữ liệu mẫu khi khởi động: {Message}", ex.Message);
+            // 1. Tự động tạo bảng & chạy Migration
+            await dbContext.Database.MigrateAsync();
+
+            // 2. Tự động nạp vai trò, tài khoản Admin/Teacher và dữ liệu mẫu
+            await IdentityDbSeeder.SeedRolesAndAdminAsync(services);
+            await CatalogDbSeeder.SeedAsync(services);
+
+            logger.LogInformation("Khởi tạo CSDL Azure SQL thành công!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Lần thử {Retry}/{Max} khởi tạo CSDL thất bại: {Message}", retry, maxRetries, ex.Message);
+            if (retry == maxRetries)
+            {
+                logger.LogError(ex, "Đã thử {Max} lần nhưng không thể khởi tạo CSDL Azure SQL.", maxRetries);
+            }
+            else
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5)); // Đợi 5s cho Azure SQL Serverless tỉnh dậy
+            }
+        }
+    }
 }
 
 app.Run();
