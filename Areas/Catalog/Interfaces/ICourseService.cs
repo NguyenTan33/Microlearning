@@ -10,5 +10,6 @@ namespace Microlearning.Areas.Catalog.Interfaces
         Task<CourseResponse> UpdateCourseAsync(int courseId, UpdateCourseRequest request);
         Task<bool> DeleteCourseAsync(int courseId);
         Task<bool> TogglePublishAsync(int courseId);
+        void InvalidateCache(int? courseId = null);
     }
 }
