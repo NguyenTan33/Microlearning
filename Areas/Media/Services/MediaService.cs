@@ -413,6 +413,9 @@ namespace Microlearning.Areas.Media.Services
             _dbContext.MediaJobs.Add(job);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            // Báo hiệu tín hiệu đánh thức BackgroundWorker tức thì (0ms)
+            MediaJobSignalNotifier.NotifyNewJob();
+
             return new MediaJobResponse
             {
                 JobId = job.Id,
