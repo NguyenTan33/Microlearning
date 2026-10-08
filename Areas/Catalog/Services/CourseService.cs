@@ -5,6 +5,7 @@ using Microlearning.Exceptions;
 using Microlearning.Model;
 using Microlearning.Model.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Microlearning.Areas.Catalog.Services
 {
@@ -13,21 +14,31 @@ namespace Microlearning.Areas.Catalog.Services
         private readonly ApplicationDbContext _dbContext;
         private readonly IHashService _hashService;
         private readonly IConfiguration _configuration;
+        private readonly IMemoryCache _cache;
 
         private string PasswordSecret => _configuration["CourseAccess:SecretKey"] ?? "Microlearning_Course_Secret_Salt_Key_2026!";
 
         public CourseService(
             ApplicationDbContext dbContext,
             IHashService hashService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IMemoryCache cache)
         {
             _dbContext = dbContext;
             _hashService = hashService;
             _configuration = configuration;
+            _cache = cache;
         }
 
         public async Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false)
         {
+            string cacheKey = $"courses_list_{includeUnpublished}";
+
+            if (_cache.TryGetValue(cacheKey, out List<CourseResponse>? cachedCourses) && cachedCourses != null)
+            {
+                return cachedCourses;
+            }
+
             var query = _dbContext.Courses.AsNoTracking();
             if (!includeUnpublished)
             {
@@ -50,11 +61,24 @@ namespace Microlearning.Areas.Catalog.Services
                 ))
                 .ToListAsync();
 
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(30))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(2));
+
+            _cache.Set(cacheKey, courses, cacheEntryOptions);
+
             return courses;
         }
 
         public async Task<CourseDetailResponse> GetCourseByIdAsync(int courseId, bool includeUnpublished = false)
         {
+            string cacheKey = $"course_detail_{courseId}_{includeUnpublished}";
+
+            if (_cache.TryGetValue(cacheKey, out CourseDetailResponse? cachedCourse) && cachedCourse != null)
+            {
+                return cachedCourse;
+            }
+
             var course = await _dbContext.Courses
                 .AsNoTracking()
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
@@ -95,7 +119,7 @@ namespace Microlearning.Areas.Catalog.Services
                 )).ToList()
             )).ToList();
 
-            return new CourseDetailResponse(
+            var response = new CourseDetailResponse(
                 course.Id,
                 course.Title,
                 course.Description,
@@ -108,6 +132,14 @@ namespace Microlearning.Areas.Catalog.Services
                 course.IsPrivate,
                 !course.IsPrivate
             );
+
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(30))
+                .SetAbsoluteExpiration(TimeSpan.FromHours(2));
+
+            _cache.Set(cacheKey, response, cacheEntryOptions);
+
+            return response;
         }
 
         public async Task<CourseResponse> CreateCourseAsync(CreateCourseRequest request)
@@ -140,6 +172,8 @@ namespace Microlearning.Areas.Catalog.Services
 
             _dbContext.Courses.Add(course);
             await _dbContext.SaveChangesAsync();
+
+            InvalidateCourseCache();
 
             return new CourseResponse(
                 course.Id,
@@ -196,6 +230,8 @@ namespace Microlearning.Areas.Catalog.Services
 
             await _dbContext.SaveChangesAsync();
 
+            InvalidateCourseCache(courseId);
+
             return new CourseResponse(
                 course.Id,
                 course.Title,
@@ -220,6 +256,9 @@ namespace Microlearning.Areas.Catalog.Services
 
             _dbContext.Courses.Remove(course);
             await _dbContext.SaveChangesAsync();
+
+            InvalidateCourseCache(courseId);
+
             return true;
         }
 
@@ -235,7 +274,21 @@ namespace Microlearning.Areas.Catalog.Services
             course.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
 
+            InvalidateCourseCache(courseId);
+
             return course.IsPublished;
+        }
+
+        private void InvalidateCourseCache(int? courseId = null)
+        {
+            _cache.Remove("courses_list_true");
+            _cache.Remove("courses_list_false");
+
+            if (courseId.HasValue)
+            {
+                _cache.Remove($"course_detail_{courseId.Value}_true");
+                _cache.Remove($"course_detail_{courseId.Value}_false");
+            }
         }
     }
 }
