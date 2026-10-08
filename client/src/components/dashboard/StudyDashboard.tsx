@@ -120,6 +120,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
   // Danh mục toàn bộ khóa học thực tế từ API catalog
   const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
+  const [catalogRefreshTrigger, setCatalogRefreshTrigger] = useState<number>(0);
 
   // Khóa học và bài học hiện tại đang học
   const [currentCourse, setCurrentCourse] = useState<CourseDetail | null>(null);
@@ -246,8 +247,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         }
       }
 
-      // Nếu targetCourse chưa có hoặc không có học phần, dùng ngay SAMPLE_COURSES
-      if (!targetCourse || !targetCourse.subjects || targetCourse.subjects.length === 0) {
+      // Chỉ fallback về SAMPLE_COURSES khi không tìm thấy targetCourse từ API
+      if (!targetCourse) {
         targetCourse = SAMPLE_COURSES[0];
       }
 
@@ -259,17 +260,15 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         enrollmentApi.enrollCourse(targetCourse.id).catch(() => {});
       }
 
-      // Tìm bài học đầu tiên trong targetCourse
-      for (const subj of targetCourse.subjects) {
-        if (subj.lessons && subj.lessons.length > 0) {
-          targetLesson = subj.lessons[0];
-          break;
+      // Tìm bài học đầu tiên trong targetCourse (nếu khóa học đã có môn học & bài học)
+      targetLesson = null;
+      if (targetCourse.subjects && targetCourse.subjects.length > 0) {
+        for (const subj of targetCourse.subjects) {
+          if (subj.lessons && subj.lessons.length > 0) {
+            targetLesson = subj.lessons[0];
+            break;
+          }
         }
-      }
-
-      if (!targetLesson) {
-        targetCourse = SAMPLE_COURSES[0];
-        targetLesson = SAMPLE_COURSES[0].subjects[0].lessons![0];
       }
 
       setCurrentCourse(targetCourse);
@@ -1038,6 +1037,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           <CourseCatalogView
             onSelectCourse={handleSelectCourseFromCatalog}
             onOpenStudio={isTeacherOrAdmin ? () => setIsCourseMgmtOpen(true) : undefined}
+            refreshTrigger={catalogRefreshTrigger}
           />
         )}
 
@@ -1064,7 +1064,45 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         {/* VIEW 2: PHÒNG HỌC TRỰC TUYẾN (WORKSPACE) */}
         {currentView === 'WORKSPACE' && (
           <div className="space-y-6">
-            {/* Mobile Curriculum Bar: Nút mở danh mục bài học trên màn hình nhỏ */}
+            {flatLessons.length === 0 ? (
+              <div className="py-20 px-6 text-center max-w-xl mx-auto space-y-5 bg-[#090D1A] rounded-3xl border border-white/10 shadow-2xl animate-fadeIn">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mx-auto">
+                  <BookOpen className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-white">
+                    {effectiveCourse?.title || 'Khóa học mới chưa có bài giảng'}
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+                    Khóa học này hiện chưa có học phần hoặc bài giảng nào được công khai.
+                    {isTeacherOrAdmin
+                      ? ' Bạn có thể mở Studio để tạo môn học, tải video bài giảng MP4 hoặc tạo đề trắc nghiệm ngay.'
+                      : ' Giảng viên đang trong quá trình biên soạn nội dung, vui lòng quay lại sau.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('CATALOG')}
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+                  >
+                    Về danh mục khóa học
+                  </button>
+                  {isTeacherOrAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCourseMgmtOpen(true)}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <FolderKanban className="w-4 h-4" />
+                      <span>Mở Studio Thêm Bài Giảng</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Mobile Curriculum Bar: Nút mở danh mục bài học trên màn hình nhỏ */}
             <div className="lg:hidden flex items-center justify-between gap-3 p-3 rounded-xl bg-[#090D1A] border border-white/10 shadow-lg">
               <button
                 onClick={() => setIsMobileCurriculumOpen(true)}
@@ -1328,6 +1366,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                 </div>
               </section>
             </div>
+            </>
+          )}
           </div>
         )}
       </main>
@@ -1442,7 +1482,13 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         <CourseManagementModal
           isOpen={isCourseMgmtOpen}
           onClose={() => setIsCourseMgmtOpen(false)}
-          onDataChanged={() => loadInitialCourse(effectiveCourse.id)}
+          onDataChanged={() => {
+            setCatalogRefreshTrigger((prev) => prev + 1);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('catalog-courses-updated'));
+            }
+            loadInitialCourse(currentCourse?.id);
+          }}
         />
       )}
 

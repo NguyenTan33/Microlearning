@@ -29,16 +29,18 @@ import { UnlockCourseModal } from './UnlockCourseModal';
 interface CourseCatalogViewProps {
   onSelectCourse: (courseId: number) => void;
   onOpenStudio?: () => void;
+  refreshTrigger?: number;
 }
 
 export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
   onSelectCourse,
   onOpenStudio,
+  refreshTrigger,
 }) => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'OFFICE' | 'IT' | 'ENROLLED'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'OFFICE' | 'IT' | 'OTHER' | 'ENROLLED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [enrollingId, setEnrollingId] = useState<number | null>(null);
   const [unlockModalCourse, setUnlockModalCourse] = useState<Course | null>(null);
@@ -62,11 +64,16 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
     const handleProgressUpdate = () => {
       enrollmentApi.getMyEnrollments().then(setEnrollments).catch(() => {});
     };
+    const handleCoursesUpdate = () => {
+      loadData();
+    };
     window.addEventListener('lesson-progress-updated', handleProgressUpdate);
+    window.addEventListener('catalog-courses-updated', handleCoursesUpdate);
     return () => {
       window.removeEventListener('lesson-progress-updated', handleProgressUpdate);
+      window.removeEventListener('catalog-courses-updated', handleCoursesUpdate);
     };
-  }, [loadData]);
+  }, [loadData, refreshTrigger]);
 
   const handleEnroll = async (courseId: number) => {
     setEnrollingId(courseId);
@@ -129,20 +136,33 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
       return isEnrolled(c.id);
     }
 
+    const titleLower = c.title.toLowerCase();
+    const descLower = (c.description || '').toLowerCase();
+    const isOffice =
+      titleLower.includes('excel') ||
+      titleLower.includes('word') ||
+      descLower.includes('excel') ||
+      descLower.includes('word');
+    const isIT =
+      titleLower.includes('react') ||
+      titleLower.includes('sql') ||
+      titleLower.includes('.net') ||
+      titleLower.includes('offline') ||
+      descLower.includes('react') ||
+      descLower.includes('sql') ||
+      descLower.includes('.net') ||
+      descLower.includes('offline');
+
     if (activeTab === 'OFFICE') {
-      return (
-        c.title.toLowerCase().includes('excel') ||
-        c.title.toLowerCase().includes('word')
-      );
+      return isOffice;
     }
 
     if (activeTab === 'IT') {
-      return (
-        c.title.toLowerCase().includes('react') ||
-        c.title.toLowerCase().includes('sql') ||
-        c.title.toLowerCase().includes('.net') ||
-        c.title.toLowerCase().includes('offline')
-      );
+      return isIT;
+    }
+
+    if (activeTab === 'OTHER') {
+      return !isOffice && !isIT;
     }
 
     return true;
@@ -347,6 +367,17 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('OTHER')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'OTHER'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Khác / Mới
+          </button>
+
+          <button
             onClick={() => setActiveTab('ENROLLED')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'ENROLLED'
@@ -388,7 +419,13 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
           {filteredCourses.map((course) => {
             const enrolled = isEnrolled(course.id);
             const progress = getEnrollmentProgress(course.id);
-            const isOffice = course.title.toLowerCase().includes('excel') || course.title.toLowerCase().includes('word');
+            const isOffice =
+              course.title.toLowerCase().includes('excel') || course.title.toLowerCase().includes('word');
+            const isIT =
+              course.title.toLowerCase().includes('react') ||
+              course.title.toLowerCase().includes('sql') ||
+              course.title.toLowerCase().includes('.net') ||
+              course.title.toLowerCase().includes('offline');
 
             return (
               <div
@@ -411,10 +448,12 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md border ${
                         isOffice
                           ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                          : 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
+                          : isIT
+                          ? 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
+                          : 'bg-indigo-950/80 border-indigo-500/40 text-indigo-300'
                       }`}
                     >
-                      {isOffice ? 'Tin học văn phòng' : 'Lập trình & IT'}
+                      {isOffice ? 'Tin học văn phòng' : isIT ? 'Lập trình & IT' : 'Khóa học chuyên đề'}
                     </span>
 
                     {course.isPrivate && (
