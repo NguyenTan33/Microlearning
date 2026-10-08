@@ -10,10 +10,12 @@ namespace Microlearning.Areas.Catalog.Services
     public class SubjectService : ISubjectService
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly ICourseService _courseService;
 
-        public SubjectService(ApplicationDbContext dbContext)
+        public SubjectService(ApplicationDbContext dbContext, ICourseService courseService)
         {
             _dbContext = dbContext;
+            _courseService = courseService;
         }
 
         public async Task<List<SubjectResponse>> GetSubjectsByCourseIdAsync(int courseId)
@@ -86,6 +88,8 @@ namespace Microlearning.Areas.Catalog.Services
             _dbContext.Subjects.Add(subject);
             await _dbContext.SaveChangesAsync();
 
+            _courseService.InvalidateCache(request.CourseId);
+
             return new SubjectResponse(
                 subject.Id,
                 subject.CourseId,
@@ -118,6 +122,8 @@ namespace Microlearning.Areas.Catalog.Services
 
             await _dbContext.SaveChangesAsync();
 
+            _courseService.InvalidateCache(subject.CourseId);
+
             return new SubjectResponse(
                 subject.Id,
                 subject.CourseId,
@@ -137,8 +143,12 @@ namespace Microlearning.Areas.Catalog.Services
                 throw new BusinessException($"Không tìm thấy môn học với mã {subjectId} để xóa.");
             }
 
+            var courseId = subject.CourseId;
             _dbContext.Subjects.Remove(subject);
             await _dbContext.SaveChangesAsync();
+
+            _courseService.InvalidateCache(courseId);
+
             return true;
         }
     }

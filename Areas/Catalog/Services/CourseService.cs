@@ -279,7 +279,7 @@ namespace Microlearning.Areas.Catalog.Services
             return course.IsPublished;
         }
 
-        private void InvalidateCourseCache(int? courseId = null)
+        public void InvalidateCache(int? courseId = null)
         {
             _cache.Remove("courses_list_true");
             _cache.Remove("courses_list_false");
@@ -290,5 +290,7 @@ namespace Microlearning.Areas.Catalog.Services
                 _cache.Remove($"course_detail_{courseId.Value}_false");
             }
         }
+
+        private void InvalidateCourseCache(int? courseId = null) => InvalidateCache(courseId);
     }
 }

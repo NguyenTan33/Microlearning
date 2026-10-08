@@ -13,11 +13,13 @@ namespace Microlearning.Areas.Catalog.Services
     {
         private readonly ApplicationDbContext _dbContext;
         private readonly IContentChangeTracker _changeTracker;
+        private readonly ICourseService _courseService;
 
-        public LessonService(ApplicationDbContext dbContext, IContentChangeTracker changeTracker)
+        public LessonService(ApplicationDbContext dbContext, IContentChangeTracker changeTracker, ICourseService courseService)
         {
             _dbContext = dbContext;
             _changeTracker = changeTracker;
+            _courseService = courseService;
         }
 
         public async Task<List<LessonResponse>> GetLessonsBySubjectIdAsync(int subjectId, bool includeUnpublished = false)
@@ -171,6 +173,8 @@ namespace Microlearning.Areas.Catalog.Services
             _dbContext.Lessons.Add(lesson);
             await _dbContext.SaveChangesAsync();
 
+            await InvalidateCourseCacheForSubjectAsync(lesson.SubjectId);
+
             // Ghi log Delta Sync để Mobile kéo được bài học mới
             await _changeTracker.LogChangeAsync("Lesson", lesson.Id, ContentChangeType.Created, lesson.Version);
 
@@ -213,6 +217,8 @@ namespace Microlearning.Areas.Catalog.Services
 
             await _dbContext.SaveChangesAsync();
 
+            await InvalidateCourseCacheForSubjectAsync(lesson.SubjectId);
+
             // Ghi log Delta Sync để Mobile cập nhật bài học
             await _changeTracker.LogChangeAsync("Lesson", lesson.Id, ContentChangeType.Updated, lesson.Version);
 
@@ -242,6 +248,8 @@ namespace Microlearning.Areas.Catalog.Services
             lesson.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
 
+            await InvalidateCourseCacheForSubjectAsync(lesson.SubjectId);
+
             // Nếu ẩn bài học -> ghi nhận Tombstone Deleted, nếu hiện lại -> Updated
             var changeType = lesson.IsPublished ? ContentChangeType.Updated : ContentChangeType.Deleted;
             await _changeTracker.LogChangeAsync("Lesson", lesson.Id, changeType, lesson.Version);
@@ -257,13 +265,22 @@ namespace Microlearning.Areas.Catalog.Services
                 throw new BusinessException($"Không tìm thấy bài học với mã {lessonId} để xóa.");
             }
 
+            var subjectId = lesson.SubjectId;
             _dbContext.Lessons.Remove(lesson);
             await _dbContext.SaveChangesAsync();
+
+            await InvalidateCourseCacheForSubjectAsync(subjectId);
 
             // Ghi log Tombstone Deleted để Mobile tự động xóa file offline
             await _changeTracker.LogChangeAsync("Lesson", lessonId, ContentChangeType.Deleted, lesson.Version);
 
             return true;
+        }
+
+        private async Task InvalidateCourseCacheForSubjectAsync(int subjectId)
+        {
+            var subject = await _dbContext.Subjects.AsNoTracking().FirstOrDefaultAsync(s => s.Id == subjectId);
+            _courseService.InvalidateCache(subject?.CourseId);
         }
     }
 }
