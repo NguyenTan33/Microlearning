@@ -523,19 +523,31 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       console.warn('Lỗi khi lưu tiến độ bài học:', err);
     }
 
-    // 2. Kích hoạt điểm danh Streak và mở màn hình ăn mừng phong cách Duolingo
+    // 2. Kích hoạt điểm danh Streak và CHỈ mở màn hình ăn mừng cho bài học ĐẦU TIÊN trong ngày
     const initialPercent = lessonInitialStateRef.current.initialPercent;
     const wasCompletedBefore = lessonInitialStateRef.current.wasCompleted;
     const isLessonEligible = !wasCompletedBefore || initialPercent < 80;
 
     if (isLessonEligible) {
       try {
+        const todayStr = streakApi.getTodayString();
+        const lastCelebratedDate = localStorage.getItem('microlearning_streak_celebrated_date');
+        const alreadyCelebratedToday = lastCelebratedDate === todayStr;
+
         const streakData = await streakApi.pingDailyActivity();
-        setStreakFlyUpInfo({
-          currentStreak: Math.max(1, streakData.currentStreak || 1),
-          message: streakData.statusMessage || 'Bạn đã hoàn thành bài học và duy trì ngọn lửa học tập hôm nay!',
-        });
-        setShowStreakFlyUp(true);
+
+        // Chỉ hiển thị hiệu ứng ăn mừng cho bài học đầu tiên trong ngày (chưa từng hiện hôm nay)
+        // và bài học này thực sự kích hoạt hoặc duy trì chuỗi học tập mới hôm nay
+        const shouldCelebrate = !alreadyCelebratedToday && (streakData.isNewStreakToday ?? (streakData.currentStreak > 0));
+
+        if (shouldCelebrate) {
+          localStorage.setItem('microlearning_streak_celebrated_date', todayStr);
+          setStreakFlyUpInfo({
+            currentStreak: Math.max(1, streakData.currentStreak || 1),
+            message: streakData.statusMessage || 'Bạn đã hoàn thành bài học và duy trì ngọn lửa học tập hôm nay!',
+          });
+          setShowStreakFlyUp(true);
+        }
       } catch (err) {
         console.warn('Lỗi khi ghi nhận streak:', err);
       }

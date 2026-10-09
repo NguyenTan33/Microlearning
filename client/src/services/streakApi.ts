@@ -19,6 +19,7 @@ export interface UserStreak {
   totalEligibleLessons: number;
   overallProgressPercent: number;
   statusMessage: string;
+  isNewStreakToday?: boolean;
 }
 
 const LOCAL_STREAK_KEY = 'microlearning_user_streak';
@@ -41,6 +42,7 @@ function getLocalStreak(): UserStreak {
     totalEligibleLessons: 0,
     overallProgressPercent: 0,
     statusMessage: 'Hãy hoàn thành một bài học ngay hôm nay để kích hoạt chuỗi học tập!',
+    isNewStreakToday: false,
   };
 }
 
@@ -50,7 +52,7 @@ function saveLocalStreak(streak: UserStreak): void {
   } catch {}
 }
 
-function getTodayString(): string {
+export function getTodayString(): string {
   // Chuỗi ngày YYYY-MM-DD theo giờ Việt Nam UTC+7
   const now = new Date();
   const utc7 = new Date(now.getTime() + 7 * 3600 * 1000);
@@ -133,14 +135,21 @@ export const streakApi = {
     const yesterday = getYesterdayString();
 
     let newStreak = local.currentStreak;
+    let isNewStreakToday = false;
+
     if (!local.lastActiveDate) {
       newStreak = 1;
+      isNewStreakToday = true;
     } else if (local.lastActiveDate === yesterday) {
       newStreak += 1;
+      isNewStreakToday = true;
     } else if (local.lastActiveDate < yesterday) {
       newStreak = 1;
+      isNewStreakToday = true;
+    } else {
+      // local.lastActiveDate === today: đã hoàn thành bài hôm nay rồi, không tăng streak mới
+      isNewStreakToday = false;
     }
-    // Nếu local.lastActiveDate === today: đã hoàn thành bài hôm nay rồi, giữ nguyên chuỗi hiện tại
 
     const updated: UserStreak = {
       ...local,
@@ -149,6 +158,7 @@ export const streakApi = {
       lastActiveDate: today,
       completedLessons: local.completedLessons + 1,
       statusMessage: `Tuyệt vời! Bạn đang duy trì chuỗi ${newStreak} ngày học liên tiếp.`,
+      isNewStreakToday,
     };
     saveLocalStreak(updated);
 
@@ -157,5 +167,9 @@ export const streakApi = {
     }
 
     return updated;
+  },
+
+  getTodayString(): string {
+    return getTodayString();
   },
 };
