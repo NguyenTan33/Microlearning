@@ -12,49 +12,27 @@ namespace Microlearning.Areas.Catalog.Seeders
             using var scope = serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            // 1. Kiểm tra khóa học Excel
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains("Excel")))
-            {
-                var excelCourse = CreateExcelCourse();
-                dbContext.Courses.Add(excelCourse);
-            }
+            // 1. Dọn dẹp toàn bộ các khóa học mockup mẫu để vận hành hệ thống dữ liệu thật
+            var dummyCourses = await dbContext.Courses
+                .Include(c => c.Subjects)
+                    .ThenInclude(s => s.Lessons)
+                        .ThenInclude(l => l.Quiz)
+                .Include(c => c.Subjects)
+                    .ThenInclude(s => s.Lessons)
+                        .ThenInclude(l => l.MediaAssets)
+                .Where(c => c.Title.Contains("Excel") ||
+                            c.Title.Contains("Word") ||
+                            c.Title.Contains("React") ||
+                            c.Title.Contains("SQL Server") ||
+                            c.Title.Contains(".NET 8") ||
+                            c.Title.Contains("Offline-First"))
+                .ToListAsync();
 
-            // 2. Kiểm tra khóa học Word
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains("Word")))
+            if (dummyCourses.Count > 0)
             {
-                var wordCourse = CreateWordCourse();
-                dbContext.Courses.Add(wordCourse);
+                dbContext.Courses.RemoveRange(dummyCourses);
+                await dbContext.SaveChangesAsync();
             }
-
-            // 3. Kiểm tra khóa học Lập trình Web IT (React & TypeScript)
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains("React")))
-            {
-                var reactCourse = CreateReactCourse();
-                dbContext.Courses.Add(reactCourse);
-            }
-
-            // 4. Kiểm tra khóa học Cơ sở dữ liệu IT (SQL Server & T-SQL)
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains("SQL")))
-            {
-                var sqlCourse = CreateSqlCourse();
-                dbContext.Courses.Add(sqlCourse);
-            }
-
-            // 5. Kiểm tra khóa học C# .NET 8 Backend IT
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains(".NET 8")))
-            {
-                var dotnetCourse = CreateDotNetCourse();
-                dbContext.Courses.Add(dotnetCourse);
-            }
-
-            // 6. Kiểm tra khóa học Kiến trúc Offline-First IT
-            if (!await dbContext.Courses.AnyAsync(c => c.Title.Contains("Offline-First")))
-            {
-                var offlineCourse = CreateOfflineFirstCourse();
-                dbContext.Courses.Add(offlineCourse);
-            }
-
-            await dbContext.SaveChangesAsync();
 
             // 7. Tự động kiểm tra và bổ sung Đề thi trắc nghiệm (Quiz) cho tất cả các bài học còn thiếu
             var lessonsWithoutQuiz = await dbContext.Lessons
