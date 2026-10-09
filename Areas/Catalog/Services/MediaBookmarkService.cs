@@ -93,7 +93,9 @@ namespace Microlearning.Areas.Catalog.Services
 
             var bookmark = new UserMediaBookmark
             {
-                Id = $"bm_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
+                Id = !string.IsNullOrWhiteSpace(request.Id)
+                    ? request.Id
+                    : $"bm_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}_{Guid.NewGuid().ToString("N")[..6]}",
                 AccountId = accountId,
                 LessonId = request.LessonId,
                 MediaId = request.MediaId,

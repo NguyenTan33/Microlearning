@@ -271,6 +271,35 @@ using (var scope = app.Services.CreateScope())
             // 1. Tự động tạo bảng & chạy Migration
             await dbContext.Database.MigrateAsync();
 
+            // Đảm bảo bảng UserMediaBookmarks tồn tại ngay lập tức trên Azure SQL
+            try
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(@"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserMediaBookmarks')
+BEGIN
+    CREATE TABLE [UserMediaBookmarks] (
+        [Id] NVARCHAR(128) NOT NULL PRIMARY KEY,
+        [AccountId] NVARCHAR(450) NOT NULL,
+        [LessonId] INT NOT NULL,
+        [MediaId] INT NULL,
+        [CourseId] INT NOT NULL,
+        [CourseTitle] NVARCHAR(250) NOT NULL,
+        [LessonTitle] NVARCHAR(250) NOT NULL,
+        [Timestamp] FLOAT NOT NULL,
+        [FormattedTime] NVARCHAR(20) NOT NULL,
+        [Title] NVARCHAR(250) NOT NULL,
+        [Note] NVARCHAR(1000) NULL,
+        [CreatedAt] DATETIME2 NOT NULL
+    );
+    CREATE INDEX [IX_UserMediaBookmarks_AccountId] ON [UserMediaBookmarks] ([AccountId]);
+    CREATE INDEX [IX_UserMediaBookmarks_LessonId] ON [UserMediaBookmarks] ([LessonId]);
+END");
+            }
+            catch (Exception exTable)
+            {
+                logger.LogWarning("Kiểm tra bảng UserMediaBookmarks: {Msg}", exTable.Message);
+            }
+
             // 2. Tự động nạp vai trò, tài khoản Admin/Teacher và dữ liệu mẫu
             await IdentityDbSeeder.SeedRolesAndAdminAsync(services);
             await CatalogDbSeeder.SeedAsync(services);

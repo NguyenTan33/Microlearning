@@ -8,7 +8,8 @@ namespace Microlearning.Areas.Catalog.DTOs
         string? LessonTitle,
         double Timestamp,
         string Title,
-        string? Note = null
+        string? Note = null,
+        string? Id = null
     );
 
     public record MediaBookmarkResponse(
