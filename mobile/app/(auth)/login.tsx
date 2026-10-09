@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { Sparkles, Phone, Lock, ArrowRight, Eye, EyeOff, Zap, Settings, HelpCircle } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
+import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
@@ -54,6 +55,7 @@ export default function LoginScreen() {
       };
 
       await setAuth(user, res.accessToken, res.refreshToken);
+      registerDeviceSilently();
       router.replace('/(tabs)');
     } catch (err: unknown) {
       console.warn('[Login Error]', err);

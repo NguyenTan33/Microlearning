@@ -4,6 +4,7 @@ import { Volume2, Play, Pause, Sparkles } from 'lucide-react-native';
 import { ttsApi } from '../../services/ttsApi';
 
 interface AudioTtsPlayerProps {
+  lessonId?: number;
   lessonTitle: string;
   lessonContent?: string;
   audioTtsUrl?: string;

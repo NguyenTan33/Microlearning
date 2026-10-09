@@ -12,7 +12,7 @@ interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({
   title,
   subtitle,
-  streakCount = 5,
+  streakCount = 0,
   onProfilePress,
 }) => {
   return (

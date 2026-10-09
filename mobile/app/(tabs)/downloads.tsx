@@ -83,7 +83,11 @@ export default function DownloadsScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Kho Ngoại Tuyến" subtitle="Quản lý bài học đã tải về" />
+      <AppHeader
+        title="Kho Ngoại Tuyến"
+        subtitle="Quản lý bài học đã tải về"
+        onProfilePress={() => router.push('/(tabs)/profile')}
+      />
       <OfflineBanner />
 
       <ScrollView

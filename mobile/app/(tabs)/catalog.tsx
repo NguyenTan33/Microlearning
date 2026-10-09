@@ -8,25 +8,41 @@ import {
   TouchableOpacity,
   RefreshControl,
   Modal,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Search, Filter, BookOpen, Lock, Unlock, ChevronRight, X, ShieldAlert } from 'lucide-react-native';
+import {
+  Search,
+  BookOpen,
+  Lock,
+  Globe,
+  ChevronRight,
+  X,
+  ShieldAlert,
+  Layers,
+  Sparkles,
+} from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
-import { OfflineBanner } from '../../src/components/common/OfflineBanner';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { catalogApi } from '../../src/services/catalogApi';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
+import { useAuthStore } from '../../src/store/useAuthStore';
+import { CourseManagementModal } from '../../src/components/management/CourseManagementModal';
 import type { Course } from '../../src/types/catalog.types';
 
 export default function CatalogScreen() {
   const router = useRouter();
+  const { isTeacher, isAdmin } = useAuthStore();
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Studio Modal State (Dành cho Giáo viên & Admin)
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
 
   // Unlock Modal State
   const [unlockCourseId, setUnlockCourseId] = useState<number | null>(null);
@@ -36,15 +52,15 @@ export default function CatalogScreen() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      // 1. Read SQLite Cache first
+      // 1. Đọc từ SQLite Cache trước
       const cached = await catalogRepository.getAllCourses();
       if (cached.length > 0) {
         setCourses(cached);
       }
 
-      // 2. Fetch from API if online
+      // 2. Tải trực tiếp từ Azure API
       try {
-        const apiData = await catalogApi.getAllCourses();
+        const apiData = await catalogApi.getAllCourses(isTeacher || isAdmin);
         if (apiData.length > 0) {
           await catalogRepository.saveCourses(apiData);
           setCourses(apiData);
@@ -58,7 +74,7 @@ export default function CatalogScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAdmin, isTeacher]);
 
   useEffect(() => {
     fetchCourses();
@@ -91,11 +107,11 @@ export default function CatalogScreen() {
   };
 
   if (loading) {
-    return <LoadingIndicator message="Đang khám phá danh mục khóa học..." />;
+    return <LoadingIndicator message="Đang nạp danh mục khóa học Azure..." />;
   }
 
   // Filter Logic
-  const categories = ['ALL', 'CNTT & Lập trình', 'Ngoại ngữ', 'Kỹ năng mềm', 'Kinh doanh'];
+  const categories = ['ALL', 'Lập trình', 'Cơ sở dữ liệu', 'Văn phòng', 'Kỹ năng'];
 
   const filteredCourses = courses.filter((c) => {
     const matchesSearch =
@@ -108,8 +124,33 @@ export default function CatalogScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Khám phá" subtitle="Danh mục bài giảng Microlearning" />
-      <OfflineBanner />
+      <AppHeader
+        title="Khám phá"
+        subtitle="Khóa học Microlearning chuẩn thực chiến"
+        onProfilePress={() => router.push('/(tabs)/profile')}
+      />
+
+      {/* Banner Studio Dành cho Giáo viên & Admin */}
+      {(isTeacher || isAdmin) && (
+        <View style={styles.studioBannerContainer}>
+          <TouchableOpacity
+            style={styles.studioBannerBtn}
+            onPress={() => setIsStudioOpen(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.studioBannerLeft}>
+              <View style={styles.studioIconBox}>
+                <Layers color="#6366F1" size={18} />
+              </View>
+              <View>
+                <Text style={styles.studioBannerTitle}>Studio Quản Lý Khóa Học</Text>
+                <Text style={styles.studioBannerSub}>Tạo, sửa bài giảng & xem tiến độ học viên</Text>
+              </View>
+            </View>
+            <ChevronRight color="#818CF8" size={18} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchSection}>
@@ -117,7 +158,7 @@ export default function CatalogScreen() {
           <Search color="#64748B" size={18} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm khóa học, chủ đề..."
+            placeholder="Tìm kiếm khóa học, kỹ năng..."
             placeholderTextColor="#475569"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -140,7 +181,7 @@ export default function CatalogScreen() {
               onPress={() => setSelectedCategory(cat)}
             >
               <Text style={[styles.categoryChipText, selectedCategory === cat && styles.categoryChipTextActive]}>
-                {cat === 'ALL' ? 'Tất cả khóa' : cat}
+                {cat === 'ALL' ? 'Tất cả' : cat}
               </Text>
             </TouchableOpacity>
           ))}
@@ -167,44 +208,55 @@ export default function CatalogScreen() {
             }}
             activeOpacity={0.8}
           >
-            <View style={styles.cardHeaderRow}>
-              <View style={styles.courseIconBox}>
-                <BookOpen color="#818CF8" size={24} />
-              </View>
-
-              <View style={styles.courseMainInfo}>
-                <Text style={styles.courseTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.courseAuthor}>Giảng viên: {item.authorName || 'Microlearning'}</Text>
-              </View>
-
-              {item.isLocked ? (
-                <View style={styles.lockedBadge}>
-                  <Lock color="#F43F5E" size={14} />
-                </View>
+            {/* Ảnh Thumbnail Thật của Khóa Học */}
+            <View style={styles.cardThumbnailWrapper}>
+              {item.thumbnailUrl ? (
+                <Image
+                  source={{ uri: item.thumbnailUrl }}
+                  style={styles.cardThumbnail}
+                  resizeMode="cover"
+                />
               ) : (
-                <ChevronRight color="#475569" size={20} />
+                <View style={styles.cardPlaceholderThumbnail}>
+                  <BookOpen color="#818CF8" size={32} />
+                </View>
               )}
+
+              {/* Badge Hạn Chế / Công Khai */}
+              <View style={styles.cardBadgeContainer}>
+                {item.isPrivate ? (
+                  <View style={styles.badgePrivate}>
+                    <Lock color="#F59E0B" size={10} />
+                    <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
+                  </View>
+                ) : (
+                  <View style={styles.badgePublic}>
+                    <Globe color="#10B981" size={10} />
+                    <Text style={styles.badgeTextPublic}>Công khai</Text>
+                  </View>
+                )}
+              </View>
             </View>
 
-            {item.description ? (
-              <Text style={styles.courseDesc} numberOfLines={2}>
-                {item.description}
+            {/* Thông tin Khóa Học */}
+            <View style={styles.cardBody}>
+              <Text style={styles.courseTitle} numberOfLines={2}>
+                {item.title}
               </Text>
-            ) : null}
 
-            <View style={styles.cardFooterRow}>
-              <View style={styles.subjectsBadge}>
-                <Text style={styles.subjectsBadgeText}>{item.totalSubjects || 0} Môn học</Text>
-              </View>
+              {item.description ? (
+                <Text style={styles.courseDesc} numberOfLines={2}>
+                  {item.description}
+                </Text>
+              ) : null}
 
-              {item.isEnrolled && (
-                <View style={styles.enrolledBadge}>
-                  <Unlock color="#10B981" size={12} />
-                  <Text style={styles.enrolledText}>Đã tham gia</Text>
+              <View style={styles.cardFooterRow}>
+                <Text style={styles.subjectsText}>{item.totalSubjects || 0} Môn học</Text>
+                <View style={styles.viewCourseRow}>
+                  <Text style={styles.viewCourseText}>Xem chi tiết</Text>
+                  <ChevronRight color="#818CF8" size={14} />
                 </View>
-              )}
+              </View>
             </View>
           </TouchableOpacity>
         ))}
@@ -246,12 +298,57 @@ export default function CatalogScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Studio Modal Dành Cho Giáo Viên & Admin */}
+      <CourseManagementModal
+        visible={isStudioOpen}
+        onClose={() => setIsStudioOpen(false)}
+        onCourseUpdated={fetchCourses}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#070B17' },
+  studioBannerContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  studioBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0E1428',
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+  },
+  studioBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  studioIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  studioBannerTitle: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  studioBannerSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
+  },
   searchSection: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   searchBarContainer: {
     flexDirection: 'row',
@@ -281,39 +378,94 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16, paddingBottom: 32 },
   resultCountText: { color: '#64748B', fontSize: 12, fontWeight: '600', marginBottom: 12 },
   courseCard: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#090D1A',
     borderRadius: 20,
-    padding: 16,
     borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 14,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
-  courseIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+  cardThumbnailWrapper: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    position: 'relative',
+    backgroundColor: '#0F172A',
+  },
+  cardThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  cardPlaceholderThumbnail: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#1E1B4B',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  courseMainInfo: { flex: 1 },
-  courseTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  courseAuthor: { color: '#94A3B8', fontSize: 12 },
-  lockedBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(244, 63, 94, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  cardBadgeContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
   },
-  courseDesc: { color: '#94A3B8', fontSize: 13, lineHeight: 18, marginBottom: 12 },
-  cardFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  subjectsBadge: { backgroundColor: '#1E293B', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  subjectsBadgeText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
-  enrolledBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, gap: 4 },
-  enrolledText: { color: '#10B981', fontSize: 11, fontWeight: '600' },
+  badgePrivate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  badgePublic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  badgeTextPrivate: { color: '#000000', fontSize: 10, fontWeight: '800' },
+  badgeTextPublic: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  cardBody: {
+    padding: 14,
+  },
+  courseTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  courseDesc: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  subjectsText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewCourseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  viewCourseText: {
+    color: '#818CF8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: { backgroundColor: '#0F172A', borderRadius: 24, padding: 24, width: '100%', borderWidth: 1, borderColor: '#1E293B' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },

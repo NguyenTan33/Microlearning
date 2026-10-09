@@ -7,6 +7,7 @@ import { useAuthStore } from '../src/store/useAuthStore';
 import { useDownloadStore } from '../src/store/useDownloadStore';
 import { autoSyncEngine } from '../src/services/autoSyncEngine';
 import { getSQLiteDatabase } from '../src/db/sqliteClient';
+import { registerDeviceSilently } from '../src/utils/deviceHelper';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,11 +23,13 @@ export default function RootLayout() {
   const { refreshStorageAndDownloads } = useDownloadStore();
 
   useEffect(() => {
-    // 1. Init SQLite database
-    getSQLiteDatabase().then(() => {
-      initAuth();
+    // 1. Khởi tạo SQLite database & nạp dữ liệu offline
+    getSQLiteDatabase().then(async () => {
+      await initAuth();
       refreshStorageAndDownloads();
       autoSyncEngine.initListeners();
+      autoSyncEngine.triggerSyncWithDebounce(1000);
+      registerDeviceSilently();
     });
   }, [initAuth, refreshStorageAndDownloads]);
 
