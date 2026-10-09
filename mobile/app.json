@@ -16,7 +16,12 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#070B17"
       },
-      "package": "com.microlearning.mobile"
+      "package": "com.microlearning.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
