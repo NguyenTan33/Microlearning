@@ -18,6 +18,7 @@ import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
+import { startGoogleOAuth, startFacebookOAuth } from '../../src/services/socialAuthService';
 import type { AuthTokenResponse } from '../../src/types/auth.types';
 
 export default function RegisterScreen() {
@@ -48,6 +49,46 @@ export default function RegisterScreen() {
       setErrorMsg('Lỗi lưu phiên đăng nhập mạng xã hội. Vui lòng thử lại.');
     } finally {
       setIsSocialLoading(false);
+    }
+  };
+
+  const handleDirectGoogleLogin = async () => {
+    setIsSocialLoading(true);
+    setSocialProvider('google');
+    setErrorMsg('');
+    try {
+      const res = await startGoogleOAuth();
+      if (res.cancelled) return;
+      if (res.success && res.data) {
+        await handleSocialSuccess(res.data);
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Google thất bại');
+    } finally {
+      setIsSocialLoading(false);
+      setSocialProvider(null);
+    }
+  };
+
+  const handleDirectFacebookLogin = async () => {
+    setIsSocialLoading(true);
+    setSocialProvider('facebook');
+    setErrorMsg('');
+    try {
+      const res = await startFacebookOAuth();
+      if (res.cancelled) return;
+      if (res.success && res.data) {
+        await handleSocialSuccess(res.data);
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại');
+    } finally {
+      setIsSocialLoading(false);
+      setSocialProvider(null);
     }
   };
 
@@ -152,8 +193,8 @@ export default function RegisterScreen() {
             </TouchableOpacity>
 
             <SocialAuthButtons
-              onGooglePress={() => setSocialProvider('google')}
-              onFacebookPress={() => setSocialProvider('facebook')}
+              onGooglePress={handleDirectGoogleLogin}
+              onFacebookPress={handleDirectFacebookLogin}
               loading={loading || isSocialLoading}
               isGoogleLoading={isSocialLoading && socialProvider === 'google'}
               isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}

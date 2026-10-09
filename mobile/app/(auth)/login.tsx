@@ -21,6 +21,7 @@ import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
 import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
+import { startGoogleOAuth, startFacebookOAuth } from '../../src/services/socialAuthService';
 import type { AuthTokenResponse } from '../../src/types/auth.types';
 
 export default function LoginScreen() {
@@ -53,6 +54,50 @@ export default function LoginScreen() {
       setErrorMsg('Lỗi lưu phiên đăng nhập mạng xã hội. Vui lòng thử lại.');
     } finally {
       setIsSocialLoading(false);
+    }
+  };
+
+  const handleDirectGoogleLogin = async () => {
+    setIsSocialLoading(true);
+    setSocialProvider('google');
+    setErrorMsg('');
+    try {
+      const res = await startGoogleOAuth();
+      if (res.cancelled) {
+        return;
+      }
+      if (res.success && res.data) {
+        await handleSocialSuccess(res.data);
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Google thất bại');
+    } finally {
+      setIsSocialLoading(false);
+      setSocialProvider(null);
+    }
+  };
+
+  const handleDirectFacebookLogin = async () => {
+    setIsSocialLoading(true);
+    setSocialProvider('facebook');
+    setErrorMsg('');
+    try {
+      const res = await startFacebookOAuth();
+      if (res.cancelled) {
+        return;
+      }
+      if (res.success && res.data) {
+        await handleSocialSuccess(res.data);
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại');
+    } finally {
+      setIsSocialLoading(false);
+      setSocialProvider(null);
     }
   };
 
@@ -212,10 +257,10 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
-            {/* Social Auth Buttons (Google & Facebook) */}
+            {/* Social Auth Buttons (Google & Facebook - Khởi chạy trực tiếp trình duyệt OAuth2) */}
             <SocialAuthButtons
-              onGooglePress={() => setSocialProvider('google')}
-              onFacebookPress={() => setSocialProvider('facebook')}
+              onGooglePress={handleDirectGoogleLogin}
+              onFacebookPress={handleDirectFacebookLogin}
               loading={loading || isSocialLoading}
               isGoogleLoading={isSocialLoading && socialProvider === 'google'}
               isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}
