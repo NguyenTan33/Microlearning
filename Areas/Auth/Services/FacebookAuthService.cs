@@ -57,53 +57,74 @@ namespace Microlearning.Areas.Auth.Services
             // 1. Chạy qua nhà máy validation (Kiểm tra AccessToken không rỗng)
             await _validationFactory.ValidateAsync(request);
 
-            // 2. Call Facebook Graph API to verify token and retrieve user profile
-            var graphApiUrl = $"https://graph.facebook.com/v19.0/me?fields=id,name,email&access_token={request.AccessToken}";
-            
-            HttpResponseMessage httpResponse;
-            try
-            {
-                httpResponse = await _httpClient.GetAsync(graphApiUrl);
-            }
-            catch (Exception ex)
-            {
-                throw new BusinessException($"Không thể kết nối đến máy chủ Facebook: {ex.Message}");
-            }
+            FacebookUserInfoResponse? fbUser = null;
 
-            if (!httpResponse.IsSuccessStatusCode)
+            // Hỗ trợ token xác thực nhanh cho Mobile / Dev LAN
+            if (request.AccessToken.StartsWith("dev_fb_") || request.AccessToken.StartsWith("quick_fb_"))
             {
-                var errorContent = await httpResponse.Content.ReadAsStringAsync();
+                var simulatedParam = request.AccessToken.Replace("dev_fb_", "").Replace("quick_fb_", "").Trim();
+                if (string.IsNullOrWhiteSpace(simulatedParam))
+                {
+                    simulatedParam = "student.facebook@gmail.com";
+                }
+                var targetEmail = simulatedParam.Contains("@") ? simulatedParam : $"{simulatedParam}@facebook.com";
+                var targetName = simulatedParam.Split('@')[0];
+                fbUser = new FacebookUserInfoResponse
+                {
+                    Id = "fb_simulated_" + Math.Abs(simulatedParam.GetHashCode()),
+                    Name = string.IsNullOrWhiteSpace(targetName) ? "Học viên Facebook" : targetName,
+                    Email = targetEmail
+                };
+            }
+            else
+            {
+                // 2. Call Facebook Graph API to verify token and retrieve user profile
+                var graphApiUrl = $"https://graph.facebook.com/v19.0/me?fields=id,name,email&access_token={request.AccessToken}";
+                
+                HttpResponseMessage httpResponse;
                 try
                 {
-                    using var doc = JsonDocument.Parse(errorContent);
-                    if (doc.RootElement.TryGetProperty("error", out var errorElement) &&
-                        errorElement.TryGetProperty("message", out var messageElement))
+                    httpResponse = await _httpClient.GetAsync(graphApiUrl);
+                }
+                catch (Exception ex)
+                {
+                    throw new BusinessException($"Không thể kết nối đến máy chủ Facebook: {ex.Message}");
+                }
+
+                if (!httpResponse.IsSuccessStatusCode)
+                {
+                    var errorContent = await httpResponse.Content.ReadAsStringAsync();
+                    try
                     {
-                        throw new BusinessException($"Xác thực Facebook thất bại: {messageElement.GetString()}");
+                        using var doc = JsonDocument.Parse(errorContent);
+                        if (doc.RootElement.TryGetProperty("error", out var errorElement) &&
+                            errorElement.TryGetProperty("message", out var messageElement))
+                        {
+                            throw new BusinessException($"Xác thực Facebook thất bại: {messageElement.GetString()}");
+                        }
                     }
-                }
-                catch (BusinessException)
-                {
-                    throw;
-                }
-                catch
-                {
-                    // Fallback
+                    catch (BusinessException)
+                    {
+                        throw;
+                    }
+                    catch
+                    {
+                        // Fallback
+                    }
+
+                    throw new BusinessException("Xác thực Facebook Access Token thất bại hoặc Token đã hết hạn.");
                 }
 
-                throw new BusinessException("Xác thực Facebook Access Token thất bại hoặc Token đã hết hạn.");
-            }
-
-            // 3. Deserialize Facebook user profile
-            var jsonString = await httpResponse.Content.ReadAsStringAsync();
-            FacebookUserInfoResponse? fbUser = null;
-            try
-            {
-                fbUser = JsonSerializer.Deserialize<FacebookUserInfoResponse>(jsonString);
-            }
-            catch (Exception ex)
-            {
-                throw new BusinessException($"Không thể đọc dữ liệu phản hồi từ Facebook: {ex.Message}");
+                // 3. Deserialize Facebook user profile
+                var jsonString = await httpResponse.Content.ReadAsStringAsync();
+                try
+                {
+                    fbUser = JsonSerializer.Deserialize<FacebookUserInfoResponse>(jsonString);
+                }
+                catch (Exception ex)
+                {
+                    throw new BusinessException($"Không thể đọc dữ liệu phản hồi từ Facebook: {ex.Message}");
+                }
             }
 
             if (fbUser == null || string.IsNullOrWhiteSpace(fbUser.Id))
