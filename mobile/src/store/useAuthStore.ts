@@ -3,6 +3,7 @@ import type { User } from '../types/auth.types';
 import { secureStorage } from '../utils/secureStorage';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getCurrentUserFromToken } from '../utils/tokenHelper';
+import { apiClient } from '../services/apiClient';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -49,6 +50,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
     await secureStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(effectiveUser));
 
+    // Đồng bộ tức thời Header Authorization cho Axios
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+
     set({ isAuthenticated: true, user: effectiveUser, isAdmin, isTeacher, isLoading: false });
   },
 
@@ -56,6 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await secureStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     await secureStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     await secureStorage.removeItem(STORAGE_KEYS.USER_INFO);
+
+    delete apiClient.defaults.headers.common['Authorization'];
+
     set({ isAuthenticated: false, user: null, isAdmin: false, isTeacher: false, isLoading: false });
   },
 
@@ -91,8 +98,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           role: isAdmin ? 'Admin' : isTeacher ? 'Teacher' : 'Student',
         };
 
+        // Gắn header Authorization cho apiClient
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
         set({ isAuthenticated: true, user: effectiveUser, isAdmin, isTeacher, isLoading: false });
       } else {
+        delete apiClient.defaults.headers.common['Authorization'];
         set({ isAuthenticated: false, user: null, isAdmin: false, isTeacher: false, isLoading: false });
       }
     } catch {

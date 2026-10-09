@@ -17,11 +17,15 @@ export async function initializeApiBaseUrl(): Promise<string> {
       customUrl &&
       !customUrl.includes('192.168.') &&
       !customUrl.includes('localhost') &&
-      !customUrl.includes('127.0.0.1')
+      !customUrl.includes('127.0.0.1') &&
+      customUrl.startsWith('http')
     ) {
       const clean = customUrl.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
       apiClient.defaults.baseURL = clean;
       return clean;
+    } else if (customUrl) {
+      // Dọn dẹp URL nội bộ cũ
+      await secureStorage.removeItem(STORAGE_KEYS.SERVER_URL);
     }
   } catch {
     // fallback

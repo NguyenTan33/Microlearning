@@ -59,10 +59,22 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } catch (err: unknown) {
       console.warn('[Login Error]', err);
-      const serverMsg =
-        err && typeof err === 'object' && 'response' in err && (err as any).response?.data?.message
-          ? (err as any).response.data.message
-          : 'Không thể kết nối đến máy chủ. Vui lòng bấm biểu tượng Bánh Răng ở góc trên để đổi Server hoặc vào chế độ Thử Nghiệm!';
+      let serverMsg = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng!';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const data = (err as any).response?.data;
+        if (data?.message) {
+          serverMsg = data.message;
+        } else if (data?.errors && typeof data.errors === 'object') {
+          const firstKey = Object.keys(data.errors)[0];
+          serverMsg = Array.isArray(data.errors[firstKey])
+            ? data.errors[firstKey][0]
+            : String(data.errors[firstKey]);
+        } else if (data?.title) {
+          serverMsg = data.title;
+        } else if (typeof data === 'string') {
+          serverMsg = data;
+        }
+      }
       setErrorMsg(serverMsg);
     } finally {
       setLoading(false);
