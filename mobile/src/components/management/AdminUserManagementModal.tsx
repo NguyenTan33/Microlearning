@@ -70,8 +70,10 @@ export const AdminUserManagementModal: React.FC<AdminUserManagementModalProps> =
         roleFilter || undefined
       );
       setUsers(Array.isArray(data) ? data : []);
-    } catch {
-      Alert.alert('Thông báo', 'Không thể tải danh sách tài khoản từ máy chủ.');
+    } catch (err: any) {
+      console.warn('[AdminUserManagement] Fetch users error:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Không thể tải danh sách tài khoản từ máy chủ.';
+      Alert.alert('Thông báo', msg);
     } finally {
       setLoading(false);
     }

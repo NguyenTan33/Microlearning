@@ -80,10 +80,12 @@ export default function CourseDetailScreen() {
 
       // 2. Azure API Live Fetch
       try {
-        detail = await catalogApi.getCourseById(courseId, isTeacher || isAdmin);
-        if (detail) {
-          await catalogRepository.saveCourseDetail(detail);
-          setCourse(detail);
+        const liveDetail = await catalogApi.getCourseById(courseId, isTeacher || isAdmin);
+        if (liveDetail) {
+          setCourse(liveDetail);
+          catalogRepository.saveCourseDetail(liveDetail).catch((err) => {
+            console.warn('[CourseDetail] Background SQLite cache save error:', err);
+          });
         }
       } catch (apiErr) {
         console.warn('[CourseDetail] Azure fetch error:', apiErr);
