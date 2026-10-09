@@ -29,9 +29,20 @@ export const BookmarkLibraryView: React.FC<BookmarkLibraryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedLessonFilter, setSelectedLessonFilter] = useState<string>('ALL');
 
-  const refreshBookmarks = useCallback(() => {
+  const refreshBookmarks = useCallback(async () => {
+    // 1. Hiển thị ngay từ bộ nhớ cục bộ
     const list = mediaBookmarkService.getAllBookmarks();
     setBookmarks(list);
+
+    // 2. Đồng bộ ngầm với Azure Cloud Backend (SQL Server)
+    try {
+      const cloudList = await mediaBookmarkService.syncCloudBookmarks();
+      if (Array.isArray(cloudList) && cloudList.length > 0) {
+        setBookmarks(cloudList);
+      }
+    } catch {
+      // offline fallback
+    }
   }, []);
 
   useEffect(() => {

@@ -223,6 +223,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       });
 
     setBookmarks(mediaBookmarkService.getBookmarks(lessonId));
+    mediaBookmarkService.syncCloudBookmarks().then(() => {
+      if (!isCancelled) {
+        setBookmarks(mediaBookmarkService.getBookmarks(lessonId));
+      }
+    }).catch(() => {});
 
     // Khôi phục mốc thời gian học viên đã học trước đó
     progressApi

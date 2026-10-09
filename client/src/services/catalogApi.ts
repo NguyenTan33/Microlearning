@@ -184,8 +184,13 @@ export const catalogApi = {
    */
   async getSubjectsByCourse(courseId: number): Promise<Subject[]> {
     try {
-      const res = await fetch(`/api/subjects/course/${courseId}`, {
-        headers: getAuthHeaders(),
+      const timestamp = Date.now();
+      const res = await fetch(`/api/subjects/course/${courseId}?_t=${timestamp}`, {
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
       });
       return await handleResponse<Subject[]>(res);
     } catch {
@@ -199,9 +204,16 @@ export const catalogApi = {
    */
   async getLessonsBySubject(subjectId: number, includeUnpublished: boolean = false): Promise<Lesson[]> {
     try {
-      const url = includeUnpublished ? `/api/lessons/subject/${subjectId}?includeUnpublished=true` : `/api/lessons/subject/${subjectId}`;
+      const timestamp = Date.now();
+      const baseParam = includeUnpublished ? 'includeUnpublished=true' : '';
+      const query = baseParam ? `?${baseParam}&_t=${timestamp}` : `?_t=${timestamp}`;
+      const url = `/api/lessons/subject/${subjectId}${query}`;
       const res = await fetch(url, {
-        headers: getAuthHeaders(),
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
       });
       return await handleResponse<Lesson[]>(res);
     } catch {

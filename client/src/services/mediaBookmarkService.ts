@@ -274,6 +274,7 @@ export const mediaBookmarkService = {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
+            id: newBookmark.id,
             lessonId: newBookmark.lessonId,
             mediaId: newBookmark.mediaId,
             courseId: newBookmark.courseId,
