@@ -1,66 +1,84 @@
 import { apiClient } from './apiClient';
-import type { AdminUserItem, UpdateUserRoleRequest } from '../types/auth.types';
+
+export interface UserListItem {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+  email: string | null;
+  roles: string[];
+  isLockedOut: boolean;
+  lockoutEnd: string | null;
+  phoneNumberConfirmed: boolean;
+}
+
+export interface UserDetail extends UserListItem {
+  accessFailedCount: number;
+}
+
+export interface CreateUserPayload {
+  fullName: string;
+  phoneNumber: string;
+  password: string;
+  role: string;
+}
 
 export const adminUserApi = {
   /**
-   * Lấy danh sách toàn bộ người dùng trong hệ thống (Quyền Admin)
+   * Lấy danh sách toàn bộ tài khoản người dùng từ Azure SQL
    */
-  async getAllUsers(): Promise<AdminUserItem[]> {
-    try {
-      const response = await apiClient.get<AdminUserItem[]>('/admin/users');
-      return response.data;
-    } catch {
-      // Return demo users if endpoint fails or in offline mode
-      return [
-        {
-          id: 'admin-1',
-          phoneNumber: '+84999999999',
-          fullName: 'Quản trị viên Hệ thống',
-          roles: ['Admin', 'Teacher', 'Student'],
-          isLocked: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'teacher-1',
-          phoneNumber: '+84888888888',
-          fullName: 'Giáo viên Nguyễn Văn A',
-          roles: ['Teacher', 'Student'],
-          isLocked: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'student-1',
-          phoneNumber: '+84912345678',
-          fullName: 'Học sinh Trần Thị B',
-          roles: ['Student'],
-          isLocked: false,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-    }
+  async getUsers(search?: string, role?: string, page = 1, pageSize = 50): Promise<UserListItem[]> {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (role) params.append('role', role);
+    params.append('page', String(page));
+    params.append('pageSize', String(pageSize));
+
+    const res = await apiClient.get<UserListItem[]>(`/api/admin/users?${params.toString()}`);
+    return res.data;
   },
 
   /**
-   * Cập nhật phân quyền người dùng
+   * Lấy chi tiết tài khoản theo ID
    */
-  async updateUserRole(request: UpdateUserRoleRequest): Promise<boolean> {
-    try {
-      await apiClient.put(`/admin/users/${request.userId}/role`, { newRole: request.newRole });
-      return true;
-    } catch {
-      return true;
-    }
+  async getUserById(id: string): Promise<UserDetail> {
+    const res = await apiClient.get<UserDetail>(`/api/admin/users/${id}`);
+    return res.data;
   },
 
   /**
-   * Khóa hoặc mở khóa tài khoản người dùng
+   * Tạo tài khoản mới (Admin / Teacher / Student)
    */
-  async toggleUserLock(userId: string): Promise<boolean> {
-    try {
-      await apiClient.post(`/admin/users/${userId}/toggle-lock`);
-      return true;
-    } catch {
-      return true;
-    }
+  async createUser(payload: CreateUserPayload): Promise<UserDetail> {
+    const res = await apiClient.post<UserDetail>('/api/admin/users', payload);
+    return res.data;
+  },
+
+  /**
+   * Đổi mật khẩu tài khoản người dùng
+   */
+  async changePassword(id: string, newPassword: string): Promise<{ message: string }> {
+    const res = await apiClient.put<{ message: string }>(`/api/admin/users/${id}/password`, {
+      newPassword,
+    });
+    return res.data;
+  },
+
+  /**
+   * Khóa hoặc mở khóa tài khoản
+   */
+  async toggleLockout(id: string, lock: boolean, lockMinutes: number = 60): Promise<{ isLockedOut: boolean; message: string }> {
+    const res = await apiClient.patch<{ isLockedOut: boolean; message: string }>(
+      `/api/admin/users/${id}/toggle-lock`,
+      { lock, lockMinutes }
+    );
+    return res.data;
+  },
+
+  /**
+   * Cập nhật vai trò (Admin / Teacher / Student)
+   */
+  async updateRole(id: string, role: string): Promise<{ message: string }> {
+    const res = await apiClient.put<{ message: string }>(`/api/admin/users/${id}/role`, { role });
+    return res.data;
   },
 };
