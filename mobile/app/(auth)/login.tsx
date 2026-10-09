@@ -18,8 +18,10 @@ import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
+import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
 import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
+import type { AuthTokenResponse } from '../../src/types/auth.types';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -32,6 +34,27 @@ export default function LoginScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
+  const [socialProvider, setSocialProvider] = useState<'google' | 'facebook' | null>(null);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
+
+  const handleSocialSuccess = async (res: AuthTokenResponse) => {
+    try {
+      setIsSocialLoading(true);
+      const user = res.user || {
+        id: '',
+        fullName: 'Người dùng',
+        phoneNumber: '',
+      };
+      await setAuth(user, res.accessToken, res.refreshToken);
+      registerDeviceSilently();
+      router.replace('/(tabs)');
+    } catch (err: unknown) {
+      console.warn('[Social Login Store Error]', err);
+      setErrorMsg('Lỗi lưu phiên đăng nhập mạng xã hội. Vui lòng thử lại.');
+    } finally {
+      setIsSocialLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!phoneNumber.trim() || !password.trim()) {
@@ -190,7 +213,13 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             {/* Social Auth Buttons (Google & Facebook) */}
-            <SocialAuthButtons />
+            <SocialAuthButtons
+              onGooglePress={() => setSocialProvider('google')}
+              onFacebookPress={() => setSocialProvider('facebook')}
+              loading={loading || isSocialLoading}
+              isGoogleLoading={isSocialLoading && socialProvider === 'google'}
+              isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}
+            />
 
             <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/register')}>
               <Text style={styles.switchText}>Chưa có tài khoản? </Text>
@@ -201,6 +230,13 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       {/* Modals */}
+      <SocialAuthModal
+        visible={socialProvider !== null}
+        provider={socialProvider}
+        onClose={() => setSocialProvider(null)}
+        onSuccess={handleSocialSuccess}
+      />
+
       <ForgotPasswordModal
         visible={showForgotPassword}
         onClose={() => setShowForgotPassword(false)}

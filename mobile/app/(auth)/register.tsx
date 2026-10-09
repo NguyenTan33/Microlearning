@@ -16,6 +16,9 @@ import { User as UserIcon, Phone, Lock, ArrowRight, ArrowLeft } from 'lucide-rea
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
+import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
+import type { AuthTokenResponse } from '../../src/types/auth.types';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -26,6 +29,27 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [socialProvider, setSocialProvider] = useState<'google' | 'facebook' | null>(null);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
+
+  const handleSocialSuccess = async (res: AuthTokenResponse) => {
+    try {
+      setIsSocialLoading(true);
+      const user = res.user || {
+        id: '',
+        fullName: 'Người dùng',
+        phoneNumber: '',
+      };
+      await setAuth(user, res.accessToken, res.refreshToken);
+      registerDeviceSilently();
+      router.replace('/(tabs)');
+    } catch (err: unknown) {
+      console.warn('[Social Register Store Error]', err);
+      setErrorMsg('Lỗi lưu phiên đăng nhập mạng xã hội. Vui lòng thử lại.');
+    } finally {
+      setIsSocialLoading(false);
+    }
+  };
 
   const handleRegister = async () => {
     if (!fullName || !phoneNumber || !password) {
@@ -127,6 +151,14 @@ export default function RegisterScreen() {
               )}
             </TouchableOpacity>
 
+            <SocialAuthButtons
+              onGooglePress={() => setSocialProvider('google')}
+              onFacebookPress={() => setSocialProvider('facebook')}
+              loading={loading || isSocialLoading}
+              isGoogleLoading={isSocialLoading && socialProvider === 'google'}
+              isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}
+            />
+
             <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/login')}>
               <Text style={styles.switchText}>Đã có tài khoản? </Text>
               <Text style={styles.switchHighlight}>Đăng nhập</Text>
@@ -134,6 +166,13 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <SocialAuthModal
+        visible={socialProvider !== null}
+        provider={socialProvider}
+        onClose={() => setSocialProvider(null)}
+        onSuccess={handleSocialSuccess}
+      />
     </SafeAreaView>
   );
 }
