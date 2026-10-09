@@ -23,6 +23,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetAllCourses([FromQuery] bool includeUnpublished = false)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var courses = await _courseService.GetAllCoursesAsync(includeUnpublished);
             return Ok(courses);
         }
@@ -34,6 +35,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetCourseById(int id, [FromQuery] bool includeUnpublished = false)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var course = await _courseService.GetCourseByIdAsync(id, includeUnpublished);
             return Ok(course);
         }
@@ -45,6 +47,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateCourse([FromBody] CreateCourseRequest request)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var result = await _courseService.CreateCourseAsync(request);
             return CreatedAtAction(nameof(GetCourseById), new { id = result.Id }, result);
         }
@@ -56,6 +59,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> UpdateCourse(int id, [FromBody] UpdateCourseRequest request)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var result = await _courseService.UpdateCourseAsync(id, request);
             return Ok(result);
         }
@@ -67,6 +71,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> TogglePublish(int id)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var isPublished = await _courseService.TogglePublishAsync(id);
             return Ok(new 
             { 
@@ -83,6 +88,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> DeleteCourse(int id)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             await _courseService.DeleteCourseAsync(id);
             return Ok(new { message = "Xóa khóa học thành công." });
         }
