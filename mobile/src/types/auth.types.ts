@@ -46,9 +46,14 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface RegisterResponse {
+  message: string;
+  userId: string;
+}
+
 export interface OtpVerifyRequest {
   phoneNumber: string;
-  otpCode: string;
+  otp: string;
 }
 
 export interface DeviceRegisterRequest {

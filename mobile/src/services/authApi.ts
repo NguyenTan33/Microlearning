@@ -3,6 +3,7 @@ import type {
   AuthTokenResponse,
   LoginRequest,
   RegisterRequest,
+  RegisterResponse,
   OtpVerifyRequest,
   DeviceRegisterRequest,
   ChangePasswordRequest,
@@ -47,14 +48,22 @@ export const authApi = {
     };
   },
 
-  async register(data: RegisterRequest): Promise<AuthTokenResponse> {
-    const res = await apiClient.post<AuthTokenResponse>('/api/Auth/register', data);
+  async register(data: RegisterRequest): Promise<RegisterResponse> {
+    const res = await apiClient.post<RegisterResponse>('/api/Auth/register', data);
     return res.data;
   },
 
-  async verifyOtp(data: OtpVerifyRequest): Promise<{ success: boolean; message: string }> {
-    const res = await apiClient.post<{ success: boolean; message: string }>('/api/Auth/verify-otp', data);
-    return res.data;
+  async verifyOtp(data: OtpVerifyRequest | { phoneNumber: string; otp?: string; otpCode?: string }): Promise<{ success: boolean; message: string; userId?: string }> {
+    const otpValue = ('otp' in data && data.otp) ? data.otp : (data as any).otpCode || '';
+    const res = await apiClient.post<{ message: string; userId: string }>('/api/Auth/verify-otp', {
+      phoneNumber: data.phoneNumber,
+      otp: otpValue,
+    });
+    return {
+      success: true,
+      message: res.data?.message || 'Xác thực OTP thành công.',
+      userId: res.data?.userId,
+    };
   },
 
   async registerDevice(data: DeviceRegisterRequest): Promise<{ success: boolean }> {

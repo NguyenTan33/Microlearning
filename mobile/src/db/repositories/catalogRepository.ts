@@ -1,7 +1,7 @@
 import { getSQLiteDatabase } from '../sqliteClient';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 
-const DUMMY_KEYWORDS = ['excel', 'word', 'react', 'sql server', '.net 8', 'offline-first'];
+const DUMMY_KEYWORDS = ['excel', 'word', 'react', 'sql server', '.net 8', 'offline-first', 'test', 'test1', 'dummy'];
 
 function isDummyTitle(title: string): boolean {
   const lower = (title || '').toLowerCase();
@@ -16,16 +16,26 @@ export const catalogRepository = {
       const realCourses = courses.filter((c) => !isDummyTitle(c.title));
 
       const persist = async () => {
-        // Xóa các khóa học mẫu cũ
-        await db.runAsync(`
-          DELETE FROM LocalCourses 
-          WHERE LOWER(title) LIKE '%excel%' 
-             OR LOWER(title) LIKE '%word%' 
-             OR LOWER(title) LIKE '%react%' 
-             OR LOWER(title) LIKE '%sql server%' 
-             OR LOWER(title) LIKE '%.net 8%' 
-             OR LOWER(title) LIKE '%offline-first%';
-        `);
+        // Đồng bộ chuẩn xác theo server: nếu danh sách rỗng, xóa sạch bảng
+        if (realCourses.length === 0) {
+          await db.runAsync(`DELETE FROM LocalCourses;`);
+          await db.runAsync(`DELETE FROM LocalSubjects;`);
+          await db.runAsync(`DELETE FROM LocalLessons;`);
+        } else {
+          const ids = realCourses.map((c) => c.id).join(',');
+          await db.runAsync(`DELETE FROM LocalCourses WHERE id NOT IN (${ids});`);
+          await db.runAsync(`
+            DELETE FROM LocalCourses 
+            WHERE LOWER(title) LIKE '%excel%' 
+               OR LOWER(title) LIKE '%word%' 
+               OR LOWER(title) LIKE '%react%' 
+               OR LOWER(title) LIKE '%sql server%' 
+               OR LOWER(title) LIKE '%.net 8%' 
+               OR LOWER(title) LIKE '%test%'
+               OR LOWER(title) LIKE '%dummy%'
+               OR LOWER(title) LIKE '%offline-first%';
+          `);
+        }
 
         for (const c of realCourses) {
           await db.runAsync(
@@ -64,6 +74,8 @@ export const catalogRepository = {
            OR LOWER(title) LIKE '%react%' 
            OR LOWER(title) LIKE '%sql server%' 
            OR LOWER(title) LIKE '%.net 8%' 
+           OR LOWER(title) LIKE '%test%'
+           OR LOWER(title) LIKE '%dummy%'
            OR LOWER(title) LIKE '%offline-first%';
       `);
     } catch {}
