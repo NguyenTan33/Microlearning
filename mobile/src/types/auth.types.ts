@@ -5,7 +5,27 @@ export interface User {
   email?: string;
   avatarUrl?: string;
   role?: string;
+  roles?: string[];
   createdAt?: string;
+}
+
+export interface UserProfile extends User {
+  roles?: string[];
+}
+
+export interface AdminUserItem {
+  id: string;
+  phoneNumber: string;
+  fullName: string;
+  roles: string[];
+  isLocked: boolean;
+  createdAt: string;
+  email?: string;
+}
+
+export interface UpdateUserRoleRequest {
+  userId: string;
+  newRole: string;
 }
 
 export interface AuthTokenResponse {
@@ -37,3 +57,4 @@ export interface DeviceRegisterRequest {
   osVersion: string;
   appVersion: string;
 }
+

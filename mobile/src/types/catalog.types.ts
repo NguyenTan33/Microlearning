@@ -41,6 +41,8 @@ export interface Course {
   category?: string;
   authorName?: string;
   isPublished: boolean;
+  isPrivate?: boolean;
+  version?: number;
   totalSubjects: number;
   isEnrolled?: boolean;
   isLocked?: boolean;
@@ -49,3 +51,6 @@ export interface Course {
 export interface CourseDetail extends Course {
   subjects: Subject[];
 }
+
+export type { QuizQuestion, QuizOption } from './quiz.types';
+

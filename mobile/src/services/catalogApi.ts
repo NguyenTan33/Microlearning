@@ -21,4 +21,16 @@ export const catalogApi = {
     const res = await apiClient.get<Lesson>(`/api/lessons/${lessonId}`);
     return res.data;
   },
+
+  async sendProgressEvent(lessonId: number, watchedSeconds: number, totalDurationSeconds: number): Promise<boolean> {
+    try {
+      await apiClient.post(`/api/lessons/${lessonId}/progress`, {
+        watchedSeconds,
+        totalDurationSeconds,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 };

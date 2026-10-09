@@ -1,13 +1,48 @@
 import NetInfo from '@react-native-community/netinfo';
+import { AppState, AppStateStatus } from 'react-native';
 import { outboxRepository } from '../db/repositories/outboxRepository';
+import { progressRepository } from '../db/repositories/progressRepository';
+import { syncMetaRepository } from '../db/repositories/syncMetaRepository';
+import { catalogRepository } from '../db/repositories/catalogRepository';
 import { syncApi } from './syncApi';
-import { STORAGE_KEYS } from '../utils/constants';
-import { secureStorage } from '../utils/secureStorage';
+import { catalogApi } from './catalogApi';
+import { guidHelper } from '../utils/guidHelper';
 
 let isSyncing = false;
 let syncTimer: NodeJS.Timeout | null = null;
+let isInitialized = false;
 
 export const autoSyncEngine = {
+  /**
+   * Khởi động AutoSyncEngine lắng nghe sự kiện mạng (NetInfo) & App State (Foreground)
+   */
+  initListeners(): void {
+    if (isInitialized) return;
+    isInitialized = true;
+
+    // 1. Lắng nghe sự kiện khôi phục kết nối mạng (Network Recovery Trigger)
+    NetInfo.addEventListener((state) => {
+      if (state.isConnected && state.isInternetReachable) {
+        this.triggerSyncWithDebounce(1000);
+      }
+    });
+
+    // 2. Lắng nghe vòng đời ứng dụng (App Resume Foreground Trigger)
+    AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        this.triggerSyncWithDebounce(1500);
+      }
+    });
+
+    // 3. Heartbeat timer 3 phút
+    setInterval(() => {
+      this.triggerSyncWithDebounce(0);
+    }, 3 * 60 * 1000);
+  },
+
+  /**
+   * Kích hoạt tiến trình đồng bộ ngầm với khoảng hoãn Debounce (chống giật chập chờn mạng)
+   */
   triggerSyncWithDebounce(delayMs: number = 2000): void {
     if (syncTimer) {
       clearTimeout(syncTimer);
@@ -17,6 +52,9 @@ export const autoSyncEngine = {
     }, delayMs);
   },
 
+  /**
+   * Chạy tiến trình đồng bộ 2 chiều (Push Outbox Batch + Pull Sequence Delta)
+   */
   async runSyncProcess(): Promise<void> {
     if (isSyncing) return;
 
@@ -27,24 +65,114 @@ export const autoSyncEngine = {
       }
 
       isSyncing = true;
-      const deviceId = (await secureStorage.getItem(STORAGE_KEYS.DEVICE_ID)) || 'mobile-device-default';
+      const deviceId = await guidHelper.getOrCreateDeviceId();
 
-      // 1. Get pending outbox operations
+      // BƯỚC 1: PUSH BATCH HÀNG ĐỢI OUTBOX LÊN SERVER
       const pendingOps = await outboxRepository.getPendingItems();
       if (pendingOps.length > 0) {
-        const response = await syncApi.pushBatch({
-          deviceId,
-          operations: pendingOps,
-        });
+        try {
+          const pushResponse = await syncApi.pushBatch({
+            deviceId,
+            operations: pendingOps,
+          });
 
-        if (response.acceptedOperationIds && response.acceptedOperationIds.length > 0) {
-          await outboxRepository.removeItems(response.acceptedOperationIds);
+          if (pushResponse?.acceptedOperationIds?.length > 0) {
+            await outboxRepository.removeItems(pushResponse.acceptedOperationIds);
+          }
+        } catch (pushErr) {
+          console.warn('[AutoSyncEngine] Lỗi push batch:', pushErr);
         }
       }
+
+      // BƯỚC 2: PULL DELTA SYNC KÉO NỘI DUNG MỚI TỪ SERVER THEO CHECKPOINT
+      try {
+        const lastSeqStr = await syncMetaRepository.getMeta('LAST_SEQUENCE');
+        const lastSeq = lastSeqStr ? parseInt(lastSeqStr, 10) : 0;
+
+        const pullResponse = await syncApi.pullDelta(lastSeq);
+        const targetSeq = pullResponse?.newCheckpointSequence ?? pullResponse?.serverSequence ?? 0;
+        if (pullResponse && targetSeq > lastSeq) {
+          await syncMetaRepository.saveMeta('LAST_SEQUENCE', targetSeq.toString());
+
+          // Nếu có thay đổi danh mục khóa học -> Kéo lại catalog nạp vào SQLite
+          if (pullResponse.changes && pullResponse.changes.length > 0) {
+            const apiCourses = await catalogApi.getAllCourses();
+            if (apiCourses.length > 0) {
+              await catalogRepository.saveCourses(apiCourses);
+            }
+          }
+        }
+      } catch (pullErr) {
+        console.warn('[AutoSyncEngine] Lỗi pull delta:', pullErr);
+      }
     } catch (err) {
-      console.warn('[AutoSyncEngine] Sync error:', err);
+      console.warn('[AutoSyncEngine] Lỗi tiến trình đồng bộ:', err);
     } finally {
       isSyncing = false;
     }
+  },
+
+  /**
+   * Ghi nhận tiến độ xem video bài học (Local First -> SQLite -> Push API / Outbox)
+   */
+  async recordLessonProgress(
+    lessonId: number,
+    watchedSeconds: number,
+    totalDurationSeconds: number
+  ): Promise<void> {
+    const percent =
+      totalDurationSeconds > 0 ? Math.min(100, (watchedSeconds / totalDurationSeconds) * 100) : 0;
+    const isCompleted = percent >= 95 || (totalDurationSeconds > 0 && watchedSeconds >= totalDurationSeconds);
+
+    // 1. Lưu lập tức vào SQLite LocalLessonProgress (0ms - Local First)
+    await progressRepository.saveProgress(
+      lessonId,
+      watchedSeconds,
+      percent,
+      isCompleted
+    );
+
+    // 2. Gửi API trực tiếp hoặc thêm vào Outbox nếu offline
+    try {
+      const netState = await NetInfo.fetch();
+      if (netState.isConnected && netState.isInternetReachable) {
+        await catalogApi.sendProgressEvent(lessonId, watchedSeconds, totalDurationSeconds);
+        await progressRepository.markClean(lessonId);
+      } else {
+        await outboxRepository.addItem({
+          clientOperationId: guidHelper.generateGuid(),
+          operationType: 'LESSON_PROGRESS',
+          entityType: 'Lesson',
+          entityId: lessonId,
+          payloadJson: JSON.stringify({
+            lessonId,
+            watchedSeconds,
+            totalDurationSeconds,
+            percent,
+            isCompleted,
+          }),
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Fallback thêm vào Outbox khi gọi API lỗi
+      await outboxRepository.addItem({
+        clientOperationId: guidHelper.generateGuid(),
+        operationType: 'LESSON_PROGRESS',
+        entityType: 'Lesson',
+        entityId: lessonId,
+        payloadJson: JSON.stringify({
+          lessonId,
+          watchedSeconds,
+          totalDurationSeconds,
+          percent,
+          isCompleted,
+        }),
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Kích hoạt đồng bộ ngầm
+    this.triggerSyncWithDebounce(2000);
   },
 };

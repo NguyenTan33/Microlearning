@@ -22,10 +22,13 @@ export interface SyncPushBatchResponse {
 
 export interface SyncPullResponse {
   serverSequence: number;
+  newCheckpointSequence?: number;
+  currentCheckpointSequence?: number;
+  hasMoreChanges?: boolean;
   changes: {
     entityType: string;
     entityId: number;
-    action: 'CREATE' | 'UPDATE' | 'DELETE';
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | string;
     dataJson: string;
   }[];
 }
@@ -40,5 +43,5 @@ export interface DownloadedMediaItem {
   downloadedAt: string;
   lastPlayedAt: string;
   isPinned: number; // 0 | 1
-  status: 'DOWNLOADING' | 'DOWNLOADED' | 'FAILED';
+  status: 'PENDING' | 'DOWNLOADING' | 'DOWNLOADED' | 'FAILED';
 }
