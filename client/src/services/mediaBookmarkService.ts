@@ -176,6 +176,38 @@ export const mediaBookmarkService = {
   },
 
   /**
+   * Đồng bộ toàn bộ bookmarks từ Cloud API về localStorage
+   */
+  async syncCloudBookmarks(): Promise<MediaBookmark[]> {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return this.getAllBookmarks();
+
+      const res = await fetch('/api/media-bookmarks', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const cloudList: MediaBookmark[] = await res.json();
+        if (Array.isArray(cloudList)) {
+          const groupedByLesson = new Map<number, MediaBookmark[]>();
+          cloudList.forEach((bm) => {
+            const cur = groupedByLesson.get(bm.lessonId) || [];
+            cur.push(bm);
+            groupedByLesson.set(bm.lessonId, cur);
+          });
+          groupedByLesson.forEach((list, lId) => {
+            localStorage.setItem(getLessonStorageKey(lId), JSON.stringify(list));
+          });
+          return cloudList;
+        }
+      }
+    } catch {
+      // offline fallback
+    }
+    return this.getAllBookmarks();
+  },
+
+  /**
    * Đếm tổng số điểm đánh dấu hiện có trên toàn hệ thống của tài khoản hiện tại.
    */
   getAllBookmarksCount(): number {
@@ -231,6 +263,32 @@ export const mediaBookmarkService = {
     const updatedList = [...currentList, newBookmark].sort((a, b) => a.timestamp - b.timestamp);
     localStorage.setItem(getLessonStorageKey(payload.lessonId), JSON.stringify(updatedList));
 
+    // Đồng bộ tức thời lên CSDL Cloud Backend
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        fetch('/api/media-bookmarks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            lessonId: newBookmark.lessonId,
+            mediaId: newBookmark.mediaId,
+            courseId: newBookmark.courseId,
+            courseTitle: newBookmark.courseTitle,
+            lessonTitle: newBookmark.lessonTitle,
+            timestamp: newBookmark.timestamp,
+            title: newBookmark.title,
+            note: newBookmark.note,
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
     return newBookmark;
   },
 
@@ -241,6 +299,22 @@ export const mediaBookmarkService = {
     const currentList = this.getBookmarks(lessonId);
     const updatedList = currentList.filter((item) => item.id !== bookmarkId);
     localStorage.setItem(getLessonStorageKey(lessonId), JSON.stringify(updatedList));
+
+    // Đồng bộ xóa lên CSDL Cloud Backend
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        fetch(`/api/media-bookmarks/${bookmarkId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
     return updatedList;
   },
 
