@@ -32,20 +32,39 @@ namespace Microlearning.Areas.Catalog.Services
 
         public async Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false)
         {
-            string cacheKey = $"courses_list_{includeUnpublished}";
+            // Với Studio Quản lý (includeUnpublished = true), luôn truy vấn trực tiếp CSDL để đảm bảo dữ liệu tức thời
+            if (includeUnpublished)
+            {
+                return await FetchCoursesFromDbAsync(true);
+            }
+
+            string cacheKey = "courses_list_false";
 
             if (_cache.TryGetValue(cacheKey, out List<CourseResponse>? cachedCourses) && cachedCourses != null)
             {
                 return cachedCourses;
             }
 
+            var courses = await FetchCoursesFromDbAsync(false);
+
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(2))
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+
+            _cache.Set(cacheKey, courses, cacheEntryOptions);
+
+            return courses;
+        }
+
+        private async Task<List<CourseResponse>> FetchCoursesFromDbAsync(bool includeUnpublished)
+        {
             var query = _dbContext.Courses.AsNoTracking();
             if (!includeUnpublished)
             {
                 query = query.Where(c => c.IsPublished);
             }
 
-            var courses = await query
+            return await query
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new CourseResponse(
                     c.Id,
@@ -60,25 +79,35 @@ namespace Microlearning.Areas.Catalog.Services
                     c.IsPrivate
                 ))
                 .ToListAsync();
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(30))
-                .SetAbsoluteExpiration(TimeSpan.FromHours(2));
-
-            _cache.Set(cacheKey, courses, cacheEntryOptions);
-
-            return courses;
         }
 
         public async Task<CourseDetailResponse> GetCourseByIdAsync(int courseId, bool includeUnpublished = false)
         {
-            string cacheKey = $"course_detail_{courseId}_{includeUnpublished}";
+            if (includeUnpublished)
+            {
+                return await FetchCourseDetailFromDbAsync(courseId, true);
+            }
+
+            string cacheKey = $"course_detail_{courseId}_false";
 
             if (_cache.TryGetValue(cacheKey, out CourseDetailResponse? cachedCourse) && cachedCourse != null)
             {
                 return cachedCourse;
             }
 
+            var response = await FetchCourseDetailFromDbAsync(courseId, false);
+
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(2))
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+
+            _cache.Set(cacheKey, response, cacheEntryOptions);
+
+            return response;
+        }
+
+        private async Task<CourseDetailResponse> FetchCourseDetailFromDbAsync(int courseId, bool includeUnpublished)
+        {
             var course = await _dbContext.Courses
                 .AsNoTracking()
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
@@ -119,7 +148,7 @@ namespace Microlearning.Areas.Catalog.Services
                 )).ToList()
             )).ToList();
 
-            var response = new CourseDetailResponse(
+            return new CourseDetailResponse(
                 course.Id,
                 course.Title,
                 course.Description,
@@ -132,14 +161,6 @@ namespace Microlearning.Areas.Catalog.Services
                 course.IsPrivate,
                 !course.IsPrivate
             );
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(30))
-                .SetAbsoluteExpiration(TimeSpan.FromHours(2));
-
-            _cache.Set(cacheKey, response, cacheEntryOptions);
-
-            return response;
         }
 
         public async Task<CourseResponse> CreateCourseAsync(CreateCourseRequest request)
@@ -249,14 +270,13 @@ namespace Microlearning.Areas.Catalog.Services
         public async Task<bool> DeleteCourseAsync(int courseId)
         {
             var course = await _dbContext.Courses.FindAsync(courseId);
-            if (course == null)
+            if (course != null)
             {
-                throw new BusinessException($"Không tìm thấy khóa học với mã {courseId} để xóa.");
+                _dbContext.Courses.Remove(course);
+                await _dbContext.SaveChangesAsync();
             }
 
-            _dbContext.Courses.Remove(course);
-            await _dbContext.SaveChangesAsync();
-
+            // Luôn dọn dẹp cache kể cả khi khóa học đã bị xóa trước đó (Idempotent Delete)
             InvalidateCourseCache(courseId);
 
             return true;
@@ -281,13 +301,18 @@ namespace Microlearning.Areas.Catalog.Services
 
         public void InvalidateCache(int? courseId = null)
         {
+            // Xóa tất cả các biến thể viết hoa/thường để triệt tiêu lỗi Case-Sensitivity của IMemoryCache
             _cache.Remove("courses_list_true");
             _cache.Remove("courses_list_false");
+            _cache.Remove("courses_list_True");
+            _cache.Remove("courses_list_False");
 
             if (courseId.HasValue)
             {
                 _cache.Remove($"course_detail_{courseId.Value}_true");
                 _cache.Remove($"course_detail_{courseId.Value}_false");
+                _cache.Remove($"course_detail_{courseId.Value}_True");
+                _cache.Remove($"course_detail_{courseId.Value}_False");
             }
         }
 
