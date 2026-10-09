@@ -210,22 +210,27 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     setActionLoading(true);
     try {
       if (editingCourse) {
-        await catalogApi.updateCourse(editingCourse.id, {
+        const updated = await catalogApi.updateCourse(editingCourse.id, {
           title: courseForm.title,
           description: courseForm.description,
           thumbnailUrl: courseForm.thumbnailUrl,
           isPrivate: courseForm.isPrivate,
           accessPassword: courseForm.accessPassword.trim() || undefined,
         });
+        setCourses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        if (selectedCourseDetail?.id === updated.id) {
+          setSelectedCourseDetail((prev) => (prev ? { ...prev, ...updated } : null));
+        }
         showToast('success', 'Đã cập nhật thông tin khóa học thành công.');
       } else {
-        await catalogApi.createCourse({
+        const created = await catalogApi.createCourse({
           title: courseForm.title,
           description: courseForm.description,
           thumbnailUrl: courseForm.thumbnailUrl,
           isPrivate: courseForm.isPrivate,
           accessPassword: courseForm.accessPassword.trim() || undefined,
         });
+        setCourses((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
         showToast('success', 'Đã tạo khóa học mới thành công.');
       }
       setShowCourseModal(false);
@@ -242,6 +247,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const handleTogglePublishCourse = async (course: Course) => {
     try {
       const res = await catalogApi.togglePublishCourse(course.id);
+      setCourses((prev) =>
+        prev.map((c) => (c.id === course.id ? { ...c, isPublished: res.isPublished } : c))
+      );
       showToast('success', res.message);
       await fetchCourses();
       if (selectedCourseDetail?.id === course.id) {
@@ -259,10 +267,11 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
     try {
       await catalogApi.deleteCourse(courseId);
-      showToast('success', 'Đã xóa khóa học thành công.');
+      setCourses((prev) => prev.filter((c) => c.id !== courseId));
       if (selectedCourseDetail?.id === courseId) {
         setSelectedCourseDetail(null);
       }
+      showToast('success', 'Đã xóa khóa học thành công.');
       await fetchCourses();
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {

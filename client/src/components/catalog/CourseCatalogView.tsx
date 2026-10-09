@@ -489,7 +489,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span className="flex items-center gap-1">
                         <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>{course.totalSubjects || 2} học phần</span>
+                        <span>{course.totalSubjects ?? 0} học phần</span>
                       </span>
 
                       {enrolled && (
