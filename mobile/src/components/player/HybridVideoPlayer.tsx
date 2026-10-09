@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { HardDrive, Globe, Maximize2, AlertCircle } from 'lucide-react-native';
+import { Maximize2, AlertCircle } from 'lucide-react-native';
 import { downloadManager } from '../../services/downloadManager';
 import { autoSyncEngine } from '../../services/autoSyncEngine';
 import { catalogApi } from '../../services/catalogApi';
@@ -11,6 +11,7 @@ interface HybridVideoPlayerProps {
   onlineStreamUrl?: string;
   videoUrl?: string;
   durationSeconds?: number;
+  seekTimestamp?: number;
   onCompleted?: () => void;
   onProgress?: (currentTime: number, duration: number) => void;
 }
@@ -20,11 +21,11 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   onlineStreamUrl,
   videoUrl,
   durationSeconds = 120,
+  seekTimestamp,
   onCompleted,
   onProgress,
 }) => {
   const [sourceUri, setSourceUri] = useState<string | null>(null);
-  const [isOfflineSource, setIsOfflineSource] = useState<boolean>(false);
   const [isLoadingSource, setIsLoadingSource] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const lastRecordedTimeRef = useRef<number>(0);
@@ -61,13 +62,12 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         if (isMounted) {
           if (resolved.uri) {
             setSourceUri(resolved.uri);
-            setIsOfflineSource(resolved.isOffline);
           } else {
             setLoadError('Bài học này chưa có video hoặc đang được xử lý.');
           }
           setIsLoadingSource(false);
         }
-      } catch (err) {
+      } catch {
         if (isMounted) {
           setLoadError('Không thể nạp nguồn video bài học.');
           setIsLoadingSource(false);
@@ -82,12 +82,25 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     };
   }, [lessonId, onlineStreamUrl, videoUrl]);
 
-  // 2. Khởi tạo player với expo-video
-  const player = useVideoPlayer(sourceUri || '', (p) => {
+  // 2. Khởi tạo player với expo-video (tránh truyền chuỗi rỗng để không bị lỗi AVFoundation file:///)
+  const player = useVideoPlayer(sourceUri || null, (p: { loop: boolean; timeUpdateEventInterval?: number }) => {
     p.loop = false;
+    p.timeUpdateEventInterval = 1;
   });
 
-  // 3. Theo dõi tiến trình phát và ghi nhận tiến độ học tập
+  // 3. Xử lý tua video tới mốc đánh dấu (Seek to bookmark timestamp)
+  useEffect(() => {
+    if (player && typeof seekTimestamp === 'number' && seekTimestamp >= 0) {
+      try {
+        player.currentTime = seekTimestamp;
+        player.play();
+      } catch (err) {
+        console.warn('[HybridVideoPlayer] Seek timestamp error:', err);
+      }
+    }
+  }, [player, seekTimestamp]);
+
+  // 4. Theo dõi tiến trình phát và ghi nhận tiến độ học tập liên tục
   useEffect(() => {
     if (!player) return;
 
@@ -97,8 +110,9 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
       if (onCompleted) onCompleted();
     });
 
-    const statusSub = player.addListener('statusChange', () => {
-      const cur = Math.round(player.currentTime);
+    // Lắng nghe cập nhật thời gian phát liên tục mỗi giây
+    const timeUpdateSub = (player as any).addListener('timeUpdate', (payload: { currentTime: number }) => {
+      const cur = Math.round(payload.currentTime);
       const dur = player.duration > 0 ? Math.round(player.duration) : durationSeconds;
 
       if (onProgress) {
@@ -113,7 +127,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
 
     return () => {
       playToEndSub.remove();
-      statusSub.remove();
+      timeUpdateSub.remove();
     };
   }, [player, lessonId, durationSeconds, onCompleted, onProgress]);
 
@@ -149,24 +163,9 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         style={styles.video}
         contentFit="contain"
         nativeControls={true}
-        fullscreenOptions={{ enable: true }}
+        allowsFullscreen={true}
         allowsPictureInPicture={true}
       />
-
-      {/* Badge chỉ định nguồn phát */}
-      <View style={styles.sourceBadge}>
-        {isOfflineSource ? (
-          <>
-            <HardDrive color="#10B981" size={13} />
-            <Text style={styles.offlineSourceText}>Phát từ máy (Offline)</Text>
-          </>
-        ) : (
-          <>
-            <Globe color="#38BDF8" size={13} />
-            <Text style={styles.onlineSourceText}>Phát Azure Cloud</Text>
-          </>
-        )}
-      </View>
 
       {/* Nút phóng to toàn màn hình */}
       <TouchableOpacity
@@ -210,19 +209,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
   },
-  sourceBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 5,
-    zIndex: 10,
-  },
   fullscreenBtn: {
     position: 'absolute',
     bottom: 10,
@@ -233,15 +219,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
     zIndex: 10,
-  },
-  offlineSourceText: {
-    color: '#10B981',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  onlineSourceText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '600',
   },
 });
