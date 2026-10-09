@@ -6,20 +6,30 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, BookOpen, Clock, CheckCircle2, ChevronRight, PlayCircle } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  BookOpen,
+  Clock,
+  CheckCircle2,
+  ChevronRight,
+  PlayCircle,
+  Users,
+  Lock,
+  Globe,
+  Layers,
+} from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
 import { formatDuration } from '../../src/utils/formatters';
 import type { CourseDetail } from '../../src/types/catalog.types';
-
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { CourseStudentProgressModal } from '../../src/components/management/CourseStudentProgressModal';
-import { Users } from 'lucide-react-native';
 
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,15 +45,15 @@ export default function CourseDetailScreen() {
 
   const loadCourse = useCallback(async () => {
     try {
-      // 1. Read SQLite
+      // 1. Đọc từ SQLite trước
       let detail = await catalogRepository.getCourseDetailById(courseId);
       if (detail) {
         setCourse(detail);
       }
 
-      // 2. Fetch API if available
+      // 2. Fetch live từ Azure API
       try {
-        detail = await catalogApi.getCourseById(courseId);
+        detail = await catalogApi.getCourseById(courseId, true);
         await catalogRepository.saveCourseDetail(detail);
         setCourse(detail);
       } catch {
@@ -81,6 +91,13 @@ export default function CourseDetailScreen() {
     );
   }
 
+  const totalLessons = course.subjects?.reduce((acc, s) => acc + (s.lessons?.length || 0), 0) || 0;
+  const completedCount = course.subjects?.reduce(
+    (acc, s) => acc + (s.lessons?.filter((l) => completedIds.has(l.id)).length || 0),
+    0
+  ) || 0;
+  const progressPercent = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Custom Header */}
@@ -97,14 +114,66 @@ export default function CourseDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadCourse} tintColor="#6366F1" />}
       >
-        <View style={styles.heroCard}>
-          <View style={styles.iconCircle}>
-            <BookOpen color="#818CF8" size={32} />
-          </View>
-          <Text style={styles.courseTitle}>{course.title}</Text>
-          <Text style={styles.authorText}>Giảng viên: {course.authorName || 'Microlearning'}</Text>
-          <Text style={styles.descText}>{course.description || 'Khóa học Microlearning chất lượng cao.'}</Text>
+        {/* Banner Thumbnail Khóa Học Thật */}
+        <View style={styles.heroThumbnailContainer}>
+          {course.thumbnailUrl ? (
+            <Image
+              source={{ uri: course.thumbnailUrl }}
+              style={styles.heroThumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.heroPlaceholderBanner}>
+              <BookOpen color="#818CF8" size={48} />
+            </View>
+          )}
 
+          {/* Badge Loại Khóa Học */}
+          <View style={styles.heroBadgeRow}>
+            {course.isPrivate ? (
+              <View style={[styles.badge, styles.badgePrivate]}>
+                <Lock color="#F59E0B" size={11} />
+                <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
+              </View>
+            ) : (
+              <View style={[styles.badge, styles.badgePublic]}>
+                <Globe color="#10B981" size={11} />
+                <Text style={styles.badgeTextPublic}>Công khai</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Thông tin Khóa Học */}
+        <View style={styles.heroCard}>
+          <Text style={styles.courseTitle}>{course.title}</Text>
+          <Text style={styles.authorText}>Giảng viên: {course.authorName || 'Microlearning Master'}</Text>
+          <Text style={styles.descText}>{course.description || 'Khóa học Microlearning chuẩn kiến thức thực chiến.'}</Text>
+
+          {/* Thanh Tiến Độ Học Viên */}
+          <View style={styles.progressContainer}>
+            <View style={styles.progressHeaderRow}>
+              <Text style={styles.progressLabel}>Tiến độ hoàn thành</Text>
+              <Text style={styles.progressPercent}>{progressPercent}% ({completedCount}/{totalLessons} bài)</Text>
+            </View>
+            <View style={styles.progressBarTrack}>
+              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            </View>
+          </View>
+
+          {/* Thống kê nhanh */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Layers color="#818CF8" size={16} />
+              <Text style={styles.statText}>{course.subjects?.length || 0} Môn học</Text>
+            </View>
+            <View style={styles.statItem}>
+              <PlayCircle color="#38BDF8" size={16} />
+              <Text style={styles.statText}>{totalLessons} Bài học</Text>
+            </View>
+          </View>
+
+          {/* Nút Xem Tiến Độ Học Viên (Dành cho Giáo viên & Admin) */}
           {(isTeacher || isAdmin) && (
             <TouchableOpacity
               style={styles.analyticsBtn}
@@ -112,16 +181,25 @@ export default function CourseDetailScreen() {
               activeOpacity={0.8}
             >
               <Users color="#06B6D4" size={16} />
-              <Text style={styles.analyticsBtnText}>Xem Tiến Độ Học Viên Khoá Học</Text>
+              <Text style={styles.analyticsBtnText}>Thống Kê Tiến Độ Học Viên Khóa Này</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        <Text style={styles.sectionTitle}>Nội dung chương trình học</Text>
+        {/* Danh sách Môn Học & Bài Giảng */}
+        <Text style={styles.sectionTitle}>Nội dung chương trình ({course.subjects?.length || 0} học phần)</Text>
 
-        {course.subjects?.map((sub) => (
+        {course.subjects?.map((sub, sIdx) => (
           <View key={sub.id} style={styles.subjectCard}>
-            <Text style={styles.subjectTitle}>{sub.title}</Text>
+            <View style={styles.subjectHeader}>
+              <View style={styles.subjectIndexBadge}>
+                <Text style={styles.subjectIndexText}>{sIdx + 1}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.subjectTitle}>{sub.title}</Text>
+                {sub.description ? <Text style={styles.subjectDesc}>{sub.description}</Text> : null}
+              </View>
+            </View>
 
             <View style={styles.lessonsList}>
               {sub.lessons?.map((les) => {
@@ -157,6 +235,7 @@ export default function CourseDetailScreen() {
         ))}
       </ScrollView>
 
+      {/* Modal Thống Kê Tiến Độ Học Viên */}
       <CourseStudentProgressModal
         visible={showStudentProgressModal}
         courseId={courseId}
@@ -178,14 +257,108 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1E293B',
     gap: 12,
   },
-  headerBackBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
+  headerBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  heroCard: { backgroundColor: '#0F172A', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#1E293B', marginBottom: 20 },
-  iconCircle: { width: 56, height: 56, borderRadius: 18, backgroundColor: 'rgba(99, 102, 241, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  scrollContent: { padding: 16, paddingBottom: 36 },
+  heroThumbnailContainer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#0F172A',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  heroThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  heroPlaceholderBanner: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#1E1B4B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBadgeRow: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  badgePrivate: {
+    backgroundColor: 'rgba(245, 158, 11, 0.85)',
+  },
+  badgePublic: {
+    backgroundColor: 'rgba(16, 185, 129, 0.85)',
+  },
+  badgeTextPrivate: { color: '#000000', fontSize: 10, fontWeight: '800' },
+  badgeTextPublic: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  heroCard: {
+    backgroundColor: '#090D1A',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: 20,
+  },
   courseTitle: { color: '#F8FAFC', fontSize: 20, fontWeight: '800', marginBottom: 4 },
   authorText: { color: '#818CF8', fontSize: 13, fontWeight: '600', marginBottom: 10 },
-  descText: { color: '#94A3B8', fontSize: 13, lineHeight: 18 },
+  descText: { color: '#94A3B8', fontSize: 13, lineHeight: 19 },
+  progressContainer: {
+    marginTop: 16,
+    backgroundColor: '#0F172A',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  progressPercent: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
+  progressBarTrack: {
+    height: 6,
+    backgroundColor: '#1E293B',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#6366F1',
+    borderRadius: 3,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 14,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statText: { color: '#CBD5E1', fontSize: 12, fontWeight: '600' },
   analyticsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -196,7 +369,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     gap: 8,
-    marginTop: 14,
+    marginTop: 16,
   },
   analyticsBtnText: {
     color: '#06B6D4',
@@ -204,11 +377,50 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '700', marginBottom: 14 },
-  subjectCard: { backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#1E293B', marginBottom: 14 },
-  subjectTitle: { color: '#E2E8F0', fontSize: 15, fontWeight: '600', marginBottom: 12 },
+  subjectCard: {
+    backgroundColor: '#090D1A',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: 14,
+  },
+  subjectHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    paddingBottom: 10,
+  },
+  subjectIndexBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subjectIndexText: { color: '#818CF8', fontSize: 11, fontWeight: '800' },
+  subjectTitle: { color: '#E2E8F0', fontSize: 15, fontWeight: '700' },
+  subjectDesc: { color: '#64748B', fontSize: 11, marginTop: 2 },
   lessonsList: { gap: 8 },
-  lessonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#070B17', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1E293B' },
-  lessonRowDone: { borderColor: 'rgba(16, 185, 129, 0.3)' },
+  lessonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  lessonRowDone: {
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
   lessonLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
   lessonTextContainer: { marginLeft: 12, flex: 1 },
   lessonTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '600', marginBottom: 2 },
