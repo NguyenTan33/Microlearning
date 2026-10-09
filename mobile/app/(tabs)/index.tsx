@@ -125,7 +125,7 @@ export default function StudyHomeScreen() {
       let courses = await catalogRepository.getAllCourses();
       try {
         const apiCourses = await catalogApi.getAllCourses(isTeacher || isAdmin);
-        if (apiCourses.length > 0) {
+        if (Array.isArray(apiCourses)) {
           await catalogRepository.saveCourses(apiCourses);
           courses = apiCourses;
         }
@@ -135,11 +135,18 @@ export default function StudyHomeScreen() {
 
       setCourseList(courses);
 
-      // 5. Chọn khóa học đang kích hoạt
-      const activeId = selectedCourseId || (courses.length > 0 ? courses[0].id : 1);
-      if (!selectedCourseId && courses.length > 0) {
-        setSelectedCourseId(courses[0].id);
+      if (courses.length === 0) {
+        setCourse(null);
+        setSelectedCourseId(null);
+        return;
       }
+
+      // 5. Chọn khóa học đang kích hoạt
+      const activeId =
+        selectedCourseId && courses.some((c) => c.id === selectedCourseId)
+          ? selectedCourseId
+          : courses[0].id;
+      setSelectedCourseId(activeId);
 
       let detail = await catalogRepository.getCourseDetailById(activeId);
       if (detail) {
@@ -395,162 +402,197 @@ export default function StudyHomeScreen() {
           </View>
         )}
 
-        {/* Active Course Hero Card With Thumbnail */}
-        <TouchableOpacity
-          style={styles.courseHeroCard}
-          onPress={() => course && router.push(`/course/${course.id}`)}
-          activeOpacity={0.88}
-        >
-          {course?.thumbnailUrl ? (
-            <Image
-              source={{ uri: course.thumbnailUrl }}
-              style={styles.courseThumbnail}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.coursePlaceholderThumbnail}>
-              <GraduationCap color="#6366F1" size={44} />
+        {courseList.length === 0 || !course ? (
+          <View style={styles.homeEmptyCard}>
+            <View style={styles.homeEmptyIconBox}>
+              <BookOpen color="#818CF8" size={36} />
             </View>
-          )}
-
-          <View style={styles.courseHeroBody}>
-            <View style={styles.courseHeroTopRow}>
-              <View style={styles.courseCategoryBadge}>
-                <Text style={styles.courseCategoryText}>{course?.category || 'Công nghệ'}</Text>
-              </View>
-              <Text style={styles.progressPercentText}>{completionRate}%</Text>
-            </View>
-
-            <Text style={styles.courseHeroTitle} numberOfLines={2}>
-              {course?.title || 'Khóa học Microlearning'}
+            <Text style={styles.homeEmptyTitle}>Chưa có khóa học nào</Text>
+            <Text style={styles.homeEmptyDesc}>
+              {isAdmin || isTeacher
+                ? 'Hãy mở Studio để tạo khóa học, môn học và bài giảng mới cho học viên.'
+                : 'Hiện tại chưa có khóa học nào được xuất bản. Vui lòng quay lại sau!'}
             </Text>
-
-            {course?.description ? (
-              <Text style={styles.courseHeroDesc} numberOfLines={2}>
-                {course.description}
-              </Text>
-            ) : null}
-
-            {/* Progress Bar */}
-            <View style={styles.progressBarTrack}>
-              <View style={[styles.progressBarFill, { width: `${completionRate}%` }]} />
-            </View>
-            <View style={styles.courseHeroFooter}>
-              <Text style={styles.progressSubText}>
-                Đã hoàn thành {courseCompletedLessonsCount}/{totalLessonsCount} bài học
-              </Text>
-              <View style={styles.viewDetailLink}>
-                <Text style={styles.viewDetailText}>Vào học khóa này</Text>
-                <ChevronRight color="#818CF8" size={14} />
-              </View>
-            </View>
+            {isAdmin || isTeacher ? (
+              <TouchableOpacity
+                style={styles.homeEmptyBtn}
+                onPress={() => setIsStudioOpen(true)}
+                activeOpacity={0.8}
+              >
+                <Layers color="#FFFFFF" size={16} />
+                <Text style={styles.homeEmptyBtnText}>Mở Studio tạo khóa học</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.homeEmptyBtn}
+                onPress={() => router.push('/(tabs)/catalog')}
+                activeOpacity={0.8}
+              >
+                <BookOpen color="#FFFFFF" size={16} />
+                <Text style={styles.homeEmptyBtnText}>Khám phá danh mục</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </TouchableOpacity>
+        ) : (
+          <>
+            {/* Active Course Hero Card With Thumbnail */}
+            <TouchableOpacity
+              style={styles.courseHeroCard}
+              onPress={() => course && router.push(`/course/${course.id}`)}
+              activeOpacity={0.88}
+            >
+              {course.thumbnailUrl ? (
+                <Image
+                  source={{ uri: course.thumbnailUrl }}
+                  style={styles.courseThumbnail}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.coursePlaceholderThumbnail}>
+                  <GraduationCap color="#6366F1" size={44} />
+                </View>
+              )}
 
-        {/* Next Lesson Hero Card */}
-        {nextLesson && (
-          <View style={styles.heroCard}>
-            <View style={styles.heroBadgeRow}>
-              <View style={styles.heroBadge}>
-                <Sparkles color="#818CF8" size={12} />
-                <Text style={styles.heroBadgeText}>BÀI HỌC TIẾP THEO</Text>
+              <View style={styles.courseHeroBody}>
+                <View style={styles.courseHeroTopRow}>
+                  <View style={styles.courseCategoryBadge}>
+                    <Text style={styles.courseCategoryText}>{course.category || 'Công nghệ'}</Text>
+                  </View>
+                  <Text style={styles.progressPercentText}>{completionRate}%</Text>
+                </View>
+
+                <Text style={styles.courseHeroTitle} numberOfLines={2}>
+                  {course.title}
+                </Text>
+
+                {course.description ? (
+                  <Text style={styles.courseHeroDesc} numberOfLines={2}>
+                    {course.description}
+                  </Text>
+                ) : null}
+
+                {/* Progress Bar */}
+                <View style={styles.progressBarTrack}>
+                  <View style={[styles.progressBarFill, { width: `${completionRate}%` }]} />
+                </View>
+                <View style={styles.courseHeroFooter}>
+                  <Text style={styles.progressSubText}>
+                    Đã hoàn thành {courseCompletedLessonsCount}/{totalLessonsCount} bài học
+                  </Text>
+                  <View style={styles.viewDetailLink}>
+                    <Text style={styles.viewDetailText}>Vào học khóa này</Text>
+                    <ChevronRight color="#818CF8" size={14} />
+                  </View>
+                </View>
               </View>
+            </TouchableOpacity>
 
-              {downloadedLessonIds.has(nextLesson.id) && (
-                <View style={styles.offlineReadyPill}>
-                  <Download color="#10B981" size={12} />
-                  <Text style={styles.offlineReadyText}>Sẵn sàng offline</Text>
+            {/* Next Lesson Hero Card */}
+            {nextLesson && (
+              <View style={styles.heroCard}>
+                <View style={styles.heroBadgeRow}>
+                  <View style={styles.heroBadge}>
+                    <Sparkles color="#818CF8" size={12} />
+                    <Text style={styles.heroBadgeText}>BÀI HỌC TIẾP THEO</Text>
+                  </View>
+
+                  {downloadedLessonIds.has(nextLesson.id) && (
+                    <View style={styles.offlineReadyPill}>
+                      <Download color="#10B981" size={12} />
+                      <Text style={styles.offlineReadyText}>Sẵn sàng offline</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.heroTitle}>{nextLesson.title}</Text>
+                <Text style={styles.heroDesc} numberOfLines={2}>
+                  {nextLesson.description ||
+                    'Xem video ngắn 3-5 phút và hoàn thành bài trắc nghiệm củng cố kiến thức.'}
+                </Text>
+
+                <View style={styles.heroMetaRow}>
+                  <View style={styles.metaItem}>
+                    <Clock color="#94A3B8" size={14} />
+                    <Text style={styles.metaText}>{formatDuration(nextLesson.durationSeconds)}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.continueButton}
+                  onPress={() => router.push(`/course/${course.id}`)}
+                  activeOpacity={0.8}
+                >
+                  <PlayCircle color="#FFFFFF" size={20} />
+                  <Text style={styles.continueButtonText}>Xem video & học ngay</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Curriculum Hierarchy */}
+            <View style={styles.curriculumSection}>
+              <Text style={styles.sectionTitle}>Lộ trình bài giảng</Text>
+
+              {course.subjects && course.subjects.length > 0 ? (
+                course.subjects.map((subject) => (
+                  <View key={subject.id} style={styles.subjectCard}>
+                    <Text style={styles.subjectTitle}>{subject.title}</Text>
+
+                    <View style={styles.lessonsList}>
+                      {subject.lessons?.map((les) => {
+                        const isDone = completedIds.has(les.id);
+                        const isOffline = downloadedLessonIds.has(les.id);
+
+                        return (
+                          <TouchableOpacity
+                            key={les.id}
+                            style={[styles.lessonRow, isDone && styles.lessonRowDone]}
+                            onPress={() => router.push(`/course/${course.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.lessonLeft}>
+                              {isDone ? (
+                                <CheckCircle2 color="#10B981" size={22} />
+                              ) : (
+                                <View style={styles.lessonIndexCircle}>
+                                  <Text style={styles.lessonIndexText}>{les.sortOrder}</Text>
+                                </View>
+                              )}
+                              <View style={styles.lessonTextContainer}>
+                                <Text
+                                  style={[styles.lessonTitle, isDone && styles.lessonTitleDone]}
+                                  numberOfLines={1}
+                                >
+                                  {les.title}
+                                </Text>
+                                <View style={styles.lessonSubInfo}>
+                                  <Text style={styles.lessonDuration}>
+                                    {formatDuration(les.durationSeconds)}
+                                  </Text>
+                                  {isOffline && (
+                                    <View style={styles.offlineMiniBadge}>
+                                      <Text style={styles.offlineMiniText}>Offline</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                            </View>
+
+                            <ChevronRight color="#475569" size={18} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <BookOpen color="#475569" size={32} />
+                  <Text style={styles.emptyStateText}>Chưa có bài giảng nào trong khóa học này.</Text>
                 </View>
               )}
             </View>
-
-            <Text style={styles.heroTitle}>{nextLesson.title}</Text>
-            <Text style={styles.heroDesc} numberOfLines={2}>
-              {nextLesson.description ||
-                'Xem video ngắn 3-5 phút và hoàn thành bài trắc nghiệm củng cố kiến thức.'}
-            </Text>
-
-            <View style={styles.heroMetaRow}>
-              <View style={styles.metaItem}>
-                <Clock color="#94A3B8" size={14} />
-                <Text style={styles.metaText}>{formatDuration(nextLesson.durationSeconds)}</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.continueButton}
-              onPress={() => router.push(`/course/${course?.id || 1}`)}
-              activeOpacity={0.8}
-            >
-              <PlayCircle color="#FFFFFF" size={20} />
-              <Text style={styles.continueButtonText}>Xem video & học ngay</Text>
-            </TouchableOpacity>
-          </View>
+          </>
         )}
-
-        {/* Curriculum Hierarchy */}
-        <View style={styles.curriculumSection}>
-          <Text style={styles.sectionTitle}>Lộ trình bài giảng</Text>
-
-          {course?.subjects && course.subjects.length > 0 ? (
-            course.subjects.map((subject) => (
-              <View key={subject.id} style={styles.subjectCard}>
-                <Text style={styles.subjectTitle}>{subject.title}</Text>
-
-                <View style={styles.lessonsList}>
-                  {subject.lessons?.map((les) => {
-                    const isDone = completedIds.has(les.id);
-                    const isOffline = downloadedLessonIds.has(les.id);
-
-                    return (
-                      <TouchableOpacity
-                        key={les.id}
-                        style={[styles.lessonRow, isDone && styles.lessonRowDone]}
-                        onPress={() => router.push(`/course/${course.id}`)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.lessonLeft}>
-                          {isDone ? (
-                            <CheckCircle2 color="#10B981" size={22} />
-                          ) : (
-                            <View style={styles.lessonIndexCircle}>
-                              <Text style={styles.lessonIndexText}>{les.sortOrder}</Text>
-                            </View>
-                          )}
-                          <View style={styles.lessonTextContainer}>
-                            <Text
-                              style={[styles.lessonTitle, isDone && styles.lessonTitleDone]}
-                              numberOfLines={1}
-                            >
-                              {les.title}
-                            </Text>
-                            <View style={styles.lessonSubInfo}>
-                              <Text style={styles.lessonDuration}>
-                                {formatDuration(les.durationSeconds)}
-                              </Text>
-                              {isOffline && (
-                                <View style={styles.offlineMiniBadge}>
-                                  <Text style={styles.offlineMiniText}>Offline</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-
-                        <ChevronRight color="#475569" size={18} />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyStateContainer}>
-              <BookOpen color="#475569" size={32} />
-              <Text style={styles.emptyStateText}>Chưa có bài giảng nào trong khóa học này.</Text>
-            </View>
-          )}
-        </View>
       </ScrollView>
 
       {/* Modals Studio & Quản lý */}
@@ -1029,5 +1071,52 @@ const styles = StyleSheet.create({
   emptyStateText: {
     color: '#64748B',
     fontSize: 13,
+  },
+  homeEmptyCard: {
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginVertical: 12,
+  },
+  homeEmptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  homeEmptyTitle: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  homeEmptyDesc: {
+    color: '#94A3B8',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 20,
+  },
+  homeEmptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  homeEmptyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

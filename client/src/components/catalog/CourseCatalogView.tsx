@@ -117,6 +117,8 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
     return serverPct;
   };
 
+  const validEnrollments = enrollments.filter((e) => courses.some((c) => c.id === e.courseId));
+
   const filteredCourses = courses.filter((c) => {
     const matchesSearch =
       c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -187,7 +189,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Đang học ({enrollments.length})
+            Đang học ({validEnrollments.length})
           </button>
         </div>
 
