@@ -79,7 +79,7 @@ export default function CatalogScreen() {
       // 2. Tải trực tiếp từ Azure API
       try {
         const apiData = await catalogApi.getAllCourses(isTeacher || isAdmin);
-        if (Array.isArray(apiData)) {
+        if (apiData.length > 0) {
           await catalogRepository.saveCourses(apiData);
           setCourses(apiData);
         }
@@ -124,7 +124,11 @@ export default function CatalogScreen() {
     }
   };
 
-  // Filter Logic: Danh mục động dựa trên khóa học thực tế (LUÔN GỌI TRƯỚC BẤT KỲ CONDITIONAL RETURN NÀO)
+  if (loading) {
+    return <LoadingIndicator message="Đang nạp danh mục khóa học Azure..." />;
+  }
+
+  // Filter Logic: Danh mục động dựa trên khóa học thực tế
   const categories = React.useMemo(() => {
     const cats = new Set<string>();
     courses.forEach((c) => {
@@ -133,20 +137,14 @@ export default function CatalogScreen() {
     return cats.size > 0 ? ['ALL', ...Array.from(cats)] : ['ALL'];
   }, [courses]);
 
-  const filteredCourses = React.useMemo(() => {
-    return courses.filter((c) => {
-      const matchesSearch =
-        c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesCat =
-        selectedCategory === 'ALL' || (c.category && c.category === selectedCategory);
-      return matchesSearch && matchesCat;
-    });
-  }, [courses, searchQuery, selectedCategory]);
-
-  if (loading) {
-    return <LoadingIndicator message="Đang nạp danh mục khóa học Azure..." />;
-  }
+  const filteredCourses = courses.filter((c) => {
+    const matchesSearch =
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesCat =
+      selectedCategory === 'ALL' || (c.category && c.category === selectedCategory);
+    return matchesSearch && matchesCat;
+  });
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -241,95 +239,71 @@ export default function CatalogScreen() {
       >
         <Text style={styles.resultCountText}>Hiển thị {filteredCourses.length} khóa học</Text>
 
-        {filteredCourses.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconBox}>
-              <BookOpen color="#818CF8" size={36} />
-            </View>
-            <Text style={styles.emptyTitle}>Chưa có khóa học nào</Text>
-            <Text style={styles.emptyDesc}>
-              {searchQuery
-                ? 'Không tìm thấy khóa học nào phù hợp với từ khóa.'
-                : 'Hệ thống hiện tại chưa có khóa học nào được xuất bản.'}
-            </Text>
-            {(isTeacher || isAdmin) && (
-              <TouchableOpacity
-                style={styles.emptyCreateBtn}
-                onPress={() => setIsStudioOpen(true)}
-                activeOpacity={0.8}
-              >
-                <Layers color="#FFFFFF" size={16} />
-                <Text style={styles.emptyCreateBtnText}>Tạo khóa học mới ngay</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : (
-          filteredCourses.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.courseCard}
-              onPress={() => {
-                if (item.isLocked) {
-                  setUnlockCourseId(item.id);
-                } else {
-                  router.push(`/course/${item.id}`);
-                }
-              }}
-              activeOpacity={0.8}
-            >
-              {/* Ảnh Thumbnail Thật của Khóa Học */}
-              <View style={styles.cardThumbnailWrapper}>
-                {item.thumbnailUrl ? (
-                  <Image
-                    source={{ uri: item.thumbnailUrl }}
-                    style={styles.cardThumbnail}
-                    resizeMode="cover"
-                  />
+        {filteredCourses.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.courseCard}
+            onPress={() => {
+              if (item.isLocked) {
+                setUnlockCourseId(item.id);
+              } else {
+                router.push(`/course/${item.id}`);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            {/* Ảnh Thumbnail Thật của Khóa Học */}
+            <View style={styles.cardThumbnailWrapper}>
+              {item.thumbnailUrl ? (
+                <Image
+                  source={{ uri: item.thumbnailUrl }}
+                  style={styles.cardThumbnail}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.cardPlaceholderThumbnail}>
+                  <BookOpen color="#818CF8" size={32} />
+                </View>
+              )}
+
+              {/* Badge Hạn Chế / Công Khai */}
+              <View style={styles.cardBadgeContainer}>
+                {item.isPrivate ? (
+                  <View style={styles.badgePrivate}>
+                    <Lock color="#F59E0B" size={10} />
+                    <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
+                  </View>
                 ) : (
-                  <View style={styles.cardPlaceholderThumbnail}>
-                    <BookOpen color="#818CF8" size={32} />
+                  <View style={styles.badgePublic}>
+                    <Globe color="#10B981" size={10} />
+                    <Text style={styles.badgeTextPublic}>Công khai</Text>
                   </View>
                 )}
-
-                {/* Badge Hạn Chế / Công Khai */}
-                <View style={styles.cardBadgeContainer}>
-                  {item.isPrivate ? (
-                    <View style={styles.badgePrivate}>
-                      <Lock color="#F59E0B" size={10} />
-                      <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.badgePublic}>
-                      <Globe color="#10B981" size={10} />
-                      <Text style={styles.badgeTextPublic}>Công khai</Text>
-                    </View>
-                  )}
-                </View>
               </View>
+            </View>
 
-              {/* Thông tin Khóa Học */}
-              <View style={styles.cardBody}>
-                <Text style={styles.courseTitle} numberOfLines={2}>
-                  {item.title}
+            {/* Thông tin Khóa Học */}
+            <View style={styles.cardBody}>
+              <Text style={styles.courseTitle} numberOfLines={2}>
+                {item.title}
+              </Text>
+
+              {item.description ? (
+                <Text style={styles.courseDesc} numberOfLines={2}>
+                  {item.description}
                 </Text>
+              ) : null}
 
-                {item.description ? (
-                  <Text style={styles.courseDesc} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                ) : null}
-
-                <View style={styles.cardFooterRow}>
-                  <Text style={styles.subjectsText}>{item.totalSubjects || 0} Môn học</Text>
-                  <View style={styles.viewCourseRow}>
-                    <Text style={styles.viewCourseText}>Xem chi tiết</Text>
-                    <ChevronRight color="#818CF8" size={14} />
-                  </View>
+              <View style={styles.cardFooterRow}>
+                <Text style={styles.subjectsText}>{item.totalSubjects || 0} Môn học</Text>
+                <View style={styles.viewCourseRow}>
+                  <Text style={styles.viewCourseText}>Xem chi tiết</Text>
+                  <ChevronRight color="#818CF8" size={14} />
                 </View>
               </View>
-            </TouchableOpacity>
-          ))
-        )}
+            </View>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
       {/* Unlock Course Modal */}
@@ -553,51 +527,4 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: '#94A3B8', fontWeight: '600' },
   confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#6366F1', alignItems: 'center' },
   confirmBtnText: { color: '#FFFFFF', fontWeight: '700' },
-  emptyContainer: {
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginTop: 12,
-  },
-  emptyIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  emptyDesc: {
-    color: '#94A3B8',
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  emptyCreateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  emptyCreateBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
 });
