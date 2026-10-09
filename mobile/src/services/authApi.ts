@@ -19,6 +19,34 @@ export const authApi = {
     return res.data;
   },
 
+  async googleLogin(data: { idToken: string }): Promise<AuthTokenResponse> {
+    const res = await apiClient.post<{ accessToken: string; refreshToken: string; expiresAt: string; user?: any }>('/api/Auth/google-login', data);
+    return {
+      accessToken: res.data.accessToken,
+      refreshToken: res.data.refreshToken,
+      expiresAt: res.data.expiresAt,
+      user: res.data.user || {
+        id: '',
+        fullName: 'Google User',
+        phoneNumber: '',
+      },
+    };
+  },
+
+  async facebookLogin(data: { accessToken: string }): Promise<AuthTokenResponse> {
+    const res = await apiClient.post<{ accessToken: string; refreshToken: string; expiresAt: string; user?: any }>('/api/Auth/facebook-login', data);
+    return {
+      accessToken: res.data.accessToken,
+      refreshToken: res.data.refreshToken,
+      expiresAt: res.data.expiresAt,
+      user: res.data.user || {
+        id: '',
+        fullName: 'Facebook User',
+        phoneNumber: '',
+      },
+    };
+  },
+
   async register(data: RegisterRequest): Promise<AuthTokenResponse> {
     const res = await apiClient.post<AuthTokenResponse>('/api/Auth/register', data);
     return res.data;
