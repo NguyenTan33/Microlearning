@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 
 export const downloadManager = {
@@ -22,7 +22,7 @@ export const downloadManager = {
         videoRemoteUrl,
         localPath,
         {},
-        (downloadProgress) => {
+        (downloadProgress: FileSystem.DownloadProgressData) => {
           const progress =
             downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
           if (onProgress) {
