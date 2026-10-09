@@ -31,17 +31,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const roles = tokenPayload?.roles?.length
       ? tokenPayload.roles
-      : user.roles || (user.role ? [user.role] : ['Student']);
+      : user?.roles || (user?.role ? [user.role] : ['Student']);
 
     const isAdmin = Boolean(tokenPayload?.isAdmin || roles.some((r) => r.toLowerCase() === 'admin'));
     const isTeacher = Boolean(isAdmin || tokenPayload?.isTeacher || roles.some((r) => r.toLowerCase() === 'teacher'));
 
     const effectiveUser: User = {
-      ...user,
-      id: tokenPayload?.userId || user.id,
-      fullName: tokenPayload?.fullName || user.fullName || 'Học viên',
-      phoneNumber: tokenPayload?.phoneNumber || user.phoneNumber || '',
-      email: tokenPayload?.email || user.email,
+      ...(user || {}),
+      id: tokenPayload?.userId || user?.id || 'user-1',
+      fullName: tokenPayload?.fullName || user?.fullName || 'Học viên',
+      phoneNumber: tokenPayload?.phoneNumber || user?.phoneNumber || '',
+      email: tokenPayload?.email || user?.email,
       roles,
       role: isAdmin ? 'Admin' : isTeacher ? 'Teacher' : 'Student',
     };
