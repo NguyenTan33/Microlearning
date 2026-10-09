@@ -29,10 +29,14 @@ import {
   FolderPlus,
   Users,
   CheckCircle2,
+  FileQuestion,
+  FileText,
+  Check,
 } from 'lucide-react-native';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { CourseStudentProgressModal } from './CourseStudentProgressModal';
+import { LessonAttachmentsModal } from '../common/LessonAttachmentsModal';
 
 interface CourseManagementModalProps {
   visible: boolean;
@@ -82,6 +86,107 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
 
   // Student Progress Modal
   const [analyticsCourse, setAnalyticsCourse] = useState<{ id: number; title: string } | null>(null);
+
+  // Status Filter for Studio (Tất cả / Công khai / Đang ẩn)
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'UNPUBLISHED'>('ALL');
+
+  // Video Link Modal for Lesson
+  const [videoModalLesson, setVideoModalLesson] = useState<Lesson | null>(null);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [savingVideoLink, setSavingVideoLink] = useState(false);
+
+  // Quiz Builder Modal for Lesson
+  const [quizModalLesson, setQuizModalLesson] = useState<Lesson | null>(null);
+  const [quizTitle, setQuizTitle] = useState('');
+  const [quizPassScore, setQuizPassScore] = useState('80');
+  const [quizQuestionText, setQuizQuestionText] = useState('');
+  const [quizOptionA, setQuizOptionA] = useState('');
+  const [quizOptionB, setQuizOptionB] = useState('');
+  const [quizOptionC, setQuizOptionC] = useState('');
+  const [quizOptionD, setQuizOptionD] = useState('');
+  const [quizCorrectIndex, setQuizCorrectIndex] = useState(0);
+  const [savingQuiz, setSavingQuiz] = useState(false);
+
+  // Attachment Manager Modal for Lesson
+  const [attachmentModalLesson, setAttachmentModalLesson] = useState<Lesson | null>(null);
+
+  const handleTogglePublishLesson = async (lesson: Lesson) => {
+    try {
+      const res = await catalogApi.togglePublishLesson(lesson.id);
+      Alert.alert('Thông báo', res.message);
+      if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+      if (onCourseUpdated) onCourseUpdated();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể đổi trạng thái xuất bản bài học.');
+    }
+  };
+
+  const handleSaveVideoUrl = async () => {
+    if (!videoModalLesson || !videoUrlInput.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập đường dẫn video bài học.');
+      return;
+    }
+    setSavingVideoLink(true);
+    try {
+      await catalogApi.linkExternalLessonVideo({
+        lessonId: videoModalLesson.id,
+        url: videoUrlInput.trim(),
+        title: videoModalLesson.title,
+      });
+      Alert.alert('Thành công', 'Đã lưu luồng video cho bài học!');
+      setVideoModalLesson(null);
+      if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+      if (onCourseUpdated) onCourseUpdated();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể liên kết video bài học.');
+    } finally {
+      setSavingVideoLink(false);
+    }
+  };
+
+  const handleSaveQuiz = async () => {
+    if (!quizModalLesson) return;
+    if (!quizQuestionText.trim() || !quizOptionA.trim() || !quizOptionB.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập nội dung câu hỏi và ít nhất 2 đáp án (A và B).');
+      return;
+    }
+
+    const options = [
+      { optionText: quizOptionA.trim(), isCorrect: quizCorrectIndex === 0, sortOrder: 1 },
+      { optionText: quizOptionB.trim(), isCorrect: quizCorrectIndex === 1, sortOrder: 2 },
+    ];
+    if (quizOptionC.trim()) {
+      options.push({ optionText: quizOptionC.trim(), isCorrect: quizCorrectIndex === 2, sortOrder: 3 });
+    }
+    if (quizOptionD.trim()) {
+      options.push({ optionText: quizOptionD.trim(), isCorrect: quizCorrectIndex === 3, sortOrder: 4 });
+    }
+
+    setSavingQuiz(true);
+    try {
+      await catalogApi.createQuiz(quizModalLesson.id, {
+        title: quizTitle.trim() || `Trắc nghiệm: ${quizModalLesson.title}`,
+        passScore: Number(quizPassScore) || 80,
+        questions: [
+          {
+            content: quizQuestionText.trim(),
+            points: 10,
+            sortOrder: 1,
+            questionType: 1,
+            options,
+          },
+        ],
+      });
+      Alert.alert('Thành công', 'Đã tạo bộ câu hỏi trắc nghiệm cho bài học!');
+      setQuizModalLesson(null);
+      if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+      if (onCourseUpdated) onCourseUpdated();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
+    } finally {
+      setSavingQuiz(false);
+    }
+  };
 
   const loadCourses = async () => {
     setLoading(true);
@@ -375,60 +480,102 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 <Text style={styles.createBtnText}>Tạo Khóa Học Mới</Text>
               </TouchableOpacity>
 
+              {/* Bộ lọc hiển thị: Tất cả • Công khai • Đang ẩn */}
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterChip, statusFilter === 'ALL' && styles.filterChipActive]}
+                  onPress={() => setStatusFilter('ALL')}
+                >
+                  <Text style={[styles.filterChipText, statusFilter === 'ALL' && styles.filterChipTextActive]}>
+                    Tất cả ({courses.length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.filterChip, statusFilter === 'PUBLISHED' && styles.filterChipActive]}
+                  onPress={() => setStatusFilter('PUBLISHED')}
+                >
+                  <Text style={[styles.filterChipText, statusFilter === 'PUBLISHED' && styles.filterChipTextActive]}>
+                    Công khai ({courses.filter((c) => c.isPublished).length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.filterChip, statusFilter === 'UNPUBLISHED' && styles.filterChipActive]}
+                  onPress={() => setStatusFilter('UNPUBLISHED')}
+                >
+                  <Text style={[styles.filterChipText, statusFilter === 'UNPUBLISHED' && styles.filterChipTextActive]}>
+                    Đang ẩn ({courses.filter((c) => !c.isPublished).length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {loading ? (
                 <ActivityIndicator size="large" color="#6366F1" style={{ marginVertical: 30 }} />
               ) : (
                 <ScrollView style={styles.scrollList} showsVerticalScrollIndicator={false}>
-                  {courses.map((c) => (
-                    <View key={c.id} style={styles.itemCard}>
-                      <View style={styles.itemInfo}>
-                        <View style={styles.titleRow}>
-                          <Text style={styles.itemTitle} numberOfLines={1}>
-                            {c.title}
-                          </Text>
-                          {c.isPrivate ? (
-                            <View style={styles.badgePrivate}>
-                              <Lock color="#F59E0B" size={10} />
-                              <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
-                            </View>
-                          ) : (
-                            <View style={styles.badgePublic}>
-                              <Globe color="#10B981" size={10} />
-                              <Text style={styles.badgeTextPublic}>Công khai</Text>
-                            </View>
-                          )}
+                  {courses
+                    .filter((c) => {
+                      if (statusFilter === 'PUBLISHED') return c.isPublished;
+                      if (statusFilter === 'UNPUBLISHED') return !c.isPublished;
+                      return true;
+                    })
+                    .map((c) => (
+                      <View key={c.id} style={styles.itemCard}>
+                        <View style={styles.itemInfo}>
+                          <View style={styles.titleRow}>
+                            <Text style={styles.itemTitle} numberOfLines={1}>
+                              {c.title}
+                            </Text>
+                            {c.isPublished ? (
+                              <View style={styles.badgePublic}>
+                                <Eye color="#10B981" size={10} />
+                                <Text style={styles.badgeTextPublic}>Công khai</Text>
+                              </View>
+                            ) : (
+                              <View style={styles.badgeUnpublished}>
+                                <EyeOff color="#F59E0B" size={10} />
+                                <Text style={styles.badgeTextUnpublished}>Đang ẩn</Text>
+                              </View>
+                            )}
+                            {c.isPrivate ? (
+                              <View style={styles.badgePrivate}>
+                                <Lock color="#F59E0B" size={10} />
+                                <Text style={styles.badgeTextPrivate}>Hạn chế</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.itemSub}>{c.totalSubjects || 0} Môn học</Text>
                         </View>
-                        <Text style={styles.itemSub}>{c.totalSubjects || 0} Môn học</Text>
-                      </View>
 
-                      {/* Action buttons */}
-                      <View style={styles.actionBtnRow}>
+                        {/* Action buttons */}
+                        <View style={styles.actionBtnRow}>
+                          <TouchableOpacity
+                            style={styles.iconBtn}
+                            onPress={() => handleTogglePublishCourse(c)}
+                          >
+                            {c.isPublished ? <Eye color="#10B981" size={16} /> : <EyeOff color="#F59E0B" size={16} />}
+                          </TouchableOpacity>
+
+                          <TouchableOpacity style={styles.iconBtn} onPress={() => openEditCourseForm(c)}>
+                            <Edit3 color="#38BDF8" size={16} />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity style={styles.iconBtn} onPress={() => handleDeleteCourse(c.id, c.title)}>
+                            <Trash2 color="#EF4444" size={16} />
+                          </TouchableOpacity>
+                        </View>
+
                         <TouchableOpacity
-                          style={styles.iconBtn}
-                          onPress={() => handleTogglePublishCourse(c)}
+                          style={styles.manageDetailBtn}
+                          onPress={() => loadCourseDetail(c.id)}
+                          activeOpacity={0.8}
                         >
-                          {c.isPublished ? <Eye color="#10B981" size={16} /> : <EyeOff color="#F59E0B" size={16} />}
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => openEditCourseForm(c)}>
-                          <Edit3 color="#38BDF8" size={16} />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.iconBtn} onPress={() => handleDeleteCourse(c.id, c.title)}>
-                          <Trash2 color="#EF4444" size={16} />
+                          <Text style={styles.manageDetailText}>Quản lý Môn học & Bài giảng</Text>
+                          <ChevronRight color="#818CF8" size={14} />
                         </TouchableOpacity>
                       </View>
-
-                      <TouchableOpacity
-                        style={styles.manageDetailBtn}
-                        onPress={() => loadCourseDetail(c.id)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.manageDetailText}>Quản lý Môn học & Bài giảng</Text>
-                        <ChevronRight color="#818CF8" size={14} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                    ))}
                 </ScrollView>
               )}
             </View>
@@ -523,14 +670,83 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                         {sub.lessons && sub.lessons.length > 0 ? (
                           sub.lessons.map((les) => (
                             <View key={les.id} style={styles.lessonRow}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.lessonRowTitle} numberOfLines={1}>
-                                  {les.title}
-                                </Text>
-                                <Text style={styles.lessonRowSub}>{Math.round(les.durationSeconds / 60)} phút</Text>
+                              <View style={{ flex: 1, marginRight: 6 }}>
+                                <View style={styles.lessonTitleRow}>
+                                  <Text style={styles.lessonRowTitle} numberOfLines={1}>
+                                    {les.title}
+                                  </Text>
+                                  {!les.isPublished && (
+                                    <View style={styles.badgeMiniUnpublished}>
+                                      <Text style={styles.badgeMiniUnpublishedText}>Ẩn</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={styles.lessonSubInfoRow}>
+                                  <Text style={styles.lessonRowSub}>{Math.round(les.durationSeconds / 60)} phút</Text>
+                                  {les.hasQuiz ? (
+                                    <View style={styles.quizMiniBadge}>
+                                      <Text style={styles.quizMiniBadgeText}>Quiz ✓</Text>
+                                    </View>
+                                  ) : null}
+                                  {les.videoUrl ? (
+                                    <View style={styles.videoMiniBadge}>
+                                      <Text style={styles.videoMiniBadgeText}>Video ✓</Text>
+                                    </View>
+                                  ) : null}
+                                </View>
                               </View>
 
                               <View style={styles.actionBtnRow}>
+                                {/* 1. Toggle Ẩn / Hiện bài học */}
+                                <TouchableOpacity
+                                  style={styles.iconBtn}
+                                  onPress={() => handleTogglePublishLesson(les)}
+                                  activeOpacity={0.8}
+                                >
+                                  {les.isPublished ? <Eye color="#10B981" size={14} /> : <EyeOff color="#F59E0B" size={14} />}
+                                </TouchableOpacity>
+
+                                {/* 2. Gắn / Tải video cho bài học */}
+                                <TouchableOpacity
+                                  style={styles.iconBtn}
+                                  onPress={() => {
+                                    setVideoModalLesson(les);
+                                    setVideoUrlInput(les.videoUrl || '');
+                                  }}
+                                  activeOpacity={0.8}
+                                >
+                                  <Video color={les.videoUrl ? '#10B981' : '#818CF8'} size={14} />
+                                </TouchableOpacity>
+
+                                {/* 3. Soạn đề câu hỏi Quiz trắc nghiệm */}
+                                <TouchableOpacity
+                                  style={styles.iconBtn}
+                                  onPress={() => {
+                                    setQuizModalLesson(les);
+                                    setQuizTitle(`Trắc nghiệm: ${les.title}`);
+                                    setQuizPassScore('80');
+                                    setQuizQuestionText('');
+                                    setQuizOptionA('');
+                                    setQuizOptionB('');
+                                    setQuizOptionC('');
+                                    setQuizOptionD('');
+                                    setQuizCorrectIndex(0);
+                                  }}
+                                  activeOpacity={0.8}
+                                >
+                                  <FileQuestion color={les.hasQuiz ? '#F59E0B' : '#94A3B8'} size={14} />
+                                </TouchableOpacity>
+
+                                {/* 4. Quản lý Tài liệu đính kèm (PDF / Word) */}
+                                <TouchableOpacity
+                                  style={styles.iconBtn}
+                                  onPress={() => setAttachmentModalLesson(les)}
+                                  activeOpacity={0.8}
+                                >
+                                  <FileText color="#38BDF8" size={14} />
+                                </TouchableOpacity>
+
+                                {/* 5. Sửa bài học */}
                                 <TouchableOpacity
                                   style={styles.iconBtn}
                                   onPress={() => {
@@ -539,16 +755,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                     setLessonTitle(les.title);
                                     setLessonDesc(les.description || '');
                                     setLessonDuration(String(les.durationSeconds));
-                                    setLessonVideoUrl('');
+                                    setLessonVideoUrl(les.videoUrl || '');
                                     setIsLessonFormOpen(true);
                                   }}
+                                  activeOpacity={0.8}
                                 >
                                   <Edit3 color="#38BDF8" size={14} />
                                 </TouchableOpacity>
 
+                                {/* 6. Xóa bài học */}
                                 <TouchableOpacity
                                   style={styles.iconBtn}
                                   onPress={() => handleDeleteLesson(les.id, les.title)}
+                                  activeOpacity={0.8}
                                 >
                                   <Trash2 color="#EF4444" size={14} />
                                 </TouchableOpacity>
@@ -711,6 +930,192 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             </View>
           </Modal>
 
+          {/* Modal Gắn Luồng Video Cho Bài Học */}
+          <Modal visible={Boolean(videoModalLesson)} transparent animationType="fade">
+            <View style={styles.innerModalOverlay}>
+              <View style={styles.innerModalCard}>
+                <Text style={styles.innerModalTitle}>
+                  Gắn Luồng Video Bài Giảng
+                </Text>
+                <Text style={styles.innerModalSubTitle}>
+                  Bài học: {videoModalLesson?.title}
+                </Text>
+
+                <TextInput
+                  style={styles.innerInput}
+                  placeholder="URL luồng phát video (MP4 / Azure / HLS / YouTube)..."
+                  placeholderTextColor="#64748B"
+                  value={videoUrlInput}
+                  onChangeText={setVideoUrlInput}
+                  autoCapitalize="none"
+                />
+
+                <View style={styles.modalBtnRow}>
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => setVideoModalLesson(null)}
+                  >
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.confirmBtn}
+                    onPress={handleSaveVideoUrl}
+                    disabled={savingVideoLink}
+                  >
+                    <Text style={styles.confirmBtnText}>
+                      {savingVideoLink ? 'Đang lưu...' : 'Lưu Video'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Modal Soạn Đề Câu Hỏi Quiz Trắc Nghiệm */}
+          <Modal visible={Boolean(quizModalLesson)} transparent animationType="fade">
+            <View style={styles.innerModalOverlay}>
+              <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+                <View style={styles.innerModalCard}>
+                  <Text style={styles.innerModalTitle}>
+                    Soạn Đề Trắc Nghiệm Củng Cố
+                  </Text>
+                  <Text style={styles.innerModalSubTitle}>
+                    Bài học: {quizModalLesson?.title}
+                  </Text>
+
+                  <TextInput
+                    style={styles.innerInput}
+                    placeholder="Tiêu đề bài kiểm tra trắc nghiệm..."
+                    placeholderTextColor="#64748B"
+                    value={quizTitle}
+                    onChangeText={setQuizTitle}
+                  />
+
+                  <TextInput
+                    style={styles.innerInput}
+                    placeholder="Điểm đạt tối thiểu (VD: 80)"
+                    placeholderTextColor="#64748B"
+                    keyboardType="numeric"
+                    value={quizPassScore}
+                    onChangeText={setQuizPassScore}
+                  />
+
+                  <TextInput
+                    style={[styles.innerInput, { height: 60 }]}
+                    placeholder="Nội dung câu hỏi trắc nghiệm *"
+                    placeholderTextColor="#64748B"
+                    multiline
+                    value={quizQuestionText}
+                    onChangeText={setQuizQuestionText}
+                  />
+
+                  <Text style={styles.optionsHeaderLabel}>
+                    Các lựa chọn (Chạm nút tròn để chọn đáp án đúng):
+                  </Text>
+
+                  {/* Option A */}
+                  <View style={styles.quizOptionRow}>
+                    <TouchableOpacity
+                      style={[styles.radioCircle, quizCorrectIndex === 0 && styles.radioCircleActive]}
+                      onPress={() => setQuizCorrectIndex(0)}
+                    >
+                      {quizCorrectIndex === 0 ? <View style={styles.radioInner} /> : null}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.innerInput, styles.optionInput]}
+                      placeholder="Đáp án A *"
+                      placeholderTextColor="#64748B"
+                      value={quizOptionA}
+                      onChangeText={setQuizOptionA}
+                    />
+                  </View>
+
+                  {/* Option B */}
+                  <View style={styles.quizOptionRow}>
+                    <TouchableOpacity
+                      style={[styles.radioCircle, quizCorrectIndex === 1 && styles.radioCircleActive]}
+                      onPress={() => setQuizCorrectIndex(1)}
+                    >
+                      {quizCorrectIndex === 1 ? <View style={styles.radioInner} /> : null}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.innerInput, styles.optionInput]}
+                      placeholder="Đáp án B *"
+                      placeholderTextColor="#64748B"
+                      value={quizOptionB}
+                      onChangeText={setQuizOptionB}
+                    />
+                  </View>
+
+                  {/* Option C */}
+                  <View style={styles.quizOptionRow}>
+                    <TouchableOpacity
+                      style={[styles.radioCircle, quizCorrectIndex === 2 && styles.radioCircleActive]}
+                      onPress={() => setQuizCorrectIndex(2)}
+                    >
+                      {quizCorrectIndex === 2 ? <View style={styles.radioInner} /> : null}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.innerInput, styles.optionInput]}
+                      placeholder="Đáp án C (tùy chọn)"
+                      placeholderTextColor="#64748B"
+                      value={quizOptionC}
+                      onChangeText={setQuizOptionC}
+                    />
+                  </View>
+
+                  {/* Option D */}
+                  <View style={styles.quizOptionRow}>
+                    <TouchableOpacity
+                      style={[styles.radioCircle, quizCorrectIndex === 3 && styles.radioCircleActive]}
+                      onPress={() => setQuizCorrectIndex(3)}
+                    >
+                      {quizCorrectIndex === 3 ? <View style={styles.radioInner} /> : null}
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.innerInput, styles.optionInput]}
+                      placeholder="Đáp án D (tùy chọn)"
+                      placeholderTextColor="#64748B"
+                      value={quizOptionD}
+                      onChangeText={setQuizOptionD}
+                    />
+                  </View>
+
+                  <View style={styles.modalBtnRow}>
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={() => setQuizModalLesson(null)}
+                    >
+                      <Text style={styles.cancelBtnText}>Hủy</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.confirmBtn}
+                      onPress={handleSaveQuiz}
+                      disabled={savingQuiz}
+                    >
+                      <Text style={styles.confirmBtnText}>
+                        {savingQuiz ? 'Đang lưu...' : 'Lưu Đề Quiz'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          </Modal>
+
+          {/* Modal Quản Lý Tài Liệu Đính Kèm Của Bài Học */}
+          {attachmentModalLesson && (
+            <LessonAttachmentsModal
+              visible={Boolean(attachmentModalLesson)}
+              lessonId={attachmentModalLesson.id}
+              lessonTitle={attachmentModalLesson.title}
+              canManage={true}
+              onClose={() => setAttachmentModalLesson(null)}
+            />
+          )}
+
           {/* Modal Tiến độ học viên */}
           {analyticsCourse && (
             <CourseStudentProgressModal
@@ -791,6 +1196,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    borderColor: '#6366F1',
+  },
+  filterChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#818CF8',
+    fontWeight: '700',
+  },
   scrollList: {
     maxHeight: 460,
   },
@@ -840,8 +1271,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 6,
   },
+  badgeUnpublished: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   badgeTextPrivate: { color: '#F59E0B', fontSize: 9, fontWeight: '700' },
   badgeTextPublic: { color: '#10B981', fontSize: 9, fontWeight: '700' },
+  badgeTextUnpublished: { color: '#F59E0B', fontSize: 9, fontWeight: '700' },
   actionBtnRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -975,6 +1416,89 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 12,
     fontWeight: '600',
+  },
+  lessonTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  badgeMiniUnpublished: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  badgeMiniUnpublishedText: {
+    color: '#F59E0B',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  lessonSubInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  quizMiniBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  quizMiniBadgeText: {
+    color: '#F59E0B',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  videoMiniBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  videoMiniBadgeText: {
+    color: '#10B981',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  innerModalSubTitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: -6,
+  },
+  optionsHeaderLabel: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  quizOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  radioCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#475569',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleActive: {
+    borderColor: '#10B981',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981',
+  },
+  optionInput: {
+    flex: 1,
+    height: 38,
+    fontSize: 12,
   },
   lessonRowSub: {
     color: '#64748B',
