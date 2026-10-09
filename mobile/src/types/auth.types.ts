@@ -58,3 +58,35 @@ export interface DeviceRegisterRequest {
   appVersion: string;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface ForgotPasswordRequest {
+  phoneNumber: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  otp: string;
+}
+
+export interface VerifyForgotPasswordOtpRequest {
+  phoneNumber: string;
+  otp: string;
+}
+
+export interface VerifyForgotPasswordOtpResponse {
+  resetToken: string;
+  userId: string;
+  otp: string;
+}
+
+export interface ResetPasswordRequest {
+  phoneNumber: string;
+  resetToken: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}

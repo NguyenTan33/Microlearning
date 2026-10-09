@@ -16,8 +16,8 @@ const getHostIp = (): string => {
 export const LOCAL_DEV_URL = `http://${getHostIp()}:5124`;
 
 // Default to production Azure Cloud URL so physical devices connect seamlessly
-export const API_BASE_URL: string =
-  process.env.EXPO_PUBLIC_API_URL || AZURE_CLOUD_URL;
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL || AZURE_CLOUD_URL;
+export const API_BASE_URL: string = rawApiUrl.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'microlearning_access_token',
