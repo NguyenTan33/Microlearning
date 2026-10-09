@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Download, Trash2, Pin, Play, HardDrive, CheckCircle2 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { OfflineBanner } from '../../src/components/common/OfflineBanner';
@@ -56,9 +56,12 @@ export default function DownloadsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadDownloads();
-  }, [loadDownloads]);
+  useFocusEffect(
+    useCallback(() => {
+      loadDownloads();
+      refreshDownloads();
+    }, [loadDownloads, refreshDownloads])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
