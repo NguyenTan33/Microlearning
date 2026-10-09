@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,18 +14,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
+import { useAuthStore } from '../../src/store/useAuthStore';
+import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 
 export default function VerifyOtpScreen() {
   const router = useRouter();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { phone, password, testOtp } = useLocalSearchParams<{
+    phone: string;
+    password?: string;
+    testOtp?: string;
+  }>();
+  const { setAuth } = useAuthStore();
 
-  const [otpCode, setOtpCode] = useState('');
+  const [otpCode, setOtpCode] = useState(testOtp || '');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  useEffect(() => {
+    if (testOtp) {
+      setOtpCode(testOtp);
+    }
+  }, [testOtp]);
+
   const handleVerify = async () => {
-    if (!otpCode || otpCode.length < 4) {
-      setErrorMsg('Vui lòng nhập mã OTP hợp lệ.');
+    if (!otpCode || otpCode.trim().length !== 6) {
+      setErrorMsg('Vui lòng nhập đầy đủ mã OTP 6 chữ số.');
       return;
     }
 
@@ -35,16 +48,39 @@ export default function VerifyOtpScreen() {
     try {
       const res = await authApi.verifyOtp({
         phoneNumber: phone || '',
-        otpCode,
+        otp: otpCode.trim(),
       });
 
       if (res.success) {
+        // Tự động đăng nhập ngay sau khi kích hoạt tài khoản thành công
+        if (password) {
+          try {
+            const loginRes = await authApi.login({
+              phoneNumber: phone || '',
+              password,
+            });
+            if (loginRes?.accessToken) {
+              await setAuth(loginRes.user, loginRes.accessToken, loginRes.refreshToken);
+              registerDeviceSilently();
+              router.replace('/(tabs)');
+              return;
+            }
+          } catch {
+            // Chuyển về màn hình đăng nhập nếu auto-login gặp lỗi
+          }
+        }
         router.replace('/(auth)/login');
       } else {
         setErrorMsg(res.message || 'Mã OTP không đúng hoặc đã hết hạn.');
       }
-    } catch {
-      setErrorMsg('Xác thực OTP thất bại. Vui lòng thử lại.');
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err && (err as any).response?.data?.message
+          ? String((err as any).response.data.message)
+          : err instanceof Error
+          ? err.message
+          : 'Xác thực OTP thất bại. Vui lòng kiểm tra lại mã OTP.';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -68,6 +104,12 @@ export default function VerifyOtpScreen() {
             <Text style={styles.cardSubtitle}>
               Mã xác thực đã được gửi đến số điện thoại {phone || ''}
             </Text>
+
+            {testOtp ? (
+              <View style={styles.testOtpBadge}>
+                <Text style={styles.testOtpText}>Mã xác thực gửi tới bạn: {testOtp}</Text>
+              </View>
+            ) : null}
 
             {errorMsg ? (
               <View style={styles.errorBox}>
@@ -121,4 +163,20 @@ const styles = StyleSheet.create({
   otpInput: { backgroundColor: '#070B17', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: '#F8FAFC', fontSize: 20, fontWeight: '700', textAlign: 'center', letterSpacing: 6, borderWidth: 1, borderColor: '#1E293B' },
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366F1', borderRadius: 14, paddingVertical: 14, gap: 8, width: '100%' },
   submitButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  testOtpBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  testOtpText: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

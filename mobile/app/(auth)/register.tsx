@@ -92,8 +92,13 @@ export default function RegisterScreen() {
   };
 
   const handleRegister = async () => {
-    if (!fullName || !phoneNumber || !password) {
+    if (!fullName.trim() || !phoneNumber.trim() || !password.trim()) {
       setErrorMsg('Vui lòng điền đầy đủ Họ tên, Số điện thoại và Mật khẩu.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMsg('Mật khẩu phải có độ dài tối thiểu 6 ký tự.');
       return;
     }
 
@@ -102,16 +107,30 @@ export default function RegisterScreen() {
 
     try {
       const res = await authApi.register({
-        fullName,
-        phoneNumber,
-        password,
+        fullName: fullName.trim(),
+        phoneNumber: phoneNumber.trim(),
+        password: password.trim(),
       });
 
-      await setAuth(res.user, res.accessToken, res.refreshToken);
-      registerDeviceSilently();
-      router.replace('/(tabs)');
+      // Trích xuất mã OTP từ tin nhắn máy chủ nếu có (Message: "Đăng ký thành công. Mã OTP là: 123456")
+      const otpMatch = res.message?.match(/\b\d{6}\b/);
+      const testOtp = otpMatch ? otpMatch[0] : '';
+
+      router.push({
+        pathname: '/(auth)/verify-otp',
+        params: {
+          phone: phoneNumber.trim(),
+          password: password.trim(),
+          testOtp,
+        },
+      });
     } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Đăng ký thất bại. Vui lòng thử lại.';
+      const msg =
+        err && typeof err === 'object' && 'response' in err && (err as any).response?.data?.message
+          ? String((err as any).response.data.message)
+          : err instanceof Error
+          ? err.message
+          : 'Đăng ký thất bại. Vui lòng thử lại.';
       setErrorMsg(msg);
     } finally {
       setLoading(false);
