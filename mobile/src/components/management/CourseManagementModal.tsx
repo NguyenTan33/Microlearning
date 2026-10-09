@@ -114,6 +114,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       const res = await catalogApi.togglePublishLesson(lesson.id);
       Alert.alert('Thông báo', res.message);
+      // Cập nhật giao diện tức thì
+      setSelectedCourse((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          subjects: prev.subjects?.map((sub) => ({
+            ...sub,
+            lessons: sub.lessons?.map((les) =>
+              les.id === lesson.id ? { ...les, isPublished: res.isPublished } : les
+            ),
+          })),
+        };
+      });
       if (selectedCourse) await loadCourseDetail(selectedCourse.id);
       if (onCourseUpdated) onCourseUpdated();
     } catch {
@@ -257,27 +270,38 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     setSavingCourse(true);
     try {
       if (editingCourse) {
-        await catalogApi.updateCourse(editingCourse.id, {
+        const updated = await catalogApi.updateCourse(editingCourse.id, {
           title: courseTitle.trim(),
           description: courseDesc.trim(),
           thumbnailUrl: courseThumb.trim() || undefined,
+          isPublished: editingCourse.isPublished,
           isPrivate: courseIsPrivate,
           accessPassword: coursePass.trim() || undefined,
         });
+        setCourses((prev) =>
+          prev.map((c) => (c.id === editingCourse.id ? { ...c, ...updated, isPrivate: courseIsPrivate } : c))
+        );
+        setSelectedCourse((prev) =>
+          prev && prev.id === editingCourse.id ? { ...prev, ...updated, isPrivate: courseIsPrivate } : prev
+        );
         Alert.alert('Thành công', 'Đã cập nhật thông tin khóa học.');
       } else {
-        await catalogApi.createCourse({
+        const created = await catalogApi.createCourse({
           title: courseTitle.trim(),
           description: courseDesc.trim(),
           thumbnailUrl: courseThumb.trim() || undefined,
           isPrivate: courseIsPrivate,
           accessPassword: coursePass.trim() || undefined,
         });
+        setCourses((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
         Alert.alert('Thành công', 'Đã tạo khóa học mới thành công!');
       }
 
       setIsCourseFormOpen(false);
       await loadCourses();
+      if (selectedCourse && editingCourse && selectedCourse.id === editingCourse.id) {
+        await loadCourseDetail(selectedCourse.id);
+      }
       if (onCourseUpdated) onCourseUpdated();
     } catch (err: any) {
       Alert.alert('Lỗi', err?.response?.data?.message || 'Không thể lưu khóa học.');
@@ -290,6 +314,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       const res = await catalogApi.togglePublishCourse(course.id);
       Alert.alert('Thông báo', res.message);
+      // Cập nhật giao diện tức thì
+      setCourses((prev) =>
+        prev.map((c) => (c.id === course.id ? { ...c, isPublished: res.isPublished } : c))
+      );
+      setSelectedCourse((prev) =>
+        prev && prev.id === course.id ? { ...prev, isPublished: res.isPublished } : prev
+      );
       await loadCourses();
       if (selectedCourse?.id === course.id) {
         await loadCourseDetail(course.id);
