@@ -1,5 +1,4 @@
 import type { MediaBookmark, CreateMediaBookmarkPayload } from '../types/mediaBookmark.types';
-import { SAMPLE_COURSES } from './sampleCatalogData';
 import { getCurrentUser } from '../utils/tokenHelper';
 
 /**
@@ -58,21 +57,7 @@ function enrichBookmarkMetadata(bm: MediaBookmark): MediaBookmark {
   if (bm.lessonId === 18 || bm.lessonId === 6001) {
     courseTitle = 'Kiến trúc Offline-First Mobile & Web App';
     lessonTitle = 'Monotonic Merge chống tụt lùi tiến độ';
-  } else if (isGenericCourse || isGenericLesson) {
-    // 2. Tìm trong danh mục mẫu SAMPLE_COURSES
-    for (const c of SAMPLE_COURSES) {
-      for (const s of c.subjects) {
-        const found = s.lessons?.find((l) => l.id === bm.lessonId);
-        if (found) {
-          if (isGenericCourse) courseTitle = c.title;
-          if (isGenericLesson) lessonTitle = found.title;
-          break;
-        }
-      }
-      if (courseTitle && lessonTitle && !lessonTitle.startsWith('Bài')) break;
-    }
-
-    // 3. Tìm trong localStorage các khóa học tùy chỉnh tạo từ Studio
+    // 2. Tìm trong localStorage các khóa học tùy chỉnh tạo từ Studio
     if (isGenericCourse || isGenericLesson) {
       try {
         const raw = localStorage.getItem('microlearn_custom_courses');
@@ -228,23 +213,9 @@ export const mediaBookmarkService = {
     let courseTitle = payload.courseTitle;
     let lessonTitle = payload.lessonTitle;
 
-    // Đặc thù bài 18 hoặc 6001
-    if (payload.lessonId === 18 || payload.lessonId === 6001) {
-      courseTitle = 'Kiến trúc Offline-First Mobile & Web App';
-      lessonTitle = 'Monotonic Merge chống tụt lùi tiến độ';
-    } else if (!courseTitle || !lessonTitle) {
-      for (const c of SAMPLE_COURSES) {
-        for (const s of c.subjects) {
-          const found = s.lessons?.find((l) => l.id === payload.lessonId);
-          if (found) {
-            if (!courseTitle) courseTitle = c.title;
-            if (!lessonTitle) lessonTitle = found.title;
-            break;
-          }
-        }
-        if (courseTitle && lessonTitle) break;
-      }
-    }
+    // Nếu không có tên bài hoặc tên khóa học, đặt tên chuẩn mực
+    if (!courseTitle) courseTitle = payload.courseId ? `Khóa học #${payload.courseId}` : 'Khóa học MicroLearning';
+    if (!lessonTitle) lessonTitle = `Bài giảng #${payload.lessonId}`;
 
     const newBookmark: MediaBookmark = {
       id: newId,
