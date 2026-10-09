@@ -29,4 +29,8 @@ export const mediaCleanupService = {
       return 0;
     }
   },
+
+  async runAutoCleanup7Days(): Promise<number> {
+    return await this.runCleanupIfNeeded();
+  },
 };

@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { HardDrive, Trash2, Play, Pin, PinOff } from 'lucide-react-native';
+import { HardDrive, Trash2, Play, Pin, PinOff, Sparkles, RefreshCw } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
+import { mediaCleanupService } from '../../src/services/mediaCleanupService';
 import { formatBytes } from '../../src/utils/formatters';
 import type { DownloadedMediaRecord } from '../../src/types/offline.types';
 import type { Lesson } from '../../src/types/catalog.types';
@@ -36,10 +37,15 @@ export default function DownloadsScreen() {
     try {
       const records = await downloadRepository.getAllDownloaded();
       const loaded: OfflineItem[] = [];
+      const seenLessons = new Set<number>();
 
       for (const rec of records) {
-        const les = await catalogRepository.getLessonById(rec.lessonId);
-        loaded.push({ record: rec, lesson: les });
+        // Tránh trùng lặp đếm nếu 1 bài có nhiều tệp
+        if (!seenLessons.has(rec.lessonId)) {
+          seenLessons.add(rec.lessonId);
+          const les = await catalogRepository.getLessonById(rec.lessonId);
+          loaded.push({ record: rec, lesson: les });
+        }
       }
 
       setItems(loaded);
@@ -78,9 +84,20 @@ export default function DownloadsScreen() {
     await loadOfflineMedia();
   };
 
+  const handleRunCleanup7Days = async () => {
+    const deletedCount = await mediaCleanupService.runAutoCleanup7Days();
+    Alert.alert(
+      'Dọn dẹp bộ nhớ 7 ngày',
+      deletedCount > 0
+        ? `Đã dọn dẹp ${deletedCount} video bài học đã học xong quá 7 ngày.`
+        : 'Bộ nhớ sạch sẽ! Không có video bài học nào thỏa điều kiện xóa.'
+    );
+    await loadOfflineMedia();
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Kho ngoại tuyến" />
+      <AppHeader title="Kho Ngoại Tuyến & Dọn Dẹp" />
 
       <View style={styles.container}>
         {/* Thống kê dung lượng */}
@@ -97,58 +114,65 @@ export default function DownloadsScreen() {
           </View>
         </View>
 
+        {/* Nút kích hoạt dọn dẹp 7 ngày */}
+        <TouchableOpacity style={styles.cleanupBannerBtn} onPress={handleRunCleanup7Days}>
+          <Sparkles color="#F59E0B" size={18} />
+          <Text style={styles.cleanupBannerText}>Dọn Dẹp Video Đã Học Xong ({'>'} 7 Ngày)</Text>
+        </TouchableOpacity>
+
         {/* Danh sách video tải về */}
         <FlatList
           data={items}
-          keyExtractor={(item) => item.record.mediaId.toString()}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item) => `offline_${item.record.lessonId}_${item.record.mediaId}`}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#6366F1"
+              colors={['#6366F1']}
+            />
           }
+          contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const lessonTitle = item.lesson?.title || item.record.fileName;
-            const isPinned = Boolean(item.record.isPinned);
+            const title = item.lesson?.title || `Bài học #${item.record.lessonId}`;
+            const isPinned = item.record.isPinned === 1;
 
             return (
               <View style={styles.itemCard}>
+                <TouchableOpacity
+                  style={styles.playButton}
+                  onPress={() => router.push(`/lesson/${item.record.lessonId}` as any)}
+                >
+                  <Play color="#FFFFFF" size={18} fill="#FFFFFF" />
+                </TouchableOpacity>
+
                 <View style={styles.itemInfo}>
-                  <Text style={styles.itemTitle} numberOfLines={2}>
-                    {lessonTitle}
+                  <Text style={styles.itemTitle} numberOfLines={1}>
+                    {title}
                   </Text>
-                  <View style={styles.itemMeta}>
-                    <Text style={styles.itemSize}>{formatBytes(item.record.fileSizeBytes)}</Text>
-                    {isPinned && (
-                      <View style={styles.pinnedBadge}>
-                        <Text style={styles.pinnedText}>Đã ghim (Không tự xóa)</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Text style={styles.itemMeta}>
+                    {formatBytes(item.record.fileSizeBytes)} • Tải ngày{' '}
+                    {new Date(item.record.downloadedAt).toLocaleDateString('vi-VN')}
+                  </Text>
                 </View>
 
-                {/* Các nút hành động */}
-                <View style={styles.actionsRow}>
+                <View style={styles.actionRow}>
                   <TouchableOpacity
-                    style={styles.actionIconBtn}
+                    style={styles.pinBtn}
                     onPress={() => handleTogglePin(item.record.lessonId, isPinned)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    {isPinned ? <Pin color="#38BDF8" size={18} /> : <PinOff color="#64748B" size={18} />}
+                    {isPinned ? (
+                      <Pin color="#F59E0B" size={18} fill="#F59E0B" />
+                    ) : (
+                      <PinOff color="#64748B" size={18} />
+                    )}
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.actionIconBtn}
-                    onPress={() => handleDelete(item.record.lessonId, lessonTitle)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.deleteBtn}
+                    onPress={() => handleDelete(item.record.lessonId, title)}
                   >
                     <Trash2 color="#EF4444" size={18} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.playButton}
-                    onPress={() => router.push(`/lesson/${item.record.lessonId}`)}
-                  >
-                    <Play color="#FFFFFF" size={15} />
-                    <Text style={styles.playButtonText}>Phát</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -157,10 +181,10 @@ export default function DownloadsScreen() {
           ListEmptyComponent={
             !loading ? (
               <View style={styles.emptyContainer}>
-                <HardDrive color="#475569" size={48} style={{ marginBottom: 12 }} />
-                <Text style={styles.emptyTitle}>Chưa có bài học tải về</Text>
-                <Text style={styles.emptySubtitle}>
-                  Bạn có thể bấm "Tải học offline" ở bất kỳ bài học nào để học khi mất mạng.
+                <HardDrive color="#475569" size={48} />
+                <Text style={styles.emptyTitle}>Chưa có bài học nào được tải về</Text>
+                <Text style={styles.emptySub}>
+                  Bấm nút "Tải bài học" trong màn hình học để xem video ngoại tuyến khi không có kết nối Internet.
                 </Text>
               </View>
             ) : null
@@ -174,27 +198,27 @@ export default function DownloadsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#070B17',
+    backgroundColor: '#0F172A',
   },
   container: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 12,
   },
   storageCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
     borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 16,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
   },
   storageIconWrapper: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: 'rgba(56, 189, 248, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -206,7 +230,7 @@ const styles = StyleSheet.create({
   storageLabel: {
     color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   storageValue: {
     color: '#F8FAFC',
@@ -215,104 +239,98 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   storageCountBadge: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#38BDF8',
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
   storageCountText: {
-    color: '#CBD5E1',
+    color: '#0F172A',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
+  },
+  cleanupBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+    marginBottom: 16,
+  },
+  cleanupBannerText: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '700',
   },
   listContent: {
     paddingBottom: 24,
-    gap: 10,
   },
   itemCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+  },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   itemInfo: {
-    marginBottom: 12,
+    flex: 1,
+    marginRight: 8,
   },
   itemTitle: {
     color: '#F8FAFC',
     fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-    marginBottom: 4,
+    fontWeight: '700',
   },
   itemMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  itemSize: {
-    color: '#64748B',
+    color: '#94A3B8',
     fontSize: 12,
+    marginTop: 4,
   },
-  pinnedBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  pinnedText: {
-    color: '#38BDF8',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  actionsRow: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#1E293B',
-    paddingTop: 10,
+    gap: 6,
   },
-  actionIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#070B17',
-    alignItems: 'center',
-    justifyContent: 'center',
+  pinBtn: {
+    padding: 8,
   },
-  playButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 5,
-  },
-  playButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+  deleteBtn: {
+    padding: 8,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
-    paddingHorizontal: 24,
+    paddingVertical: 60,
   },
   emptyTitle: {
     color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 6,
+    marginTop: 16,
   },
-  emptySubtitle: {
-    color: '#64748B',
+  emptySub: {
+    color: '#94A3B8',
     fontSize: 13,
     textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 30,
     lineHeight: 18,
   },
 });
