@@ -6,6 +6,7 @@ import { syncMetaRepository } from '../db/repositories/syncMetaRepository';
 import { catalogRepository } from '../db/repositories/catalogRepository';
 import { syncApi } from './syncApi';
 import { catalogApi } from './catalogApi';
+import { streakApi } from './streakApi';
 import { guidHelper } from '../utils/guidHelper';
 
 let isSyncing = false;
@@ -131,6 +132,11 @@ export const autoSyncEngine = {
       percent,
       isCompleted
     );
+
+    // Kích hoạt đồng bộ streak toàn cục nếu bài học hoàn thành
+    if (isCompleted) {
+      streakApi.pingStreak().catch(() => {});
+    }
 
     // 2. Gửi API trực tiếp hoặc thêm vào Outbox nếu offline
     try {

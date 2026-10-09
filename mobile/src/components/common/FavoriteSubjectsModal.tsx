@@ -1,222 +1,187 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
   Text,
+  StyleSheet,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
-import { X, Heart, BookOpen, Trash2, ArrowRight } from 'lucide-react-native';
-import { favoriteSubjectApi, FavoriteSubjectItem } from '../../services/favoriteSubjectApi';
+import { X, Heart, BookOpen, Layers, ChevronRight } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import {
+  favoriteSubjectApi,
+  type FavoriteSubject,
+} from '../../services/favoriteSubjectApi';
 
 interface FavoriteSubjectsModalProps {
   visible: boolean;
   onClose: () => void;
-  onSelectSubject?: (subjectId: number) => void;
 }
 
 export const FavoriteSubjectsModal: React.FC<FavoriteSubjectsModalProps> = ({
   visible,
   onClose,
-  onSelectSubject,
 }) => {
-  const [favorites, setFavorites] = useState<FavoriteSubjectItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [favorites, setFavorites] = useState<FavoriteSubject[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const loadFavorites = async () => {
+  const loadFavorites = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await favoriteSubjectApi.getFavoriteSubjects();
+      const data = await favoriteSubjectApi.getMyFavorites();
       setFavorites(data);
     } catch {
-      setFavorites([]);
+      // fallback
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (visible) {
       loadFavorites();
     }
-  }, [visible]);
+  }, [visible, loadFavorites]);
 
-  const handleRemove = async (subjectId: number) => {
-    try {
-      await favoriteSubjectApi.removeFavoriteSubject(subjectId);
-      setFavorites(favorites.filter((f) => f.subjectId !== subjectId));
-    } catch {
-      Alert.alert('Lỗi', 'Không thể xóa khỏi yêu thích.');
-    }
+  const handleOpenSubject = (item: FavoriteSubject) => {
+    onClose();
+    router.push(`/course/${item.courseId}`);
+  };
+
+  const handleRemoveFavorite = async (subjectId: number) => {
+    await favoriteSubjectApi.toggleFavorite(subjectId);
+    setFavorites((prev) => prev.filter((f) => f.subjectId !== subjectId));
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <View style={styles.titleRow}>
-              <Heart color="#EF4444" size={24} fill="#EF4444" />
-              <Text style={styles.modalTitle}>Môn Học Yêu Thích</Text>
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.iconBox}>
+              <Heart color="#EC4899" size={20} fill="#EC4899" />
             </View>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <X color="#94A3B8" size={20} />
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.headerTitle}>Môn Học Yêu Thích</Text>
+              <Text style={styles.headerSubtitle}>Danh sách các học phần bạn đã thả tim</Text>
+            </View>
           </View>
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+            <X color="#94A3B8" size={22} />
+          </TouchableOpacity>
+        </View>
 
-          {loading ? (
-            <ActivityIndicator size="large" color="#6366F1" style={{ marginVertical: 30 }} />
-          ) : favorites.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <BookOpen color="#64748B" size={48} />
-              <Text style={styles.emptyTitle}>Chưa có môn học yêu thích nào</Text>
-              <Text style={styles.emptySub}>
-                Nhấp vào biểu tượng Trái tim ở các môn học để lưu vào đây xem nhanh.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView style={styles.favoritesList}>
-              {favorites.map((fav) => (
-                <View key={fav.subjectId} style={styles.favCard}>
-                  <View style={styles.favInfo}>
-                    <Text style={styles.favTitle}>{fav.subjectTitle}</Text>
-                    <Text style={styles.favCourse}>Khóa học: {fav.courseTitle}</Text>
-                    <Text style={styles.favCount}>{fav.totalLessons} bài học</Text>
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#EC4899" />
+            <Text style={styles.loadingText}>Đang nạp danh sách yêu thích...</Text>
+          </View>
+        ) : favorites.length === 0 ? (
+          <View style={styles.centerContainer}>
+            <Heart color="#475569" size={54} />
+            <Text style={styles.emptyTitle}>Chưa có môn học yêu thích</Text>
+            <Text style={styles.emptyDesc}>
+              Bấm biểu tượng Trái tim trong danh sách bài giảng hoặc học phần để ghim vào mục yêu thích.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.countText}>Đang lưu {favorites.length} môn học yêu thích</Text>
+
+            {favorites.map((f) => (
+              <TouchableOpacity
+                key={f.subjectId}
+                style={styles.card}
+                onPress={() => handleOpenSubject(f)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.cardMain}>
+                  <View style={styles.badgeBox}>
+                    <Layers color="#EC4899" size={18} />
                   </View>
-
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={() => handleRemove(fav.subjectId)}
-                    >
-                      <Trash2 color="#EF4444" size={18} />
-                    </TouchableOpacity>
-
-                    {onSelectSubject && (
-                      <TouchableOpacity
-                        style={styles.openBtn}
-                        onPress={() => {
-                          onClose();
-                          onSelectSubject(fav.subjectId);
-                        }}
-                      >
-                        <ArrowRight color="#FFFFFF" size={18} />
-                      </TouchableOpacity>
-                    )}
+                  <View style={styles.cardInfo}>
+                    <Text style={styles.subjectTitle} numberOfLines={1}>
+                      {f.title}
+                    </Text>
+                    <Text style={styles.courseTitle} numberOfLines={1}>
+                      Khóa: {f.courseTitle}
+                    </Text>
+                    <Text style={styles.lessonCountText}>{f.totalLessons} bài giảng</Text>
                   </View>
                 </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
+
+                <TouchableOpacity
+                  style={styles.heartBtn}
+                  onPress={() => handleRemoveFavorite(f.subjectId)}
+                  activeOpacity={0.7}
+                >
+                  <Heart color="#EC4899" size={18} fill="#EC4899" />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalContent: {
-    maxHeight: '85%',
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 20,
-  },
-  modalHeader: {
+  container: { flex: 1, backgroundColor: '#070B17' },
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 48,
+    paddingBottom: 14,
+    backgroundColor: '#0F172A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
-  titleRow: {
-    flexDirection: 'row',
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
   },
-  modalTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  closeButton: {
-    padding: 6,
-    backgroundColor: '#334155',
-    borderRadius: 12,
-  },
-  emptyBox: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 12,
-  },
-  emptySub: {
-    color: '#94A3B8',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: 20,
-  },
-  favoritesList: {
-    maxHeight: 400,
-  },
-  favCard: {
+  headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
+  headerSubtitle: { color: '#94A3B8', fontSize: 11 },
+  closeBtn: { padding: 4 },
+  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  loadingText: { color: '#94A3B8', fontSize: 13 },
+  emptyTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
+  emptyDesc: { color: '#64748B', fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  listContent: { padding: 16, gap: 12 },
+  countText: { color: '#64748B', fontSize: 12, marginBottom: 4 },
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#0F172A',
-    borderColor: '#334155',
-    borderWidth: 1,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
     padding: 14,
-    marginBottom: 12,
   },
-  favInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  favTitle: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  favCourse: {
-    color: '#38BDF8',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  favCount: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  actionRow: {
-    flexDirection: 'row',
+  cardMain: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  badgeBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(236, 72, 153, 0.15)',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  deleteBtn: {
-    padding: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 10,
-  },
-  openBtn: {
-    padding: 8,
-    backgroundColor: '#6366F1',
-    borderRadius: 10,
-  },
+  cardInfo: { flex: 1 },
+  subjectTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  courseTitle: { color: '#94A3B8', fontSize: 12, marginBottom: 2 },
+  lessonCountText: { color: '#818CF8', fontSize: 11, fontWeight: '600' },
+  heartBtn: { padding: 8 },
 });

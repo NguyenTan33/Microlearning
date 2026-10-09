@@ -8,6 +8,7 @@ import {
   RefreshControl,
   StatusBar,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,20 +19,30 @@ import {
   Download,
   ChevronRight,
   Flame,
-  Trophy,
   Sparkles,
   BookOpen,
   Layers,
   GraduationCap,
+  ShieldCheck,
+  HelpCircle,
+  Bookmark,
+  Heart,
+  Crown,
 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { OfflineBanner } from '../../src/components/common/OfflineBanner';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { CourseManagementModal } from '../../src/components/management/CourseManagementModal';
+import { AdminUserManagementModal } from '../../src/components/management/AdminUserManagementModal';
+import { MistakeVaultModal } from '../../src/components/quiz/MistakeVaultModal';
+import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLibraryModal';
+import { FavoriteSubjectsModal } from '../../src/components/common/FavoriteSubjectsModal';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
 import { catalogApi } from '../../src/services/catalogApi';
-import { streakApi } from '../../src/services/streakApi';
+import { streakApi, type StreakInfo } from '../../src/services/streakApi';
+import { mediaBookmarkService } from '../../src/services/mediaBookmarkService';
+import { favoriteSubjectApi } from '../../src/services/favoriteSubjectApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { autoSyncEngine } from '../../src/services/autoSyncEngine';
@@ -40,8 +51,22 @@ import type { Course, CourseDetail, Lesson } from '../../src/types/catalog.types
 
 export default function StudyHomeScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading, user, isTeacher, isAdmin } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading, user, isTeacher, isAdmin, logout } = useAuthStore();
   const { downloadedLessonIds } = useDownloadStore();
+
+  const handleLogout = () => {
+    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Đăng xuất',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   const [courseList, setCourseList] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
@@ -50,12 +75,19 @@ export default function StudyHomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Gamification thật từ Azure Backend
-  const [streakCount, setStreakCount] = useState<number>(0);
-  const [userXp, setUserXp] = useState<number>(0);
+  // Chuỗi Streak thật từ Azure Backend
+  const [streakData, setStreakData] = useState<StreakInfo | null>(null);
 
-  // Studio Quản lý cho Giáo viên & Admin
+  // Số lượng mục yêu thích & bookmark
+  const [bookmarkCount, setBookmarkCount] = useState<number>(0);
+  const [favoriteCount, setFavoriteCount] = useState<number>(0);
+
+  // Modals state
   const [isStudioOpen, setIsStudioOpen] = useState<boolean>(false);
+  const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
+  const [isMistakesOpen, setIsMistakesOpen] = useState<boolean>(false);
+  const [isBookmarksOpen, setIsBookmarksOpen] = useState<boolean>(false);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -67,9 +99,9 @@ export default function StudyHomeScreen() {
     try {
       // 1. Tải streak thật từ Azure
       try {
-        const streakInfo = await streakApi.getMyStreak();
-        if (streakInfo && typeof streakInfo.currentStreak === 'number') {
-          setStreakCount(streakInfo.currentStreak);
+        const sInfo = await streakApi.getMyStreak();
+        if (sInfo) {
+          setStreakData(sInfo);
         }
       } catch {
         // Fallback offline
@@ -78,9 +110,18 @@ export default function StudyHomeScreen() {
       // 2. Tải tiến độ hoàn thành từ SQLite
       const completed = await progressRepository.getCompletedLessonIds();
       setCompletedIds(new Set(completed));
-      setUserXp(completed.length * 25);
 
-      // 3. Tải danh mục khóa học (Local First -> Azure API)
+      // 3. Tải số lượng Bookmarks & Favorites
+      try {
+        const bms = await mediaBookmarkService.getAllBookmarks();
+        setBookmarkCount(bms.length);
+        const favs = await favoriteSubjectApi.getMyFavoriteIds();
+        setFavoriteCount(favs.length);
+      } catch {
+        // ignore
+      }
+
+      // 4. Tải danh mục khóa học (Local First -> Azure API)
       let courses = await catalogRepository.getAllCourses();
       try {
         const apiCourses = await catalogApi.getAllCourses(isTeacher || isAdmin);
@@ -94,7 +135,7 @@ export default function StudyHomeScreen() {
 
       setCourseList(courses);
 
-      // 4. Chọn khóa học đang kích hoạt
+      // 5. Chọn khóa học đang kích hoạt
       const activeId = selectedCourseId || (courses.length > 0 ? courses[0].id : 1);
       if (!selectedCourseId && courses.length > 0) {
         setSelectedCourseId(courses[0].id);
@@ -106,7 +147,7 @@ export default function StudyHomeScreen() {
       }
 
       try {
-        detail = await catalogApi.getCourseById(activeId);
+        detail = await catalogApi.getCourseById(activeId, isTeacher || isAdmin);
         if (detail) {
           await catalogRepository.saveCourseDetail(detail);
           setCourse(detail);
@@ -141,7 +182,7 @@ export default function StudyHomeScreen() {
       let detail = await catalogRepository.getCourseDetailById(courseId);
       if (detail) setCourse(detail);
 
-      detail = await catalogApi.getCourseById(courseId);
+      detail = await catalogApi.getCourseById(courseId, isTeacher || isAdmin);
       if (detail) {
         await catalogRepository.saveCourseDetail(detail);
         setCourse(detail);
@@ -178,6 +219,7 @@ export default function StudyHomeScreen() {
 
   const completionRate =
     totalLessonsCount > 0 ? Math.round((completedIds.size / totalLessonsCount) * 100) : 0;
+  const streakCount = streakData?.currentStreak || 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -186,7 +228,9 @@ export default function StudyHomeScreen() {
         title="Học tập"
         subtitle={user?.fullName || 'Học viên Microlearning'}
         streakCount={streakCount}
+        showStreak={true}
         onProfilePress={() => router.push('/(tabs)/profile')}
+        onLogoutPress={handleLogout}
       />
       <OfflineBanner />
 
@@ -197,50 +241,119 @@ export default function StudyHomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
         }
       >
-        {/* Gamification Stats Row */}
+        {/* Gamification Streak & Progress Card (ĐÃ BỎ EXP THEO YÊU CẦU ĐỒ ÁN) */}
         <View style={styles.gamificationRow}>
           <View style={[styles.statBox, styles.streakBox]}>
-            <Flame color="#F59E0B" size={22} fill="#F59E0B" />
+            <Flame color="#F59E0B" size={24} fill="#F59E0B" />
             <View>
               <Text style={styles.statValue}>{streakCount} Ngày</Text>
               <Text style={styles.statLabel}>Chuỗi học liên tiếp</Text>
             </View>
           </View>
 
-          <View style={[styles.statBox, styles.xpBox]}>
-            <Trophy color="#8B5CF6" size={22} />
+          <View style={[styles.statBox, styles.progressBox]}>
+            <CheckCircle2 color="#10B981" size={24} />
             <View>
-              <Text style={styles.statValue}>{userXp} XP</Text>
-              <Text style={styles.statLabel}>Điểm kinh nghiệm</Text>
+              <Text style={styles.statValue}>{completedIds.size} Bài</Text>
+              <Text style={styles.statLabel}>Đã hoàn thành</Text>
             </View>
           </View>
         </View>
 
-        {/* Shortcut Banner Studio dành cho Giảng Viên & Quản Trị Viên */}
-        {(isTeacher || isAdmin) && (
+        {/* Cụm Tiện Ích: Ôn Câu Sai • Đánh Dấu Videos • Môn Yêu Thích */}
+        <View style={styles.quickAccessRow}>
           <TouchableOpacity
-            style={styles.studioCard}
-            onPress={() => setIsStudioOpen(true)}
-            activeOpacity={0.85}
+            style={styles.quickCard}
+            onPress={() => setIsMistakesOpen(true)}
+            activeOpacity={0.8}
           >
-            <View style={styles.studioCardLeft}>
-              <View style={styles.studioIconBadge}>
-                <Layers color="#6366F1" size={22} />
+            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+              <HelpCircle color="#F59E0B" size={18} />
+            </View>
+            <Text style={styles.quickCardTitle}>Ôn Câu Sai</Text>
+            <Text style={styles.quickCardSub}>Sổ tay câu hỏi</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => setIsBookmarksOpen(true)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+              <Bookmark color="#818CF8" size={18} />
+            </View>
+            <Text style={styles.quickCardTitle}>Đánh Dấu</Text>
+            <Text style={styles.quickCardSub}>{bookmarkCount} mốc video</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => setIsFavoritesOpen(true)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
+              <Heart color="#EC4899" size={18} fill="#EC4899" />
+            </View>
+            <Text style={styles.quickCardTitle}>Yêu Thích</Text>
+            <Text style={styles.quickCardSub}>{favoriteCount} môn học</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* PHÂN HỆ STUDIO CHO GIẢNG VIÊN VÀ QUẢN TRỊ VIÊN */}
+        {(isTeacher || isAdmin) && (
+          <View style={styles.adminStudioSection}>
+            {/* Studio Tạo/Sửa Khóa Học */}
+            <TouchableOpacity
+              style={styles.studioCard}
+              onPress={() => setIsStudioOpen(true)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.studioCardLeft}>
+                <View style={styles.studioIconBadge}>
+                  <Layers color="#6366F1" size={20} />
+                </View>
+                <View style={styles.studioCardTexts}>
+                  <View style={styles.studioCardTitleRow}>
+                    <Text style={styles.studioCardTitle}>Studio Quản Lý Khóa Học & Bài Giảng</Text>
+                    <View style={styles.studioRoleBadge}>
+                      <Text style={styles.studioRoleText}>{isAdmin ? 'Admin' : 'Giáo viên'}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.studioCardSubtitle}>
+                    Thêm khóa học, chương mục, bài giảng & gắn video URL
+                  </Text>
+                </View>
               </View>
-              <View style={styles.studioCardTexts}>
-                <View style={styles.studioCardTitleRow}>
-                  <Text style={styles.studioCardTitle}>Studio Quản Lý Khóa Học</Text>
-                  <View style={styles.studioRoleBadge}>
-                    <Text style={styles.studioRoleText}>{isAdmin ? 'Admin' : 'Giáo viên'}</Text>
+              <ChevronRight color="#818CF8" size={18} />
+            </TouchableOpacity>
+
+            {/* Quản Trị Người Dùng (Dành riêng cho Admin) */}
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.studioCard, styles.adminCard]}
+                onPress={() => setIsAdminUsersOpen(true)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.studioCardLeft}>
+                  <View style={[styles.studioIconBadge, styles.adminIconBadge]}>
+                    <ShieldCheck color="#EF4444" size={20} />
+                  </View>
+                  <View style={styles.studioCardTexts}>
+                    <View style={styles.studioCardTitleRow}>
+                      <Text style={styles.studioCardTitle}>Quản Trị Người Dùng (Admin Users)</Text>
+                      <View style={[styles.studioRoleBadge, { backgroundColor: '#EF4444' }]}>
+                        <Text style={styles.studioRoleText}>Toàn quyền</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.studioCardSubtitle}>
+                      Phân quyền Admin/Giáo viên, đổi mật khẩu & khóa tài khoản
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.studioCardSubtitle}>
-                  Thêm khóa học, chương mục, bài giảng & gắn video URL
-                </Text>
-              </View>
-            </View>
-            <ChevronRight color="#818CF8" size={20} />
-          </TouchableOpacity>
+                <ChevronRight color="#EF4444" size={18} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* Khóa học của tôi - Course Switcher Selector */}
@@ -320,7 +433,7 @@ export default function StudyHomeScreen() {
                 Đã hoàn thành {completedIds.size}/{totalLessonsCount} bài học
               </Text>
               <View style={styles.viewDetailLink}>
-                <Text style={styles.viewDetailText}>Xem chi tiết</Text>
+                <Text style={styles.viewDetailText}>Vào học khóa này</Text>
                 <ChevronRight color="#818CF8" size={14} />
               </View>
             </View>
@@ -359,11 +472,11 @@ export default function StudyHomeScreen() {
 
             <TouchableOpacity
               style={styles.continueButton}
-              onPress={() => router.push(`/lesson/${nextLesson!.id}`)}
+              onPress={() => router.push(`/course/${course?.id || 1}`)}
               activeOpacity={0.8}
             >
               <PlayCircle color="#FFFFFF" size={20} />
-              <Text style={styles.continueButtonText}>Học ngay bài tiếp theo</Text>
+              <Text style={styles.continueButtonText}>Xem video & học ngay</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -386,7 +499,7 @@ export default function StudyHomeScreen() {
                       <TouchableOpacity
                         key={les.id}
                         style={[styles.lessonRow, isDone && styles.lessonRowDone]}
-                        onPress={() => router.push(`/lesson/${les.id}`)}
+                        onPress={() => router.push(`/course/${course.id}`)}
                         activeOpacity={0.7}
                       >
                         <View style={styles.lessonLeft}>
@@ -433,11 +546,31 @@ export default function StudyHomeScreen() {
         </View>
       </ScrollView>
 
-      {/* Studio Quản lý khóa học dành cho Teacher / Admin */}
+      {/* Modals Studio & Quản lý */}
       <CourseManagementModal
         visible={isStudioOpen}
         onClose={() => setIsStudioOpen(false)}
         onCourseUpdated={loadData}
+      />
+
+      <AdminUserManagementModal
+        visible={isAdminUsersOpen}
+        onClose={() => setIsAdminUsersOpen(false)}
+      />
+
+      <MistakeVaultModal
+        visible={isMistakesOpen}
+        onClose={() => setIsMistakesOpen(false)}
+      />
+
+      <BookmarkLibraryModal
+        visible={isBookmarksOpen}
+        onClose={() => setIsBookmarksOpen(false)}
+      />
+
+      <FavoriteSubjectsModal
+        visible={isFavoritesOpen}
+        onClose={() => setIsFavoritesOpen(false)}
       />
     </SafeAreaView>
   );
@@ -455,7 +588,7 @@ const styles = StyleSheet.create({
   gamificationRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   statBox: {
     flex: 1,
@@ -470,18 +603,54 @@ const styles = StyleSheet.create({
   streakBox: {
     borderColor: 'rgba(245, 158, 11, 0.3)',
   },
-  xpBox: {
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+  progressBox: {
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   statValue: {
     color: '#F8FAFC',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   statLabel: {
     color: '#94A3B8',
     fontSize: 11,
     fontWeight: '500',
+  },
+  quickAccessRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickCard: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 12,
+    alignItems: 'center',
+  },
+  quickIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickCardTitle: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  quickCardSub: {
+    color: '#64748B',
+    fontSize: 10,
+  },
+  adminStudioSection: {
+    gap: 10,
+    marginBottom: 16,
   },
   studioCard: {
     flexDirection: 'row',
@@ -491,8 +660,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(99, 102, 241, 0.35)',
     borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
+    padding: 12,
+  },
+  adminCard: {
+    borderColor: 'rgba(239, 68, 68, 0.35)',
   },
   studioCardLeft: {
     flexDirection: 'row',
@@ -501,12 +672,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   studioIconBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     backgroundColor: 'rgba(99, 102, 241, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  adminIconBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
   },
   studioCardTexts: {
     flex: 1,
@@ -519,7 +693,7 @@ const styles = StyleSheet.create({
   },
   studioCardTitle: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   studioRoleBadge: {
@@ -530,7 +704,7 @@ const styles = StyleSheet.create({
   },
   studioRoleText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
   },
   studioCardSubtitle: {
@@ -661,7 +835,7 @@ const styles = StyleSheet.create({
   },
   viewDetailText: {
     color: '#818CF8',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   heroCard: {

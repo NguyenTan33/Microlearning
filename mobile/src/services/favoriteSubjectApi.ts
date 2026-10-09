@@ -1,48 +1,53 @@
 import { apiClient } from './apiClient';
 
-export interface FavoriteSubjectItem {
-  id: number;
+export interface FavoriteSubject {
   subjectId: number;
-  subjectTitle: string;
+  title: string;
+  description?: string | null;
+  courseId: number;
   courseTitle: string;
   totalLessons: number;
-  addedAt: string;
+  createdAt: string;
+}
+
+export interface ToggleFavoriteResult {
+  subjectId: number;
+  isFavorite: boolean;
+  message: string;
 }
 
 export const favoriteSubjectApi = {
   /**
-   * Lấy danh sách môn học yêu thích của học viên
+   * Thả tim hoặc bỏ yêu thích một môn học
    */
-  async getFavoriteSubjects(): Promise<FavoriteSubjectItem[]> {
+  async toggleFavorite(subjectId: number): Promise<ToggleFavoriteResult> {
+    const res = await apiClient.post<ToggleFavoriteResult>(
+      `/api/catalog/subjects/${subjectId}/favorite`
+    );
+    return res.data;
+  },
+
+  /**
+   * Lấy danh sách đầy đủ các môn học đã thả tim yêu thích của học viên
+   */
+  async getMyFavorites(): Promise<FavoriteSubject[]> {
     try {
-      const response = await apiClient.get<FavoriteSubjectItem[]>('/favorites/subjects');
-      return response.data;
+      const res = await apiClient.get<FavoriteSubject[]>('/api/catalog/subjects/favorites');
+      return Array.isArray(res.data) ? res.data : [];
     } catch {
       return [];
     }
   },
 
   /**
-   * Thêm môn học vào danh sách yêu thích
+   * Lấy danh sách các ID môn học đã yêu thích để hiển thị nhanh trạng thái trái tim trên UI
    */
-  async addFavoriteSubject(subjectId: number): Promise<boolean> {
+  async getMyFavoriteIds(): Promise<number[]> {
     try {
-      await apiClient.post(`/favorites/subjects/${subjectId}`);
-      return true;
+      const res = await apiClient.get<number[]>('/api/catalog/subjects/favorites/ids');
+      return Array.isArray(res.data) ? res.data : [];
     } catch {
-      return true;
-    }
-  },
-
-  /**
-   * Xóa môn học khỏi danh sách yêu thích
-   */
-  async removeFavoriteSubject(subjectId: number): Promise<boolean> {
-    try {
-      await apiClient.delete(`/favorites/subjects/${subjectId}`);
-      return true;
-    } catch {
-      return true;
+      return [];
     }
   },
 };

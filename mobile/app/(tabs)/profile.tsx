@@ -32,8 +32,17 @@ import {
   Edit2,
   Save,
   RotateCcw,
+  HelpCircle,
+  Bookmark,
+  Heart,
+  Layers,
 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
+import { MistakeVaultModal } from '../../src/components/quiz/MistakeVaultModal';
+import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLibraryModal';
+import { FavoriteSubjectsModal } from '../../src/components/common/FavoriteSubjectsModal';
+import { CourseManagementModal } from '../../src/components/management/CourseManagementModal';
+import { AdminUserManagementModal } from '../../src/components/management/AdminUserManagementModal';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { userProfileService } from '../../src/services/userProfileService';
 import { catalogApi } from '../../src/services/catalogApi';
@@ -78,6 +87,13 @@ export default function ProfileScreen() {
   const [forgotResetToken, setForgotResetToken] = useState<string>('');
   const [forgotStep, setForgotStep] = useState<'SEND_OTP' | 'VERIFY_OTP' | 'RESET_PASS'>('SEND_OTP');
   const [forgotLoading, setForgotLoading] = useState<boolean>(false);
+
+  // Upgrade features modals
+  const [isMistakesOpen, setIsMistakesOpen] = useState<boolean>(false);
+  const [isBookmarksOpen, setIsBookmarksOpen] = useState<boolean>(false);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState<boolean>(false);
+  const [isStudioOpen, setIsStudioOpen] = useState<boolean>(false);
+  const [isAdminUsersOpen, setIsAdminUsersOpen] = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -280,7 +296,11 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Hồ sơ cá nhân" subtitle="Thông tin & Tiến độ học tập" />
+      <AppHeader
+        title="Hồ sơ cá nhân"
+        subtitle="Thông tin & Tiến độ học tập"
+        onLogoutPress={handleLogout}
+      />
 
       {/* Top Profile Summary Header Card */}
       <View style={styles.topSummaryCard}>
@@ -308,6 +328,47 @@ export default function ProfileScreen() {
           <Text style={styles.streakLabelText}>Streak</Text>
         </View>
       </View>
+
+      {/* Banner Studio Dành cho Giáo viên & Admin */}
+      {(isTeacher || isAdmin) && (
+        <View style={styles.profileStudioContainer}>
+          <TouchableOpacity
+            style={styles.profileStudioBtn}
+            onPress={() => setIsStudioOpen(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.profileStudioLeft}>
+              <View style={styles.profileStudioIconBox}>
+                <Layers color="#6366F1" size={18} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profileStudioTitle}>Studio Quản Lý Khóa Học</Text>
+                <Text style={styles.profileStudioSub}>Tạo, sửa bài giảng & quản lý nội dung</Text>
+              </View>
+            </View>
+            <ChevronRight color="#818CF8" size={18} />
+          </TouchableOpacity>
+
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.profileStudioBtn, styles.profileAdminBtn]}
+              onPress={() => setIsAdminUsersOpen(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.profileStudioLeft}>
+                <View style={[styles.profileStudioIconBox, styles.profileAdminIconBox]}>
+                  <ShieldCheck color="#EF4444" size={18} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.profileStudioTitle}>Quản Trị Người Dùng (Admin)</Text>
+                  <Text style={styles.profileStudioSub}>Phân quyền, khóa tài khoản & đổi mật khẩu</Text>
+                </View>
+              </View>
+              <ChevronRight color="#EF4444" size={18} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Navigation 3 Tabs matching Web */}
       <View style={styles.tabBar}>
@@ -392,6 +453,45 @@ export default function ProfileScreen() {
                   {streakInfo?.message || 'Mỗi ngày hoàn thành 1 bài học để duy trì thói quen tiến bộ.'}
                 </Text>
               </View>
+            </View>
+
+            {/* Hub Tiện Ích: Ôn Câu Sai • Mốc Đánh Dấu • Môn Yêu Thích */}
+            <View style={styles.quickAccessRow}>
+              <TouchableOpacity
+                style={styles.quickCard}
+                onPress={() => setIsMistakesOpen(true)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                  <HelpCircle color="#F59E0B" size={18} />
+                </View>
+                <Text style={styles.quickCardTitle}>Ôn Câu Sai</Text>
+                <Text style={styles.quickCardSub}>Sổ tay câu hỏi</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickCard}
+                onPress={() => setIsBookmarksOpen(true)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+                  <Bookmark color="#818CF8" size={18} />
+                </View>
+                <Text style={styles.quickCardTitle}>Đánh Dấu</Text>
+                <Text style={styles.quickCardSub}>Mốc video đã lưu</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickCard}
+                onPress={() => setIsFavoritesOpen(true)}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.quickIconCircle, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
+                  <Heart color="#EC4899" size={18} fill="#EC4899" />
+                </View>
+                <Text style={styles.quickCardTitle}>Yêu Thích</Text>
+                <Text style={styles.quickCardSub}>Môn học đã thích</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Danh sách Khóa Học Đang Học */}
@@ -687,15 +787,42 @@ export default function ProfileScreen() {
                 )}
               </View>
             )}
-
-            {/* Nút Đăng Xuất An Toàn */}
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-              <LogOut color="#EF4444" size={18} />
-              <Text style={styles.logoutBtnText}>Đăng Xuất Tài Khoản</Text>
-            </TouchableOpacity>
           </View>
         )}
+
+        {/* Nút Đăng Xuất An Toàn Luôn Hiển Thị Cho Mọi Tab */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+          <LogOut color="#EF4444" size={18} />
+          <Text style={styles.logoutBtnText}>Đăng Xuất Tài Khoản</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Modals Ôn Câu Sai • Đánh Dấu • Môn Yêu Thích */}
+      <MistakeVaultModal
+        visible={isMistakesOpen}
+        onClose={() => setIsMistakesOpen(false)}
+      />
+
+      <BookmarkLibraryModal
+        visible={isBookmarksOpen}
+        onClose={() => setIsBookmarksOpen(false)}
+      />
+
+      <FavoriteSubjectsModal
+        visible={isFavoritesOpen}
+        onClose={() => setIsFavoritesOpen(false)}
+      />
+
+      {/* Studio & Admin Modals */}
+      <CourseManagementModal
+        visible={isStudioOpen}
+        onClose={() => setIsStudioOpen(false)}
+      />
+
+      <AdminUserManagementModal
+        visible={isAdminUsersOpen}
+        onClose={() => setIsAdminUsersOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1042,5 +1169,83 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 14,
     fontWeight: '700',
+  },
+  quickAccessRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickCard: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 12,
+    alignItems: 'center',
+  },
+  quickIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickCardTitle: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  quickCardSub: {
+    color: '#64748B',
+    fontSize: 10,
+  },
+  profileStudioContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  profileStudioBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    padding: 12,
+  },
+  profileAdminBtn: {
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  profileStudioLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+    marginRight: 8,
+  },
+  profileStudioIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAdminIconBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  profileStudioTitle: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  profileStudioSub: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 1,
   },
 });
