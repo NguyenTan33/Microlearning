@@ -12,7 +12,7 @@ import {
   X,
   Heart,
 } from 'lucide-react';
-import type { CourseDetail, Lesson } from '../../types/catalog.types';
+import type { Course, CourseDetail, Lesson } from '../../types/catalog.types';
 import { useLessonSearch } from '../../hooks/useLessonSearch';
 import { favoriteSubjectApi } from '../../services/favoriteSubjectApi';
 
@@ -22,6 +22,8 @@ interface LessonSidebarProps {
   completedLessonIds: number[];
   onSelectLesson: (lesson: Lesson) => void;
   onBackToCatalog: () => void;
+  allCourses?: Course[];
+  onSelectCourse?: (courseId: number) => void;
 }
 
 export const LessonSidebar: React.FC<LessonSidebarProps> = ({
@@ -30,6 +32,8 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
   completedLessonIds,
   onSelectLesson,
   onBackToCatalog,
+  allCourses,
+  onSelectCourse,
 }) => {
   // 1. Quản lý trạng thái Môn học yêu thích (Thả tim ❤️)
   const [favoriteSubjectIds, setFavoriteSubjectIds] = useState<Set<number>>(new Set());
@@ -202,6 +206,32 @@ export const LessonSidebar: React.FC<LessonSidebarProps> = ({
           <span>{completedCount}/{totalLessons} bài hoàn tất</span>
           <span>{course.subjects?.length || 0} học phần</span>
         </div>
+
+        {/* Bộ chuyển đổi khóa học (Course Switcher - Chọn các khóa học đã tham gia ngay trong phòng học) */}
+        {allCourses && allCourses.length > 0 && onSelectCourse && (
+          <div className="pt-2">
+            <div className="relative">
+              <select
+                aria-label="Chọn khóa học tham gia"
+                value={course.id}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val && val !== course.id) {
+                    onSelectCourse(val);
+                  }
+                }}
+                className="w-full appearance-none bg-slate-900 border border-indigo-500/30 hover:border-indigo-500/60 transition-colors rounded-xl px-3 py-2 pr-8 text-xs font-semibold text-indigo-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-sm truncate"
+              >
+                {allCourses.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                    {c.id === course.id ? `✓ ${c.title}` : c.title}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-indigo-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Thanh tìm kiếm bài học (Feature 3) */}
