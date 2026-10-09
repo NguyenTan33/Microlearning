@@ -142,7 +142,7 @@ export const catalogApi = {
   },
 
   /**
-   * Lấy thông tin chi tiết một khóa học kèm danh sách môn học & bài học (bảo đảm thời gian thực 100% từ Database)
+   * Lấy thông tin chi tiết một khóa học kèm danh sách môn học
    */
   async getCourseById(courseId: number, includeUnpublished: boolean = false): Promise<CourseDetail> {
     const deletedIds = getDeletedCourseIds();
@@ -163,40 +163,7 @@ export const catalogApi = {
           Pragma: 'no-cache',
         },
       });
-      const courseDetail = await handleResponse<CourseDetail>(res);
-
-      // Đồng bộ trực tiếp từ SQL Server:
-      // Backend có thể lưu in-memory cache cho courseDetail, trong khi GET /api/subjects/course/{id}
-      // và GET /api/lessons/subject/{id} luôn truy xuất trực tiếp từ Azure SQL Database.
-      // Do đó, ta luôn đồng bộ danh sách live subjects và live lessons để dữ liệu luôn phản ánh tức thì.
-      try {
-        const liveSubjects = await catalogApi.getSubjectsByCourse(courseId);
-        if (Array.isArray(liveSubjects)) {
-          const subjectsWithLessons = await Promise.all(
-            liveSubjects.map(async (subj) => {
-              try {
-                const liveLessons = await catalogApi.getLessonsBySubject(subj.id, includeUnpublished);
-                return {
-                  ...subj,
-                  totalLessons: Array.isArray(liveLessons) ? liveLessons.length : 0,
-                  lessons: Array.isArray(liveLessons) ? liveLessons : [],
-                };
-              } catch {
-                return {
-                  ...subj,
-                  lessons: subj.lessons || [],
-                };
-              }
-            })
-          );
-          courseDetail.subjects = subjectsWithLessons;
-          courseDetail.totalSubjects = subjectsWithLessons.length;
-        }
-      } catch (syncErr) {
-        console.warn('[catalogApi] Lỗi đồng bộ live subjects/lessons:', syncErr);
-      }
-
-      return courseDetail;
+      return await handleResponse<CourseDetail>(res);
     } catch {
       const locallyCreated = getLocallyCreatedCourses().find((c) => c.id === courseId);
       if (locallyCreated) {
@@ -217,13 +184,8 @@ export const catalogApi = {
    */
   async getSubjectsByCourse(courseId: number): Promise<Subject[]> {
     try {
-      const timestamp = Date.now();
-      const res = await fetch(`/api/subjects/course/${courseId}?_t=${timestamp}`, {
-        headers: {
-          ...getAuthHeaders(),
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-        },
+      const res = await fetch(`/api/subjects/course/${courseId}`, {
+        headers: getAuthHeaders(),
       });
       return await handleResponse<Subject[]>(res);
     } catch {
@@ -237,16 +199,9 @@ export const catalogApi = {
    */
   async getLessonsBySubject(subjectId: number, includeUnpublished: boolean = false): Promise<Lesson[]> {
     try {
-      const timestamp = Date.now();
-      const baseParam = includeUnpublished ? 'includeUnpublished=true' : '';
-      const query = baseParam ? `?${baseParam}&_t=${timestamp}` : `?_t=${timestamp}`;
-      const url = `/api/lessons/subject/${subjectId}${query}`;
+      const url = includeUnpublished ? `/api/lessons/subject/${subjectId}?includeUnpublished=true` : `/api/lessons/subject/${subjectId}`;
       const res = await fetch(url, {
-        headers: {
-          ...getAuthHeaders(),
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-        },
+        headers: getAuthHeaders(),
       });
       return await handleResponse<Lesson[]>(res);
     } catch {
@@ -442,10 +397,7 @@ export const catalogApi = {
   async createSubject(request: { courseId: number; title: string; description: string; sortOrder: number }): Promise<Subject> {
     const res = await fetch('/api/subjects', {
       method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
     return await handleResponse<Subject>(res);
@@ -457,10 +409,7 @@ export const catalogApi = {
   async updateSubject(id: number, request: { title: string; description: string; sortOrder: number }): Promise<Subject> {
     const res = await fetch(`/api/subjects/${id}`, {
       method: 'PUT',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
     return await handleResponse<Subject>(res);
@@ -472,10 +421,7 @@ export const catalogApi = {
   async deleteSubject(id: number): Promise<{ message: string }> {
     const res = await fetch(`/api/subjects/${id}`, {
       method: 'DELETE',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse<{ message: string }>(res);
   },
@@ -492,10 +438,7 @@ export const catalogApi = {
   }): Promise<Lesson> {
     const res = await fetch('/api/lessons', {
       method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
     return await handleResponse<Lesson>(res);
@@ -512,10 +455,7 @@ export const catalogApi = {
   }): Promise<Lesson> {
     const res = await fetch(`/api/lessons/${id}`, {
       method: 'PUT',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
     return await handleResponse<Lesson>(res);
@@ -527,10 +467,7 @@ export const catalogApi = {
   async togglePublishLesson(id: number): Promise<{ isPublished: boolean; message: string }> {
     const res = await fetch(`/api/lessons/${id}/toggle-publish`, {
       method: 'PATCH',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse<{ isPublished: boolean; message: string }>(res);
   },
@@ -541,10 +478,7 @@ export const catalogApi = {
   async deleteLesson(id: number): Promise<{ message: string }> {
     const res = await fetch(`/api/lessons/${id}`, {
       method: 'DELETE',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse<{ message: string }>(res);
   },
@@ -570,10 +504,7 @@ export const catalogApi = {
   }): Promise<{ id: number; title: string }> {
     const res = await fetch(`/api/quizzes/lesson/${lessonId}`, {
       method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(request),
     });
     return await handleResponse<{ id: number; title: string }>(res);
