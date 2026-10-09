@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 import { downloadManager } from '../services/downloadManager';
 
