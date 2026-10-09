@@ -159,7 +159,9 @@ namespace Microlearning.Areas.Catalog.Services
 
         public async Task<CourseResponse> UpdateCourseAsync(int courseId, UpdateCourseRequest request)
         {
-            var course = await _dbContext.Courses.FindAsync(courseId);
+            var course = await _dbContext.Courses
+                .Include(c => c.Subjects)
+                .FirstOrDefaultAsync(c => c.Id == courseId);
             if (course == null)
             {
                 throw new BusinessException($"Không tìm thấy khóa học với mã {courseId} để cập nhật.");

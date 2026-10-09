@@ -405,15 +405,8 @@ namespace Microlearning.Model
                 entity.Property(e => e.FormattedTime).HasMaxLength(20);
                 entity.Property(e => e.Note).HasMaxLength(1000);
 
-                entity.HasOne(e => e.Account)
-                      .WithMany()
-                      .HasForeignKey(e => e.AccountId)
-                      .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasOne(e => e.Lesson)
-                      .WithMany()
-                      .HasForeignKey(e => e.LessonId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(e => e.AccountId);
+                entity.HasIndex(e => e.LessonId);
             });
         }
     }
