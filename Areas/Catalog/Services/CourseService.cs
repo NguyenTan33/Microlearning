@@ -14,7 +14,6 @@ namespace Microlearning.Areas.Catalog.Services
         private readonly ApplicationDbContext _dbContext;
         private readonly IHashService _hashService;
         private readonly IConfiguration _configuration;
-        private readonly IMemoryCache _cache;
 
         private string PasswordSecret => _configuration["CourseAccess:SecretKey"] ?? "Microlearning_Course_Secret_Salt_Key_2026!";
 
@@ -22,41 +21,14 @@ namespace Microlearning.Areas.Catalog.Services
             ApplicationDbContext dbContext,
             IHashService hashService,
             IConfiguration configuration,
-            IMemoryCache cache)
+            IMemoryCache? cache = null)
         {
             _dbContext = dbContext;
             _hashService = hashService;
             _configuration = configuration;
-            _cache = cache;
         }
 
         public async Task<List<CourseResponse>> GetAllCoursesAsync(bool includeUnpublished = false)
-        {
-            // Với Studio Quản lý (includeUnpublished = true), luôn truy vấn trực tiếp CSDL để đảm bảo dữ liệu tức thời
-            if (includeUnpublished)
-            {
-                return await FetchCoursesFromDbAsync(true);
-            }
-
-            string cacheKey = "courses_list_false";
-
-            if (_cache.TryGetValue(cacheKey, out List<CourseResponse>? cachedCourses) && cachedCourses != null)
-            {
-                return cachedCourses;
-            }
-
-            var courses = await FetchCoursesFromDbAsync(false);
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(2))
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
-
-            _cache.Set(cacheKey, courses, cacheEntryOptions);
-
-            return courses;
-        }
-
-        private async Task<List<CourseResponse>> FetchCoursesFromDbAsync(bool includeUnpublished)
         {
             var query = _dbContext.Courses.AsNoTracking();
             if (!includeUnpublished)
@@ -82,31 +54,6 @@ namespace Microlearning.Areas.Catalog.Services
         }
 
         public async Task<CourseDetailResponse> GetCourseByIdAsync(int courseId, bool includeUnpublished = false)
-        {
-            if (includeUnpublished)
-            {
-                return await FetchCourseDetailFromDbAsync(courseId, true);
-            }
-
-            string cacheKey = $"course_detail_{courseId}_false";
-
-            if (_cache.TryGetValue(cacheKey, out CourseDetailResponse? cachedCourse) && cachedCourse != null)
-            {
-                return cachedCourse;
-            }
-
-            var response = await FetchCourseDetailFromDbAsync(courseId, false);
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(2))
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
-
-            _cache.Set(cacheKey, response, cacheEntryOptions);
-
-            return response;
-        }
-
-        private async Task<CourseDetailResponse> FetchCourseDetailFromDbAsync(int courseId, bool includeUnpublished)
         {
             var course = await _dbContext.Courses
                 .AsNoTracking()
@@ -301,19 +248,7 @@ namespace Microlearning.Areas.Catalog.Services
 
         public void InvalidateCache(int? courseId = null)
         {
-            // Xóa tất cả các biến thể viết hoa/thường để triệt tiêu lỗi Case-Sensitivity của IMemoryCache
-            _cache.Remove("courses_list_true");
-            _cache.Remove("courses_list_false");
-            _cache.Remove("courses_list_True");
-            _cache.Remove("courses_list_False");
-
-            if (courseId.HasValue)
-            {
-                _cache.Remove($"course_detail_{courseId.Value}_true");
-                _cache.Remove($"course_detail_{courseId.Value}_false");
-                _cache.Remove($"course_detail_{courseId.Value}_True");
-                _cache.Remove($"course_detail_{courseId.Value}_False");
-            }
+            // Không còn dùng In-Memory Cache; toàn bộ truy vấn chạy trực tiếp từ Azure SQL để đảm bảo dữ liệu luôn thời gian thực 100%
         }
 
         private void InvalidateCourseCache(int? courseId = null) => InvalidateCache(courseId);
