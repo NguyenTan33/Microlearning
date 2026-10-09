@@ -7,11 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "microlearning",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#070B17"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.microlearning.mobile"
@@ -30,7 +25,15 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#070B17"
+        }
+      ]
     ]
   }
 }
