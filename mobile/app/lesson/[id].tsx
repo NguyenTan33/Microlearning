@@ -39,7 +39,7 @@ import { streakApi } from '../../src/services/streakApi';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, seekTimestamp } = useLocalSearchParams<{ id: string; seekTimestamp?: string }>();
   const router = useRouter();
   const lessonId = Number(id);
 
@@ -219,6 +219,7 @@ export default function LessonScreen() {
           lessonId={lessonId}
           onlineStreamUrl={lesson.videoUrl}
           durationSeconds={lesson.durationSeconds}
+          seekTimestamp={seekTimestamp ? Number(seekTimestamp) : undefined}
           onCompleted={handleCompleteLesson}
         />
 

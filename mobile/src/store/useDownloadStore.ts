@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 import { downloadManager } from '../services/downloadManager';
 
@@ -62,12 +62,11 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 
   startDownload: async (lessonId, videoUrl = '', title = '') => {
-    const url = videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
     get().setDownloadProgress(lessonId, 0);
 
     const uri = await downloadManager.downloadLessonVideo(
       lessonId,
-      url,
+      videoUrl,
       title || `Bài học #${lessonId}`,
       (percent) => {
         get().setDownloadProgress(lessonId, percent);
@@ -75,9 +74,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     );
 
     get().removeDownloadProgress(lessonId);
-    if (uri) {
-      await get().refreshStorageAndDownloads();
-    }
+    await get().refreshStorageAndDownloads();
   },
 
   deleteDownload: async (lessonId) => {

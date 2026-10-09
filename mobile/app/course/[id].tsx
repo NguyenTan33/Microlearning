@@ -192,10 +192,19 @@ export default function CourseDetailScreen() {
       );
     } else {
       try {
-        Alert.alert('Tải bài giảng', `Bắt đầu tải video "${activeLesson.title}" về máy để học offline...`);
-        await startDownload(activeLesson.id, activeLesson.videoUrl, activeLesson.title);
+        let streamUrl: string | undefined = activeLesson.videoUrl;
+        if (!streamUrl) {
+          try {
+            const mediaInfo = await catalogApi.getLessonMediaInfo(activeLesson.id);
+            streamUrl = (mediaInfo?.streamUrl || mediaInfo?.externalUrl) ?? undefined;
+          } catch {
+            // fallback in downloadManager
+          }
+        }
+        await startDownload(activeLesson.id, streamUrl, activeLesson.title);
+        Alert.alert('Thành công! 💾', `Đã lưu bài học "${activeLesson.title}" vào kho ngoại tuyến.`);
       } catch {
-        Alert.alert('Lỗi', 'Không thể bắt đầu tải video bài học.');
+        Alert.alert('Lỗi', 'Không thể tải video bài học.');
       }
     }
   };

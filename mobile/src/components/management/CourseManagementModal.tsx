@@ -262,8 +262,8 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       Alert.alert('Thông báo', 'Vui lòng nhập tiêu đề khóa học.');
       return;
     }
-    if (courseIsPrivate && !coursePass.trim() && !editingCourse) {
-      Alert.alert('Thông báo', 'Khóa học riêng tư bắt buộc nhập Mật khẩu bảo vệ.');
+    if (courseIsPrivate && !coursePass.trim() && (!editingCourse || !editingCourse.isPrivate)) {
+      Alert.alert('Thông báo', 'Khóa học chuyển sang chế độ riêng tư bắt buộc phải nhập Mật khẩu bảo vệ.');
       return;
     }
 

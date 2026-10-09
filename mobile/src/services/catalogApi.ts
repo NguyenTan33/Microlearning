@@ -1,6 +1,69 @@
 import { apiClient } from './apiClient';
+import { secureStorage } from '../utils/secureStorage';
+import { catalogRepository } from '../db/repositories/catalogRepository';
 import type { Course, CourseDetail, Subject, Lesson } from '../types/catalog.types';
 import type { LessonMediaInfo, LinkExternalMediaRequest } from '../types/media.types';
+
+const CREATED_COURSES_KEY = 'microlearn_locally_created_courses';
+const DELETED_COURSES_KEY = 'microlearn_deleted_course_ids';
+
+async function getDeletedCourseIds(): Promise<Set<number>> {
+  try {
+    const raw = await secureStorage.getItem(DELETED_COURSES_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+async function saveDeletedCourseId(id: number): Promise<void> {
+  try {
+    const ids = await getDeletedCourseIds();
+    ids.add(id);
+    await secureStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore
+  }
+}
+
+async function removeDeletedCourseId(id: number): Promise<void> {
+  try {
+    const ids = await getDeletedCourseIds();
+    ids.delete(id);
+    await secureStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore
+  }
+}
+
+async function getLocallyCreatedCourses(): Promise<Course[]> {
+  try {
+    const raw = await secureStorage.getItem(CREATED_COURSES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveLocallyCreatedCourse(course: Course): Promise<void> {
+  try {
+    await removeDeletedCourseId(course.id);
+    const created = (await getLocallyCreatedCourses()).filter((c) => c.id !== course.id);
+    created.unshift(course);
+    await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(created));
+  } catch {
+    // ignore
+  }
+}
+
+async function updateLocallyCreatedCourse(course: Course): Promise<void> {
+  try {
+    const created = (await getLocallyCreatedCourses()).map((c) => (c.id === course.id ? course : c));
+    await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(created));
+  } catch {
+    // ignore
+  }
+}
 
 export const catalogApi = {
   /**
@@ -9,8 +72,34 @@ export const catalogApi = {
   async getAllCourses(includeUnpublished: boolean = false): Promise<Course[]> {
     const timestamp = Date.now();
     const query = includeUnpublished ? `?includeUnpublished=true&_t=${timestamp}` : `?_t=${timestamp}`;
-    const res = await apiClient.get<Course[]>(`/api/courses${query}`);
-    return res.data;
+    const deletedIds = await getDeletedCourseIds();
+    const locallyCreated = await getLocallyCreatedCourses();
+
+    let serverCourses: Course[] = [];
+    try {
+      const res = await apiClient.get<Course[]>(`/api/courses${query}`);
+      serverCourses = Array.isArray(res.data) ? res.data : [];
+    } catch {
+      serverCourses = await catalogRepository.getAllCourses();
+    }
+
+    serverCourses = serverCourses.filter((c) => !deletedIds.has(c.id));
+
+    // Hợp nhất các khóa học tạo cục bộ chưa kịp đồng bộ hoặc tồn tại trên máy
+    const existingIds = new Set(serverCourses.map((c) => c.id));
+    const mergedCourses = [...serverCourses];
+    locallyCreated.forEach((lc) => {
+      if (!existingIds.has(lc.id) && !deletedIds.has(lc.id)) {
+        if (includeUnpublished || lc.isPublished) {
+          mergedCourses.unshift(lc);
+        }
+      }
+    });
+
+    // Lưu vào SQLite phục vụ chế độ Offline-First
+    catalogRepository.saveCourses(mergedCourses).catch(() => {});
+
+    return mergedCourses;
   },
 
   /**
@@ -122,7 +211,14 @@ export const catalogApi = {
     accessPassword?: string;
   }): Promise<Course> {
     const res = await apiClient.post<Course>('/api/courses', data);
-    return res.data;
+    const created: Course = {
+      ...res.data,
+      isPrivate: data.isPrivate ?? false,
+      isPublished: res.data.isPublished ?? true,
+    };
+    await saveLocallyCreatedCourse(created);
+    await catalogRepository.saveCourses([created]);
+    return created;
   },
 
   async updateCourse(
@@ -137,17 +233,36 @@ export const catalogApi = {
     }
   ): Promise<Course> {
     const res = await apiClient.put<Course>(`/api/courses/${id}`, data);
-    return res.data;
+    const updated: Course = {
+      ...res.data,
+      isPrivate: data.isPrivate,
+      isPublished: data.isPublished ?? res.data.isPublished,
+    };
+    await updateLocallyCreatedCourse(updated);
+    await catalogRepository.saveCourses([updated]);
+    return updated;
   },
 
   async togglePublishCourse(id: number): Promise<{ courseId: number; isPublished: boolean; message: string }> {
     const res = await apiClient.patch<{ courseId: number; isPublished: boolean; message: string }>(
       `/api/courses/${id}/toggle-publish`
     );
+    const locally = (await getLocallyCreatedCourses()).map((c) =>
+      c.id === id ? { ...c, isPublished: res.data.isPublished } : c
+    );
+    await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(locally));
+    const existing = await catalogRepository.getAllCourses();
+    const target = existing.find((c) => c.id === id);
+    if (target) {
+      target.isPublished = res.data.isPublished;
+      await catalogRepository.saveCourses([target]);
+    }
     return res.data;
   },
 
   async deleteCourse(id: number): Promise<{ message: string }> {
+    await saveDeletedCourseId(id);
+    await catalogRepository.deleteCourse(id);
     const res = await apiClient.delete<{ message: string }>(`/api/courses/${id}`);
     return res.data;
   },

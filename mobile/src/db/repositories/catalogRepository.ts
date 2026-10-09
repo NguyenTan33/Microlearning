@@ -9,9 +9,17 @@ export const catalogRepository = {
       const persist = async () => {
         for (const c of courses) {
           await db.runAsync(
-            `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [c.id, c.title, c.description || '', c.thumbnailUrl || '', c.totalSubjects || 0, now]
+            `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, isPublished, totalSubjects, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              c.id,
+              c.title,
+              c.description || '',
+              c.thumbnailUrl || '',
+              c.isPublished ? 1 : 0,
+              c.totalSubjects || 0,
+              now,
+            ]
           );
         }
       };
@@ -28,8 +36,20 @@ export const catalogRepository = {
 
   async getAllCourses(): Promise<Course[]> {
     const db = await getSQLiteDatabase();
-    const rows = await db.getAllAsync<Course>(`SELECT * FROM LocalCourses ORDER BY id ASC`);
-    return rows;
+    const rows = await db.getAllAsync<any>(`SELECT * FROM LocalCourses ORDER BY id ASC`);
+    return rows.map((r) => ({
+      ...r,
+      isPublished: r.isPublished === 1 || r.isPublished === true,
+    }));
+  },
+
+  async deleteCourse(courseId: number): Promise<void> {
+    try {
+      const db = await getSQLiteDatabase();
+      await db.runAsync(`DELETE FROM LocalCourses WHERE id = ?;`, [courseId]);
+    } catch (err) {
+      console.warn('[catalogRepository] deleteCourse error:', err);
+    }
   },
 
   async saveCourseDetail(detail: CourseDetail): Promise<void> {

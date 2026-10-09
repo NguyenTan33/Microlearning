@@ -107,6 +107,7 @@ export const mediaBookmarkService = {
     // 3. Đẩy lên Cloud API nếu có mạng
     try {
       await apiClient.post('/api/media-bookmarks', {
+        id: newBookmark.id,
         lessonId: newBookmark.lessonId,
         mediaId: newBookmark.mediaId,
         courseId: newBookmark.courseId,
