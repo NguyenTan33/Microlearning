@@ -1,4 +1,4 @@
-// Types cho Phân hệ Xác thực & Thiết bị trên Mobile
+// Types cho Phân hệ Xác thực & Thiết bị & Quản trị trên Mobile
 
 export interface LoginRequest {
   phoneNumber: string;
@@ -32,6 +32,24 @@ export interface VerifyOtpResponse {
   message: string;
 }
 
+export interface ForgotPasswordRequest {
+  phoneNumber: string;
+}
+
+export interface ResetPasswordRequest {
+  phoneNumber: string;
+  otpCode: string;
+  newPassword: string;
+}
+
+export interface SocialAuthRequest {
+  provider: 'google' | 'facebook';
+  accessToken?: string;
+  idToken?: string;
+  email?: string;
+  fullName?: string;
+}
+
 export interface RefreshTokenRequest {
   refreshToken: string;
 }
@@ -55,5 +73,23 @@ export interface UserProfile {
   id: string;
   fullName: string;
   phoneNumber: string;
+  email?: string;
   roles: string[];
+  avatarUrl?: string;
+  joinedAt?: string;
+}
+
+export interface AdminUserItem {
+  id: string;
+  phoneNumber: string;
+  fullName: string;
+  email?: string;
+  roles: string[];
+  isLocked: boolean;
+  createdAt: string;
+}
+
+export interface UpdateUserRoleRequest {
+  userId: string;
+  newRole: string;
 }

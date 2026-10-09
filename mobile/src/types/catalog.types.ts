@@ -7,6 +7,7 @@ export interface Course {
   thumbnailUrl: string;
   version: number;
   isPublished: boolean;
+  isPrivate?: boolean;
   totalSubjects: number;
 }
 

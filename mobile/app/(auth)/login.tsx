@@ -15,10 +15,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { GraduationCap, Eye, EyeOff, Phone, Lock, ArrowRight } from 'lucide-react-native';
+import { GraduationCap, Eye, EyeOff, Phone, Lock, ArrowRight, ShieldCheck } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { getOrCreateDeviceId, getDeviceInfo } from '../../src/utils/deviceHelper';
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
+import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -28,6 +30,12 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+
+  const fillQuickAccount = (phone: string, pass: string) => {
+    setPhoneNumber(phone);
+    setPassword(pass);
+  };
 
   const handleLogin = async () => {
     if (!phoneNumber.trim() || !password.trim()) {
@@ -43,10 +51,8 @@ export default function LoginScreen() {
         password: password.trim(),
       });
 
-      // 2. Lưu token vào SecureStore & Store
+      // 2. Lưu token & tự động giải mã Role từ JWT
       await loginSuccess(response.accessToken, response.refreshToken, {
-        id: 'user-current',
-        fullName: 'Học viên',
         phoneNumber: phoneNumber.trim(),
       });
 
@@ -96,52 +102,77 @@ export default function LoginScreen() {
               <Text style={styles.appTagline}>Nền tảng học ngắn thông minh (Offline-First)</Text>
             </View>
 
+            {/* Quick Demo Accounts Helper */}
+            <View style={styles.quickAccountBox}>
+              <View style={styles.quickTitleRow}>
+                <ShieldCheck color="#38BDF8" size={16} />
+                <Text style={styles.quickTitle}>Tài khoản Thử nghiệm Nhanh:</Text>
+              </View>
+              <View style={styles.chipsRow}>
+                <TouchableOpacity
+                  style={styles.chipButton}
+                  onPress={() => fillQuickAccount('+84999999999', 'Admin@123456')}
+                >
+                  <Text style={styles.chipText}>👑 Admin (+84999999999)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.chipButton}
+                  onPress={() => fillQuickAccount('+84888888888', 'Teacher@123456')}
+                >
+                  <Text style={styles.chipText}>👨‍🏫 Teacher (+84888888888)</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {/* Form Đăng nhập trực diện */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Đăng nhập</Text>
-              <Text style={styles.cardSubtitle}>
-                Nhập số điện thoại và mật khẩu để tiếp tục học tập
-              </Text>
+              <Text style={styles.cardTitle}>Đăng Nhập</Text>
+              <Text style={styles.cardSubtitle}>Chào mừng bạn quay trở lại với MicroLearn!</Text>
 
-              {/* Input Số điện thoại */}
+              {/* Ô số điện thoại */}
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Số điện thoại</Text>
+                <Text style={styles.inputLabel}>Số Điện Thoại</Text>
                 <View style={styles.inputWrapper}>
-                  <Phone color="#94A3B8" size={18} style={styles.inputIcon} />
+                  <Phone color="#94A3B8" size={20} />
                   <TextInput
-                    style={styles.input}
-                    placeholder="Ví dụ: 0912345678"
+                    style={styles.textInput}
+                    placeholder="VD: 0999999999 hoặc +84..."
                     placeholderTextColor="#64748B"
+                    keyboardType="phone-pad"
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
-                    keyboardType="phone-pad"
                     autoCapitalize="none"
                   />
                 </View>
               </View>
 
-              {/* Input Mật khẩu */}
+              {/* Ô mật khẩu */}
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Mật khẩu</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.inputLabel}>Mật Khẩu</Text>
+                  <TouchableOpacity onPress={() => setShowForgotModal(true)}>
+                    <Text style={styles.forgotText}>Quên mật khẩu?</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <View style={styles.inputWrapper}>
-                  <Lock color="#94A3B8" size={18} style={styles.inputIcon} />
+                  <Lock color="#94A3B8" size={20} />
                   <TextInput
-                    style={styles.input}
-                    placeholder="Nhập mật khẩu của bạn"
+                    style={styles.textInput}
+                    placeholder="Nhập mật khẩu..."
                     placeholderTextColor="#64748B"
+                    secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
                   />
                   <TouchableOpacity
                     onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.eyeButton}
                   >
                     {showPassword ? (
-                      <EyeOff color="#94A3B8" size={18} />
+                      <EyeOff color="#94A3B8" size={20} />
                     ) : (
-                      <Eye color="#94A3B8" size={18} />
+                      <Eye color="#94A3B8" size={20} />
                     )}
                   </TouchableOpacity>
                 </View>
@@ -149,29 +180,39 @@ export default function LoginScreen() {
 
               {/* Nút Đăng nhập */}
               <TouchableOpacity
-                style={[styles.loginButton, loading && styles.buttonDisabled]}
+                style={styles.submitButton}
                 onPress={handleLogin}
                 disabled={loading}
                 activeOpacity={0.8}
               >
                 {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <>
-                    <Text style={styles.loginButtonText}>Vào học ngay</Text>
-                    <ArrowRight color="#FFFFFF" size={18} />
+                    <Text style={styles.submitText}>Đăng Nhập</Text>
+                    <ArrowRight color="#FFFFFF" size={20} style={{ marginLeft: 8 }} />
                   </>
                 )}
               </TouchableOpacity>
 
-              {/* Chuyển sang Đăng ký */}
-              <View style={styles.footerLinkContainer}>
-                <Text style={styles.footerLinkText}>Chưa có tài khoản? </Text>
+              {/* Đăng nhập bằng Google / Facebook */}
+              <SocialAuthButtons loading={loading} />
+
+              {/* Nút chuyển sang Đăng ký */}
+              <View style={styles.footerRow}>
+                <Text style={styles.footerText}>Chưa có tài khoản?</Text>
                 <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-                  <Text style={styles.registerLink}>Đăng ký mới</Text>
+                  <Text style={styles.registerLink}> Đăng ký ngay</Text>
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Modal Quên mật khẩu */}
+            <ForgotPasswordModal
+              visible={showForgotModal}
+              onClose={() => setShowForgotModal(false)}
+              initialPhoneNumber={phoneNumber}
+            />
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -182,7 +223,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#070B17',
+    backgroundColor: '#0F172A',
   },
   keyboardView: {
     flex: 1,
@@ -190,116 +231,156 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
   },
   logoBadge: {
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   appName: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
     color: '#F8FAFC',
-    letterSpacing: -0.5,
+    letterSpacing: 0.5,
   },
   appTagline: {
     fontSize: 13,
     color: '#94A3B8',
     marginTop: 4,
+    textAlign: 'center',
+  },
+  quickAccountBox: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 20,
+  },
+  quickTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  quickTitle: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chipButton: {
+    backgroundColor: '#0F172A',
+    borderColor: '#334155',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  chipText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
   },
   card: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1E293B',
     borderRadius: 24,
-    padding: 24,
+    borderColor: '#334155',
     borderWidth: 1,
-    borderColor: '#1E293B',
+    padding: 24,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#F8FAFC',
-    marginBottom: 6,
   },
   cardSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#94A3B8',
+    marginTop: 4,
     marginBottom: 20,
-    lineHeight: 18,
   },
   inputGroup: {
     marginBottom: 16,
   },
-  label: {
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  inputLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: '#E2E8F0',
-    marginBottom: 8,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: '#38BDF8',
+    fontWeight: '600',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#070B17',
+    backgroundColor: '#0F172A',
+    borderColor: '#334155',
+    borderWidth: 1,
     borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#1E293B',
-    paddingHorizontal: 14,
-    height: 50,
+    paddingHorizontal: 16,
+    height: 52,
   },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
+  textInput: {
     flex: 1,
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 15,
+    marginLeft: 12,
   },
-  loginButton: {
+  eyeButton: {
+    padding: 4,
+  },
+  submitButton: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#6366F1',
     borderRadius: 14,
     height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
-    gap: 8,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  loginButtonText: {
+  submitText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
-  footerLinkContainer: {
+  footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 20,
   },
-  footerLinkText: {
+  footerText: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 14,
   },
   registerLink: {
     color: '#38BDF8',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
 });
