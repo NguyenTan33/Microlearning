@@ -1,5 +1,4 @@
 import type { MediaBookmark, CreateMediaBookmarkPayload } from '../types/mediaBookmark.types';
-import { SAMPLE_COURSES } from './sampleCatalogData';
 import { getCurrentUser } from '../utils/tokenHelper';
 
 /**
@@ -58,21 +57,7 @@ function enrichBookmarkMetadata(bm: MediaBookmark): MediaBookmark {
   if (bm.lessonId === 18 || bm.lessonId === 6001) {
     courseTitle = 'Kiến trúc Offline-First Mobile & Web App';
     lessonTitle = 'Monotonic Merge chống tụt lùi tiến độ';
-  } else if (isGenericCourse || isGenericLesson) {
-    // 2. Tìm trong danh mục mẫu SAMPLE_COURSES
-    for (const c of SAMPLE_COURSES) {
-      for (const s of c.subjects) {
-        const found = s.lessons?.find((l) => l.id === bm.lessonId);
-        if (found) {
-          if (isGenericCourse) courseTitle = c.title;
-          if (isGenericLesson) lessonTitle = found.title;
-          break;
-        }
-      }
-      if (courseTitle && lessonTitle && !lessonTitle.startsWith('Bài')) break;
-    }
-
-    // 3. Tìm trong localStorage các khóa học tùy chỉnh tạo từ Studio
+    // 2. Tìm trong localStorage các khóa học tùy chỉnh tạo từ Studio
     if (isGenericCourse || isGenericLesson) {
       try {
         const raw = localStorage.getItem('microlearn_custom_courses');
@@ -176,6 +161,38 @@ export const mediaBookmarkService = {
   },
 
   /**
+   * Đồng bộ toàn bộ bookmarks từ Cloud API về localStorage
+   */
+  async syncCloudBookmarks(): Promise<MediaBookmark[]> {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return this.getAllBookmarks();
+
+      const res = await fetch('/api/media-bookmarks', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const cloudList: MediaBookmark[] = await res.json();
+        if (Array.isArray(cloudList)) {
+          const groupedByLesson = new Map<number, MediaBookmark[]>();
+          cloudList.forEach((bm) => {
+            const cur = groupedByLesson.get(bm.lessonId) || [];
+            cur.push(bm);
+            groupedByLesson.set(bm.lessonId, cur);
+          });
+          groupedByLesson.forEach((list, lId) => {
+            localStorage.setItem(getLessonStorageKey(lId), JSON.stringify(list));
+          });
+          return cloudList;
+        }
+      }
+    } catch {
+      // offline fallback
+    }
+    return this.getAllBookmarks();
+  },
+
+  /**
    * Đếm tổng số điểm đánh dấu hiện có trên toàn hệ thống của tài khoản hiện tại.
    */
   getAllBookmarksCount(): number {
@@ -196,23 +213,9 @@ export const mediaBookmarkService = {
     let courseTitle = payload.courseTitle;
     let lessonTitle = payload.lessonTitle;
 
-    // Đặc thù bài 18 hoặc 6001
-    if (payload.lessonId === 18 || payload.lessonId === 6001) {
-      courseTitle = 'Kiến trúc Offline-First Mobile & Web App';
-      lessonTitle = 'Monotonic Merge chống tụt lùi tiến độ';
-    } else if (!courseTitle || !lessonTitle) {
-      for (const c of SAMPLE_COURSES) {
-        for (const s of c.subjects) {
-          const found = s.lessons?.find((l) => l.id === payload.lessonId);
-          if (found) {
-            if (!courseTitle) courseTitle = c.title;
-            if (!lessonTitle) lessonTitle = found.title;
-            break;
-          }
-        }
-        if (courseTitle && lessonTitle) break;
-      }
-    }
+    // Nếu không có tên bài hoặc tên khóa học, đặt tên chuẩn mực
+    if (!courseTitle) courseTitle = payload.courseId ? `Khóa học #${payload.courseId}` : 'Khóa học MicroLearning';
+    if (!lessonTitle) lessonTitle = `Bài giảng #${payload.lessonId}`;
 
     const newBookmark: MediaBookmark = {
       id: newId,
@@ -231,6 +234,33 @@ export const mediaBookmarkService = {
     const updatedList = [...currentList, newBookmark].sort((a, b) => a.timestamp - b.timestamp);
     localStorage.setItem(getLessonStorageKey(payload.lessonId), JSON.stringify(updatedList));
 
+    // Đồng bộ tức thời lên CSDL Cloud Backend
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        fetch('/api/media-bookmarks', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            id: newBookmark.id,
+            lessonId: newBookmark.lessonId,
+            mediaId: newBookmark.mediaId,
+            courseId: newBookmark.courseId,
+            courseTitle: newBookmark.courseTitle,
+            lessonTitle: newBookmark.lessonTitle,
+            timestamp: newBookmark.timestamp,
+            title: newBookmark.title,
+            note: newBookmark.note,
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
     return newBookmark;
   },
 
@@ -241,6 +271,22 @@ export const mediaBookmarkService = {
     const currentList = this.getBookmarks(lessonId);
     const updatedList = currentList.filter((item) => item.id !== bookmarkId);
     localStorage.setItem(getLessonStorageKey(lessonId), JSON.stringify(updatedList));
+
+    // Đồng bộ xóa lên CSDL Cloud Backend
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        fetch(`/api/media-bookmarks/${bookmarkId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
     return updatedList;
   },
 

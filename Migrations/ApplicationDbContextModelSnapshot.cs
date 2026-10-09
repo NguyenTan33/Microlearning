@@ -941,6 +941,65 @@ namespace Microlearning.Migrations
                     b.ToTable("UserFavoriteSubjects", (string)null);
                 });
 
+            modelBuilder.Entity("Microlearning.Model.Entities.UserMediaBookmark", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CourseTitle")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FormattedTime")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("LessonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LessonTitle")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int?>("MediaId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<double>("Timestamp")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("LessonId");
+
+                    b.ToTable("UserMediaBookmarks", (string)null);
+                });
+
             modelBuilder.Entity("Microlearning.Model.Entities.UserQuizMistake", b =>
                 {
                     b.Property<long>("Id")
@@ -1414,6 +1473,25 @@ namespace Microlearning.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("Microlearning.Model.Entities.UserMediaBookmark", b =>
+                {
+                    b.HasOne("Microlearning.Model.Entities.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Microlearning.Model.Entities.Lesson", "Lesson")
+                        .WithMany()
+                        .HasForeignKey("LessonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Lesson");
                 });
 
             modelBuilder.Entity("Microlearning.Model.Entities.UserQuizMistake", b =>

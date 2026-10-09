@@ -1,5 +1,4 @@
 import type { Enrollment } from '../types/catalog.types';
-import { SAMPLE_COURSES } from './sampleCatalogData';
 import { getCurrentUser } from '../utils/tokenHelper';
 
 function getLocalEnrollmentsKey(): string {
@@ -64,13 +63,12 @@ export const enrollmentApi = {
       return await handleResponse<Enrollment>(res);
     } catch {
       const user = getCurrentUser();
-      const course = SAMPLE_COURSES.find((c) => c.id === courseId) || SAMPLE_COURSES[0];
       return {
         id: courseId,
         accountId: user?.userId || 'current-user',
         courseId,
-        courseTitle: course.title,
-        courseThumbnail: course.thumbnailUrl,
+        courseTitle: `Khóa học #${courseId}`,
+        courseThumbnail: '',
         status: 1,
         enrolledAt: new Date().toISOString(),
         overallProgressPercent: 0,
@@ -96,19 +94,16 @@ export const enrollmentApi = {
     } catch {
       const user = getCurrentUser();
       const enrolledIds = getLocalEnrollments();
-      return enrolledIds.map((id) => {
-        const course = SAMPLE_COURSES.find((c) => c.id === id) || SAMPLE_COURSES[0];
-        return {
-          id,
-          accountId: user?.userId || 'current-user',
-          courseId: id,
-          courseTitle: course.title,
-          courseThumbnail: course.thumbnailUrl,
-          status: 1,
-          enrolledAt: new Date().toISOString(),
-          overallProgressPercent: 0,
-        };
-      });
+      return enrolledIds.map((id) => ({
+        id,
+        accountId: user?.userId || 'current-user',
+        courseId: id,
+        courseTitle: `Khóa học #${id}`,
+        courseThumbnail: '',
+        status: 1,
+        enrolledAt: new Date().toISOString(),
+        overallProgressPercent: 0,
+      }));
     }
   },
 };

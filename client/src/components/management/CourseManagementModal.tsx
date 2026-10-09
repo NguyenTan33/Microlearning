@@ -203,8 +203,8 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       showToast('error', 'Tiêu đề khóa học không được để trống.');
       return;
     }
-    if (courseForm.isPrivate && !editingCourse && !courseForm.accessPassword.trim()) {
-      showToast('error', 'Vui lòng đặt mật khẩu bảo vệ cho khóa học riêng tư mới.');
+    if (courseForm.isPrivate && (!editingCourse || !editingCourse.isPrivate) && !courseForm.accessPassword.trim()) {
+      showToast('error', 'Vui lòng đặt mật khẩu bảo vệ khi chuyển khóa học sang chế độ riêng tư.');
       return;
     }
     setActionLoading(true);
@@ -214,6 +214,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
           title: courseForm.title,
           description: courseForm.description,
           thumbnailUrl: courseForm.thumbnailUrl,
+          isPublished: editingCourse.isPublished,
           isPrivate: courseForm.isPrivate,
           accessPassword: courseForm.accessPassword.trim() || undefined,
         });
@@ -461,6 +462,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         };
       });
       showToast('success', res.message);
+      // Cập nhật reactive UI ngay lập tức
+      setSelectedCourseDetail((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          subjects: prev.subjects?.map((sub) => ({
+            ...sub,
+            lessons: sub.lessons?.map((les) =>
+              les.id === lessonId ? { ...les, isPublished: res.isPublished } : les
+            ),
+          })),
+        };
+      });
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {

@@ -23,6 +23,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetSubjectsByCourse(int courseId)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var subjects = await _subjectService.GetSubjectsByCourseIdAsync(courseId);
             return Ok(subjects);
         }
@@ -34,6 +35,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetSubjectById(int id)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var subject = await _subjectService.GetSubjectByIdAsync(id);
             return Ok(subject);
         }

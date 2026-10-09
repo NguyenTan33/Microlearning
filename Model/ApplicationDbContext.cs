@@ -35,6 +35,7 @@ namespace Microlearning.Model
         public DbSet<UserStreak> UserStreaks => Set<UserStreak>();
         public DbSet<UserQuizMistake> UserQuizMistakes => Set<UserQuizMistake>();
         public DbSet<UserFavoriteSubject> UserFavoriteSubjects => Set<UserFavoriteSubject>();
+        public DbSet<UserMediaBookmark> UserMediaBookmarks => Set<UserMediaBookmark>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -390,6 +391,22 @@ namespace Microlearning.Model
                       .WithMany(s => s.UserFavoriteSubjects)
                       .HasForeignKey(e => e.SubjectId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<UserMediaBookmark>(entity =>
+            {
+                entity.ToTable("UserMediaBookmarks");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasMaxLength(128);
+                entity.Property(e => e.AccountId).IsRequired().HasMaxLength(450);
+                entity.Property(e => e.Title).IsRequired().HasMaxLength(250);
+                entity.Property(e => e.CourseTitle).HasMaxLength(250);
+                entity.Property(e => e.LessonTitle).HasMaxLength(250);
+                entity.Property(e => e.FormattedTime).HasMaxLength(20);
+                entity.Property(e => e.Note).HasMaxLength(1000);
+
+                entity.HasIndex(e => e.AccountId);
+                entity.HasIndex(e => e.LessonId);
             });
         }
     }

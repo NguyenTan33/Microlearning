@@ -23,6 +23,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetLessonsBySubject(int subjectId, [FromQuery] bool includeUnpublished = false)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var lessons = await _lessonService.GetLessonsBySubjectIdAsync(subjectId, includeUnpublished);
             return Ok(lessons);
         }
@@ -34,6 +35,7 @@ namespace Microlearning.Areas.Catalog.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetLessonById(int id)
         {
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
             var lesson = await _lessonService.GetLessonByIdAsync(id);
             return Ok(lesson);
         }
