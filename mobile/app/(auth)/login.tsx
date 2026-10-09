@@ -18,7 +18,6 @@ import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
-import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
 import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
 import { startGoogleOAuth, startFacebookOAuth } from '../../src/services/socialAuthService';
@@ -35,7 +34,7 @@ export default function LoginScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [socialProvider, setSocialProvider] = useState<'google' | 'facebook' | null>(null);
+  const [activeSocial, setActiveSocial] = useState<'google' | 'facebook' | null>(null);
   const [isSocialLoading, setIsSocialLoading] = useState(false);
 
   const handleSocialSuccess = async (res: AuthTokenResponse) => {
@@ -59,7 +58,7 @@ export default function LoginScreen() {
 
   const handleDirectGoogleLogin = async () => {
     setIsSocialLoading(true);
-    setSocialProvider('google');
+    setActiveSocial('google');
     setErrorMsg('');
     try {
       const res = await startGoogleOAuth();
@@ -75,13 +74,13 @@ export default function LoginScreen() {
       setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Google thất bại');
     } finally {
       setIsSocialLoading(false);
-      setSocialProvider(null);
+      setActiveSocial(null);
     }
   };
 
   const handleDirectFacebookLogin = async () => {
     setIsSocialLoading(true);
-    setSocialProvider('facebook');
+    setActiveSocial('facebook');
     setErrorMsg('');
     try {
       const res = await startFacebookOAuth();
@@ -97,7 +96,7 @@ export default function LoginScreen() {
       setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại');
     } finally {
       setIsSocialLoading(false);
-      setSocialProvider(null);
+      setActiveSocial(null);
     }
   };
 
@@ -262,8 +261,8 @@ export default function LoginScreen() {
               onGooglePress={handleDirectGoogleLogin}
               onFacebookPress={handleDirectFacebookLogin}
               loading={loading || isSocialLoading}
-              isGoogleLoading={isSocialLoading && socialProvider === 'google'}
-              isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}
+              isGoogleLoading={isSocialLoading && activeSocial === 'google'}
+              isFacebookLoading={isSocialLoading && activeSocial === 'facebook'}
             />
 
             <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/register')}>
@@ -275,13 +274,6 @@ export default function LoginScreen() {
       </KeyboardAvoidingView>
 
       {/* Modals */}
-      <SocialAuthModal
-        visible={socialProvider !== null}
-        provider={socialProvider}
-        onClose={() => setSocialProvider(null)}
-        onSuccess={handleSocialSuccess}
-      />
-
       <ForgotPasswordModal
         visible={showForgotPassword}
         onClose={() => setShowForgotPassword(false)}

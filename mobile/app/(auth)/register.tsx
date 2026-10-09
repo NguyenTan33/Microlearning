@@ -17,7 +17,6 @@ import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
-import { SocialAuthModal } from '../../src/components/auth/SocialAuthModal';
 import { startGoogleOAuth, startFacebookOAuth } from '../../src/services/socialAuthService';
 import type { AuthTokenResponse } from '../../src/types/auth.types';
 
@@ -30,7 +29,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [socialProvider, setSocialProvider] = useState<'google' | 'facebook' | null>(null);
+  const [activeSocial, setActiveSocial] = useState<'google' | 'facebook' | null>(null);
   const [isSocialLoading, setIsSocialLoading] = useState(false);
 
   const handleSocialSuccess = async (res: AuthTokenResponse) => {
@@ -54,7 +53,7 @@ export default function RegisterScreen() {
 
   const handleDirectGoogleLogin = async () => {
     setIsSocialLoading(true);
-    setSocialProvider('google');
+    setActiveSocial('google');
     setErrorMsg('');
     try {
       const res = await startGoogleOAuth();
@@ -68,13 +67,13 @@ export default function RegisterScreen() {
       setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Google thất bại');
     } finally {
       setIsSocialLoading(false);
-      setSocialProvider(null);
+      setActiveSocial(null);
     }
   };
 
   const handleDirectFacebookLogin = async () => {
     setIsSocialLoading(true);
-    setSocialProvider('facebook');
+    setActiveSocial('facebook');
     setErrorMsg('');
     try {
       const res = await startFacebookOAuth();
@@ -88,7 +87,7 @@ export default function RegisterScreen() {
       setErrorMsg(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại');
     } finally {
       setIsSocialLoading(false);
-      setSocialProvider(null);
+      setActiveSocial(null);
     }
   };
 
@@ -196,8 +195,8 @@ export default function RegisterScreen() {
               onGooglePress={handleDirectGoogleLogin}
               onFacebookPress={handleDirectFacebookLogin}
               loading={loading || isSocialLoading}
-              isGoogleLoading={isSocialLoading && socialProvider === 'google'}
-              isFacebookLoading={isSocialLoading && socialProvider === 'facebook'}
+              isGoogleLoading={isSocialLoading && activeSocial === 'google'}
+              isFacebookLoading={isSocialLoading && activeSocial === 'facebook'}
             />
 
             <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/login')}>
@@ -207,13 +206,6 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      <SocialAuthModal
-        visible={socialProvider !== null}
-        provider={socialProvider}
-        onClose={() => setSocialProvider(null)}
-        onSuccess={handleSocialSuccess}
-      />
     </SafeAreaView>
   );
 }
