@@ -286,24 +286,53 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     setActionLoading(true);
     try {
       if (editingSubject) {
-        await catalogApi.updateSubject(editingSubject.id, {
+        const updated = await catalogApi.updateSubject(editingSubject.id, {
           title: subjectForm.title,
           description: subjectForm.description,
           sortOrder: Number(subjectForm.sortOrder),
         });
+        setSelectedCourseDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            subjects: prev.subjects.map((s) => (s.id === editingSubject.id ? { ...s, ...updated } : s)),
+          };
+        });
         showToast('success', 'Đã cập nhật môn học.');
       } else {
-        await catalogApi.createSubject({
+        const created = await catalogApi.createSubject({
           courseId: selectedCourseDetail.id,
           title: subjectForm.title,
           description: subjectForm.description,
           sortOrder: Number(subjectForm.sortOrder),
         });
+        setSelectedCourseDetail((prev) => {
+          if (!prev) return prev;
+          const newSubj: Subject = {
+            ...created,
+            totalLessons: 0,
+            lessons: [],
+          };
+          const nextSubjects = [...(prev.subjects || []), newSubj];
+          return {
+            ...prev,
+            totalSubjects: nextSubjects.length,
+            subjects: nextSubjects,
+          };
+        });
+        setCourses((prev) =>
+          prev.map((c) =>
+            c.id === selectedCourseDetail.id
+              ? { ...c, totalSubjects: (c.totalSubjects || 0) + 1 }
+              : c
+          )
+        );
         showToast('success', 'Đã thêm môn học mới.');
       }
       setShowSubjectModal(false);
       setEditingSubject(null);
       await loadCourseDetail(selectedCourseDetail.id);
+      await fetchCourses();
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi lưu môn học.');
@@ -316,8 +345,25 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     if (!confirm(`Bạn có chắc muốn xóa môn học "${title}"?`)) return;
     try {
       await catalogApi.deleteSubject(subjectId);
+      setSelectedCourseDetail((prev) => {
+        if (!prev) return prev;
+        const nextSubjects = prev.subjects.filter((s) => s.id !== subjectId);
+        return {
+          ...prev,
+          totalSubjects: nextSubjects.length,
+          subjects: nextSubjects,
+        };
+      });
+      setCourses((prev) =>
+        prev.map((c) =>
+          c.id === selectedCourseDetail?.id
+            ? { ...c, totalSubjects: Math.max(0, (c.totalSubjects || 1) - 1) }
+            : c
+        )
+      );
       showToast('success', 'Đã xóa môn học thành công.');
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
+      await fetchCourses();
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi xóa môn học.');
@@ -332,13 +378,26 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     try {
       let savedLessonId: number | null = null;
       if (editingLesson) {
-        await catalogApi.updateLesson(editingLesson.id, {
+        const updated = await catalogApi.updateLesson(editingLesson.id, {
           title: lessonForm.title,
           description: lessonForm.description,
           durationSeconds: Number(lessonForm.durationSeconds),
           sortOrder: Number(lessonForm.sortOrder),
         });
         savedLessonId = editingLesson.id;
+        setSelectedCourseDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            subjects: prev.subjects.map((s) => {
+              if (s.id !== targetSubjectId) return s;
+              return {
+                ...s,
+                lessons: (s.lessons || []).map((l) => (l.id === editingLesson.id ? { ...l, ...updated } : l)),
+              };
+            }),
+          };
+        });
         showToast('success', 'Đã cập nhật bài giảng.');
       } else {
         const created = await catalogApi.createLesson({
@@ -349,6 +408,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
           sortOrder: Number(lessonForm.sortOrder),
         });
         savedLessonId = created.id;
+        setSelectedCourseDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            subjects: prev.subjects.map((s) => {
+              if (s.id !== targetSubjectId) return s;
+              const nextLessons = [...(s.lessons || []), created];
+              return {
+                ...s,
+                totalLessons: nextLessons.length,
+                lessons: nextLessons,
+              };
+            }),
+          };
+        });
         showToast('success', 'Đã tạo bài giảng mới.');
       }
 
@@ -374,6 +448,18 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const handleTogglePublishLesson = async (lessonId: number) => {
     try {
       const res = await catalogApi.togglePublishLesson(lessonId);
+      setSelectedCourseDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          subjects: prev.subjects.map((s) => ({
+            ...s,
+            lessons: (s.lessons || []).map((l) =>
+              l.id === lessonId ? { ...l, isPublished: res.isPublished } : l
+            ),
+          })),
+        };
+      });
       showToast('success', res.message);
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
@@ -386,6 +472,20 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     if (!confirm(`Bạn có chắc muốn xóa bài giảng "${title}"?`)) return;
     try {
       await catalogApi.deleteLesson(lessonId);
+      setSelectedCourseDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          subjects: prev.subjects.map((s) => {
+            const nextLessons = (s.lessons || []).filter((l) => l.id !== lessonId);
+            return {
+              ...s,
+              totalLessons: nextLessons.length,
+              lessons: nextLessons,
+            };
+          }),
+        };
+      });
       showToast('success', 'Đã xóa bài giảng thành công.');
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
