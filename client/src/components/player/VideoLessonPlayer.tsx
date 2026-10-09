@@ -169,6 +169,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const segmentStartRef = useRef<number | null>(null);
 
   const lastSavedPercentRef = useRef<number>(0);
+  const isCompletionNotifiedRef = useRef<boolean>(false);
 
   // 1. Tải URL phát trực tuyến HTTP 206 (hoặc phát từ Offline Blob) & nạp danh sách cắm cờ
   useEffect(() => {
@@ -177,6 +178,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
     initialSeekDoneRef.current = false;
     pendingSeekTimeRef.current = null;
+    isCompletionNotifiedRef.current = false;
     setIsPlaying(false);
     setVideoError(null);
     setAntiCheatWarning(null);
@@ -290,7 +292,10 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           if (coverageRes.isCompleted) {
             setSaveNotice('🎉 Chúc mừng! Bạn đã hoàn thành bài học này.');
             window.dispatchEvent(new Event('lesson-progress-updated'));
-            if (onProgressSaved) onProgressSaved(true);
+            if (!isCompletionNotifiedRef.current) {
+              isCompletionNotifiedRef.current = true;
+              if (onProgressSaved) onProgressSaved(true);
+            }
           } else {
             setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}% (Xem thực: ${coverageRes.watchedCoveragePercent.toFixed(0)}%)`);
             if (onProgressSaved) onProgressSaved(false);
@@ -303,8 +308,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             await progressApi.saveProgress(lessonId, time, percent);
             setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
             setTimeout(() => setSaveNotice(null), 3000);
-            if (percent >= 90 || forceSave) {
-              if (onProgressSaved) onProgressSaved(true);
+            if (percent >= 90) {
+              if (!isCompletionNotifiedRef.current) {
+                isCompletionNotifiedRef.current = true;
+                if (onProgressSaved) onProgressSaved(true);
+              }
             } else {
               if (onProgressSaved) onProgressSaved(false);
             }
@@ -640,8 +648,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                   const dur = event.target.getDuration();
                   handleSaveProgressRef.current(dur, dur, true);
                   segmentStartRef.current = null;
-                  if (onProgressSavedRef.current) {
-                    onProgressSavedRef.current(true);
+                  if (!isCompletionNotifiedRef.current) {
+                    isCompletionNotifiedRef.current = true;
+                    if (onProgressSavedRef.current) {
+                      onProgressSavedRef.current(true);
+                    }
                   }
                 } catch {}
               }
@@ -897,8 +908,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               if (videoRef.current) {
                 handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
               }
-              if (onProgressSaved) {
-                onProgressSaved(true);
+              if (!isCompletionNotifiedRef.current) {
+                isCompletionNotifiedRef.current = true;
+                if (onProgressSaved) {
+                  onProgressSaved(true);
+                }
               }
             }}
             onError={() => {
