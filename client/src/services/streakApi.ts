@@ -65,6 +65,61 @@ function getYesterdayString(): string {
   return utc7.toISOString().split('T')[0];
 }
 
+export function isSameDayAsToday(dateStr?: string | null): boolean {
+  if (!dateStr) return false;
+  const todayUtc7 = getTodayString();
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const clean = dateStr.split('T')[0].trim();
+  return clean === todayUtc7 || clean === todayIso;
+}
+
+export function hasCelebratedToday(userId?: string): boolean {
+  const todayStr = getTodayString();
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  // 1. Kiểm tra khóa bộ nhớ In-Memory (chặn race condition tức thì trong cùng phiên duyệt)
+  if (
+    typeof window !== 'undefined' &&
+    ((window as unknown as { __microlearn_streak_celebrated_date?: string }).__microlearn_streak_celebrated_date === todayStr ||
+     (window as unknown as { __microlearn_streak_celebrated_date?: string }).__microlearn_streak_celebrated_date === todayIso)
+  ) {
+    return true;
+  }
+
+  try {
+    // 2. Kiểm tra tất cả các khóa lưu trữ cục bộ (tương thích ngược với các phiên bản trước)
+    const k1 = localStorage.getItem('microlearn_streak_awarded_date');
+    const k2 = localStorage.getItem('microlearning_streak_celebrated_date');
+    const uKey = userId ? localStorage.getItem(`microlearn_streak_awarded_date_${userId}`) : null;
+
+    if (isSameDayAsToday(k1) || isSameDayAsToday(k2) || isSameDayAsToday(uKey)) {
+      return true;
+    }
+
+    // 3. Kiểm tra thông tin điểm danh trong User Streak Cache
+    const local = getLocalStreak();
+    if (isSameDayAsToday(local.lastActiveDate) && local.currentStreak > 0) {
+      return true;
+    }
+  } catch {}
+
+  return false;
+}
+
+export function markCelebratedToday(userId?: string): void {
+  const todayStr = getTodayString();
+  if (typeof window !== 'undefined') {
+    (window as unknown as { __microlearn_streak_celebrated_date?: string }).__microlearn_streak_celebrated_date = todayStr;
+  }
+  try {
+    localStorage.setItem('microlearn_streak_awarded_date', todayStr);
+    localStorage.setItem('microlearning_streak_celebrated_date', todayStr);
+    if (userId) {
+      localStorage.setItem(`microlearn_streak_awarded_date_${userId}`, todayStr);
+    }
+  } catch {}
+}
+
 export const streakApi = {
   /**
    * Lấy chuỗi streak học tập hàng ngày và trạng thái Vương Miện Danh Dự (Master Crown)
@@ -79,6 +134,9 @@ export const streakApi = {
         if (res.ok) {
           const data = (await res.json()) as UserStreak;
           saveLocalStreak(data);
+          if (isSameDayAsToday(data.lastActiveDate)) {
+            markCelebratedToday();
+          }
           return data;
         }
       } catch {
@@ -93,6 +151,10 @@ export const streakApi = {
     let currentStreak = local.currentStreak;
     if (local.lastActiveDate && local.lastActiveDate < yesterday) {
       currentStreak = 0;
+    }
+
+    if (isSameDayAsToday(local.lastActiveDate)) {
+      markCelebratedToday();
     }
 
     return {
@@ -119,6 +181,9 @@ export const streakApi = {
         if (res.ok) {
           const data = (await res.json()) as UserStreak;
           saveLocalStreak(data);
+          if (isSameDayAsToday(data.lastActiveDate)) {
+            markCelebratedToday();
+          }
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('lesson-progress-updated'));
           }
@@ -161,6 +226,9 @@ export const streakApi = {
       isNewStreakToday,
     };
     saveLocalStreak(updated);
+    if (isSameDayAsToday(today)) {
+      markCelebratedToday();
+    }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('lesson-progress-updated'));
@@ -171,5 +239,17 @@ export const streakApi = {
 
   getTodayString(): string {
     return getTodayString();
+  },
+
+  isSameDayAsToday(dateStr?: string | null): boolean {
+    return isSameDayAsToday(dateStr);
+  },
+
+  hasCelebratedToday(userId?: string): boolean {
+    return hasCelebratedToday(userId);
+  },
+
+  markCelebratedToday(userId?: string): void {
+    markCelebratedToday(userId);
   },
 };
