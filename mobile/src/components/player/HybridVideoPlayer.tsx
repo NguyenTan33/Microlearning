@@ -163,7 +163,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         style={styles.video}
         contentFit="contain"
         nativeControls={true}
-        allowsFullscreen={true}
+        fullscreenOptions={{ enable: true }}
         allowsPictureInPicture={true}
       />
 

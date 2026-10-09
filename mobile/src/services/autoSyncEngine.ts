@@ -12,7 +12,7 @@ import { secureStorage } from '../utils/secureStorage';
 import { STORAGE_KEYS } from '../utils/constants';
 
 let isSyncing = false;
-let syncTimer: NodeJS.Timeout | null = null;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let isInitialized = false;
 
 export const autoSyncEngine = {
