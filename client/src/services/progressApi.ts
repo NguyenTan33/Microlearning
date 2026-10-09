@@ -57,4 +57,67 @@ export const progressApi = {
     });
     return handleResponse<CourseProgress>(res);
   },
+
+  /**
+   * Lấy danh sách ID các bài học đã hoàn thành của người dùng (khôi phục tiến độ chính xác chống mất khi tải lại)
+   */
+  async getCompletedLessonIds(courseId?: number): Promise<number[]> {
+    try {
+      const url = courseId ? `/api/progress/completed?courseId=${courseId}` : '/api/progress/completed';
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      return await handleResponse<number[]>(res);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Ghi nhận tiến độ xem kèm dải xem thời gian (Interval Union) chống gian lận tua (> 30% tua bỏ)
+   */
+  async recordVideoCoverage(
+    lessonId: number,
+    totalDuration: number,
+    currentPosition: number,
+    watchedIntervals: Array<{ start: number; end: number }>
+  ): Promise<VideoCoverageResult> {
+    const res = await fetch('/api/progress/video-coverage', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        lessonId,
+        totalDuration,
+        currentPosition,
+        watchedIntervals,
+      }),
+    });
+    return handleResponse<VideoCoverageResult>(res);
+  },
+
+  /**
+   * Lấy chi tiết thông tin chống gian lận & dải xem của bài học
+   */
+  async getCoverageProgress(lessonId: number): Promise<VideoCoverageResult | null> {
+    try {
+      const res = await fetch(`/api/progress/lesson/${lessonId}/coverage`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.status === 404) return null;
+      return await handleResponse<VideoCoverageResult>(res);
+    } catch {
+      return null;
+    }
+  },
 };
+
+export interface VideoCoverageResult {
+  lessonId: number;
+  watchedCoveragePercent: number;
+  skippedRatio: number;
+  isEligibleForCompletion: boolean;
+  isCompleted: boolean;
+  completedAt?: string | null;
+  message?: string | null;
+}

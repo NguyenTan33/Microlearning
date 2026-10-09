@@ -10,10 +10,13 @@ using Microlearning.Areas.Device.Interfaces;
 using Microlearning.Areas.Device.Services;
 using Microlearning.Areas.Enrollment.Interfaces;
 using Microlearning.Areas.Enrollment.Services;
+using Microlearning.Areas.Gamification.Interfaces;
+using Microlearning.Areas.Gamification.Services;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Areas.Media.Services;
 using Microlearning.Areas.Progress.Interfaces;
 using Microlearning.Areas.Progress.Services;
+using Microlearning.Areas.Progress.Strategies;
 using Microlearning.Areas.Quiz.Interfaces;
 using Microlearning.Areas.Quiz.Services;
 using Microlearning.Areas.Sync.Interfaces;
@@ -120,6 +123,7 @@ builder.Services.AddRateLimiter(options =>
 
 // 5. Dependency Injections
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 
 // Auth Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -146,6 +150,17 @@ builder.Services.AddScoped<IEnrollmentService, EnrollmentService>();
 
 // Progress Services Online (Thắng)
 builder.Services.AddScoped<IProgressService, ProgressService>();
+
+// Upgrade Features Services (SOLID & Thin Architecture)
+builder.Services.AddScoped<IAttachmentStorageProvider, AzureBlobAttachmentStorageProvider>();
+builder.Services.AddScoped<ILessonAttachmentService, LessonAttachmentService>();
+builder.Services.AddScoped<ICourseAccessService, CourseAccessService>();
+builder.Services.AddSingleton<IVideoCompletionStrategy, StrictCoverageVideoCompletionStrategy>();
+builder.Services.AddScoped<IVideoProgressService, VideoProgressService>();
+builder.Services.AddScoped<IUserStreakService, UserStreakService>();
+builder.Services.AddScoped<IQuizMistakeVaultService, QuizMistakeVaultService>();
+builder.Services.AddScoped<IFavoriteSubjectService, FavoriteSubjectService>();
+builder.Services.AddScoped<IStudentProgressAnalyticsService, StudentProgressAnalyticsService>();
 
 // Sync, Device & Media Services (Tân)
 builder.Services.AddScoped<IContentChangeTracker, ContentChangeTracker>();
@@ -238,24 +253,43 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
 
-// Tự động nạp Roles (Admin, Teacher, Student) và tài khoản Admin/Teacher mặc định
-try
+// Tự động khởi tạo CSDL (Migration & Seeding) với cơ chế Retry cho Azure SQL Serverless
+using (var scope = app.Services.CreateScope())
 {
-    await IdentityDbSeeder.SeedRolesAndAdminAsync(app.Services);
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Không thể tự động nạp vai trò và tài khoản quản trị khi khởi động: {Message}", ex.Message);
-}
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var dbContext = services.GetRequiredService<ApplicationDbContext>();
 
-// Tự động nạp dữ liệu mẫu Catalog nếu DB chưa có
-try
-{
-    await CatalogDbSeeder.SeedAsync(app.Services);
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Không thể tự động nạp dữ liệu mẫu khi khởi động: {Message}", ex.Message);
+    int maxRetries = 5;
+    for (int retry = 1; retry <= maxRetries; retry++)
+    {
+        try
+        {
+            logger.LogInformation("Đang kết nối và khởi tạo CSDL Azure SQL (Lần thử {Retry}/{Max})...", retry, maxRetries);
+
+            // 1. Tự động tạo bảng & chạy Migration
+            await dbContext.Database.MigrateAsync();
+
+            // 2. Tự động nạp vai trò, tài khoản Admin/Teacher và dữ liệu mẫu
+            await IdentityDbSeeder.SeedRolesAndAdminAsync(services);
+            await CatalogDbSeeder.SeedAsync(services);
+
+            logger.LogInformation("Khởi tạo CSDL Azure SQL thành công!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Lần thử {Retry}/{Max} khởi tạo CSDL thất bại: {Message}", retry, maxRetries, ex.Message);
+            if (retry == maxRetries)
+            {
+                logger.LogError(ex, "Đã thử {Max} lần nhưng không thể khởi tạo CSDL Azure SQL.", maxRetries);
+            }
+            else
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5)); // Đợi 5s cho Azure SQL Serverless tỉnh dậy
+            }
+        }
+    }
 }
 
 app.Run();

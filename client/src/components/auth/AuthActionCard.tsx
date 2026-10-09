@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AuthMode, LoginRequest, RegisterRequest, ResetPasswordRequest } from '../../types/auth.types';
 import { authApi } from '../../services/authApi';
 import { LoginForm } from './LoginForm';
@@ -7,6 +7,11 @@ import { ForgotPasswordForm } from './ForgotPasswordForm';
 import { OtpVerifyForm } from './OtpVerifyForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
 import { SocialAuthButtons } from './SocialAuthButtons';
+import {
+  getAndClearPendingOAuthToken,
+  requestGoogleIdToken,
+  requestFacebookAccessToken,
+} from '../../services/socialAuth';
 import { CheckCircle2 } from 'lucide-react';
 
 export const AuthActionCard: React.FC = () => {
@@ -127,14 +132,37 @@ export const AuthActionCard: React.FC = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isFacebookLoading, setIsFacebookLoading] = useState(false);
 
-  // 7. Social Logins
+  // Tự động kiểm tra nếu có token OAuth chuyển tiếp về (Đặc biệt trên Mobile Web)
+  useEffect(() => {
+    const { idToken, error } = getAndClearPendingOAuthToken();
+    if (error) {
+      setServerError(`Đăng nhập Google thất bại: ${error}`);
+      return;
+    }
+    if (idToken) {
+      handleExecuteGoogleLogin(idToken);
+    }
+  }, []);
+
   const handleGoogleLogin = async () => {
     clearMessages();
     setIsGoogleLoading(true);
     try {
-      const { requestGoogleIdToken } = await import('../../services/socialAuth');
       const idToken = await requestGoogleIdToken();
+      if (idToken) {
+        await handleExecuteGoogleLogin(idToken);
+      }
+    } catch (err: unknown) {
+      setServerError(err instanceof Error ? err.message : 'Đăng nhập Google thất bại.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
+  const handleExecuteGoogleLogin = async (idToken: string) => {
+    clearMessages();
+    setIsGoogleLoading(true);
+    try {
       setSuccessNotice('Đang xác thực tài khoản Google với hệ thống...');
       const response = await authApi.googleLogin({ idToken });
 
@@ -143,7 +171,7 @@ export const AuthActionCard: React.FC = () => {
       setSuccessNotice('Đăng nhập bằng Google thành công! Đang chuyển hướng...');
       setTimeout(() => {
         window.location.href = '/';
-      }, 1000);
+      }, 800);
     } catch (err: unknown) {
       setServerError(err instanceof Error ? err.message : 'Đăng nhập Google thất bại.');
     } finally {
@@ -155,8 +183,8 @@ export const AuthActionCard: React.FC = () => {
     clearMessages();
     setIsFacebookLoading(true);
     try {
-      const { requestFacebookAccessToken } = await import('../../services/socialAuth');
       const accessToken = await requestFacebookAccessToken();
+      if (!accessToken) return;
 
       setSuccessNotice('Đang xác thực tài khoản Facebook với hệ thống...');
       const response = await authApi.facebookLogin({ accessToken });
@@ -166,7 +194,7 @@ export const AuthActionCard: React.FC = () => {
       setSuccessNotice('Đăng nhập bằng Facebook thành công! Đang chuyển hướng...');
       setTimeout(() => {
         window.location.href = '/';
-      }, 1000);
+      }, 800);
     } catch (err: unknown) {
       setServerError(err instanceof Error ? err.message : 'Đăng nhập Facebook thất bại.');
     } finally {

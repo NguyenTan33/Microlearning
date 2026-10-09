@@ -30,6 +30,11 @@ namespace Microlearning.Model
         public DbSet<Device> Devices => Set<Device>();
         public DbSet<ContentChange> ContentChanges => Set<ContentChange>();
         public DbSet<SyncOperation> SyncOperations => Set<SyncOperation>();
+        public DbSet<LessonAttachment> LessonAttachments => Set<LessonAttachment>();
+        public DbSet<UserCourseAccess> UserCourseAccesses => Set<UserCourseAccess>();
+        public DbSet<UserStreak> UserStreaks => Set<UserStreak>();
+        public DbSet<UserQuizMistake> UserQuizMistakes => Set<UserQuizMistake>();
+        public DbSet<UserFavoriteSubject> UserFavoriteSubjects => Set<UserFavoriteSubject>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -297,6 +302,93 @@ namespace Microlearning.Model
                 entity.HasOne(e => e.Account)
                       .WithMany(a => a.SyncOperations)
                       .HasForeignKey(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<LessonAttachment>(entity =>
+            {
+                entity.ToTable("LessonAttachments");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.FileType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.FileUrl).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Sha256Checksum).HasMaxLength(64);
+                entity.HasIndex(e => e.LessonId);
+
+                entity.HasOne(e => e.Lesson)
+                      .WithMany(l => l.Attachments)
+                      .HasForeignKey(e => e.LessonId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<UserCourseAccess>(entity =>
+            {
+                entity.ToTable("UserCourseAccesses");
+                entity.HasKey(e => new { e.AccountId, e.CourseId });
+
+                entity.HasOne(e => e.Account)
+                      .WithMany(a => a.CourseAccesses)
+                      .HasForeignKey(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Course)
+                      .WithMany(c => c.UserCourseAccesses)
+                      .HasForeignKey(e => e.CourseId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<UserStreak>(entity =>
+            {
+                entity.ToTable("UserStreaks");
+                entity.HasKey(e => e.AccountId);
+
+                entity.HasOne(e => e.Account)
+                      .WithOne(a => a.Streak)
+                      .HasForeignKey<UserStreak>(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            builder.Entity<UserQuizMistake>(entity =>
+            {
+                entity.ToTable("UserQuizMistakes");
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.AccountId, e.IsResolved });
+
+                entity.HasOne(e => e.Account)
+                      .WithMany(a => a.QuizMistakes)
+                      .HasForeignKey(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Question)
+                      .WithMany()
+                      .HasForeignKey(e => e.QuestionId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Quiz)
+                      .WithMany()
+                      .HasForeignKey(e => e.QuizId)
+                      .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(e => e.Lesson)
+                      .WithMany(l => l.QuizMistakes)
+                      .HasForeignKey(e => e.LessonId)
+                      .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            builder.Entity<UserFavoriteSubject>(entity =>
+            {
+                entity.ToTable("UserFavoriteSubjects");
+                entity.HasKey(e => new { e.AccountId, e.SubjectId });
+
+                entity.HasOne(e => e.Account)
+                      .WithMany(a => a.FavoriteSubjects)
+                      .HasForeignKey(e => e.AccountId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Subject)
+                      .WithMany(s => s.UserFavoriteSubjects)
+                      .HasForeignKey(e => e.SubjectId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

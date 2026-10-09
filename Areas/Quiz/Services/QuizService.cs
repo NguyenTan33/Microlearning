@@ -1,3 +1,4 @@
+using Microlearning.Areas.Gamification.Interfaces;
 using Microlearning.Areas.Quiz.DTOs;
 using Microlearning.Areas.Quiz.Interfaces;
 using Microlearning.Exceptions;
@@ -10,10 +11,20 @@ namespace Microlearning.Areas.Quiz.Services
     public class QuizService : IQuizService
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly IQuizMistakeVaultService _mistakeVaultService;
+        private readonly IUserStreakService _streakService;
+        private readonly ILogger<QuizService> _logger;
 
-        public QuizService(ApplicationDbContext dbContext)
+        public QuizService(
+            ApplicationDbContext dbContext,
+            IQuizMistakeVaultService mistakeVaultService,
+            IUserStreakService streakService,
+            ILogger<QuizService> logger)
         {
             _dbContext = dbContext;
+            _mistakeVaultService = mistakeVaultService;
+            _streakService = streakService;
+            _logger = logger;
         }
 
         public async Task<QuizDetailResponse> GetQuizByLessonIdAsync(int lessonId)
@@ -102,6 +113,7 @@ namespace Microlearning.Areas.Quiz.Services
             decimal totalScore = 0;
             int correctAnswers = 0;
             var quizAnswers = new List<QuizAnswer>();
+            var evaluatedAnswers = new List<(int questionId, int selectedOptionId, bool isCorrect)>();
 
             foreach (var answerDto in request.Answers)
             {
@@ -121,6 +133,9 @@ namespace Microlearning.Areas.Quiz.Services
 
                 totalScore += earnedScore;
                 if (isCorrect) correctAnswers++;
+
+                var firstSelectedId = selectedIds.FirstOrDefault();
+                evaluatedAnswers.Add((question.Id, firstSelectedId, isCorrect));
 
                 var quizAnswer = new QuizAnswer
                 {
@@ -154,6 +169,59 @@ namespace Microlearning.Areas.Quiz.Services
 
             _dbContext.QuizAttempts.Add(newAttempt);
             await _dbContext.SaveChangesAsync();
+
+            // Ghi nhận lỗi sai vào Sổ tay ôn tập (Mistake Review Vault)
+            try
+            {
+                await _mistakeVaultService.RecordMistakesFromAttemptAsync(accountId, quiz.Id, quiz.LessonId, evaluatedAnswers);
+            }
+            catch
+            {
+                // Không chặn hoàn thành bài thi nếu việc lưu sổ tay gặp lỗi tạm thời
+            }
+
+            // Nếu vượt qua bài thi trắc nghiệm: Đánh dấu hoàn thành bài học và kích hoạt Streak ngày
+            if (isPassed)
+            {
+                try
+                {
+                    var lessonProgress = await _dbContext.LessonProgresses
+                        .FirstOrDefaultAsync(p => p.AccountId == accountId && p.LessonId == quiz.LessonId);
+
+                    if (lessonProgress == null)
+                    {
+                        lessonProgress = new LessonProgress
+                        {
+                            AccountId = accountId,
+                            LessonId = quiz.LessonId,
+                            WatchedSeconds = 300,
+                            Percent = 100,
+                            IsCompleted = true,
+                            CompletedAt = DateTime.UtcNow,
+                            LastPlayedAt = DateTime.UtcNow,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _dbContext.LessonProgresses.Add(lessonProgress);
+                    }
+                    else
+                    {
+                        lessonProgress.IsCompleted = true;
+                        lessonProgress.Percent = Math.Max(lessonProgress.Percent, 100);
+                        if (lessonProgress.CompletedAt == null)
+                        {
+                            lessonProgress.CompletedAt = DateTime.UtcNow;
+                        }
+                        lessonProgress.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    await _dbContext.SaveChangesAsync();
+                    await _streakService.RecordDailyLearningAsync(accountId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Lỗi khi kích hoạt streak từ bài thi cho tài khoản {AccountId}", accountId);
+                }
+            }
 
             return new QuizAttemptResultResponse(
                 newAttempt.Id,

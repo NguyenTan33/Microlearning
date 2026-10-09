@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Đang xác thực tài khoản...</title>
   <style>
     body {
@@ -14,28 +15,38 @@
       justify-content: center;
       height: 100vh;
       margin: 0;
+      padding: 16px;
+      text-align: center;
     }
     .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(99, 102, 241, 0.2);
+      width: 44px;
+      height: 44px;
+      border: 3.5px solid rgba(99, 102, 241, 0.2);
       border-top-color: #6366F1;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      color: #F8FAFC;
+    }
     p {
       font-size: 14px;
       color: #94A3B8;
+      margin: 0;
     }
   </style>
 </head>
 <body>
   <div class="spinner"></div>
-  <p>Đang hoàn tất đăng nhập, vui lòng chờ trong giây lát...</p>
+  <h2>Đang kết nối tài khoản Google</h2>
+  <p>Vui lòng đợi giây lát trong khi hệ thống hoàn tất đăng nhập...</p>
 
   <script>
     (function () {
@@ -48,28 +59,45 @@
       var code = params.get('code');
       var error = params.get('error') || params.get('error_description');
 
-      if (window.opener) {
-        window.opener.postMessage(
-          {
-            type: 'OAUTH_RESPONSE',
-            idToken: idToken,
-            accessToken: accessToken,
-            code: code,
-            error: error,
-          },
-          window.location.origin
-        );
+      // 1. Luôn lưu vào localStorage ngay lập tức để trang chính có thể tự động nhận diện
+      if (idToken) {
+        localStorage.setItem('temp_oauth_id_token', idToken);
+      }
+      if (accessToken) {
+        localStorage.setItem('temp_oauth_access_token', accessToken);
+      }
+      if (error) {
+        localStorage.setItem('temp_oauth_error', error);
+      }
+
+      // 2. Thử gửi postMessage cho window.opener nếu đang mở dạng popup Desktop
+      var hasNotifiedOpener = false;
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage(
+            {
+              type: 'OAUTH_RESPONSE',
+              idToken: idToken,
+              accessToken: accessToken,
+              code: code,
+              error: error,
+            },
+            window.location.origin
+          );
+          hasNotifiedOpener = true;
+          setTimeout(function () {
+            window.close();
+          }, 350);
+        } catch (e) {
+          hasNotifiedOpener = false;
+        }
+      }
+
+      // 3. Nếu trên Mobile Web hoặc không có opener: Chuyển hướng trực tiếp về trang chủ
+      if (!hasNotifiedOpener) {
         setTimeout(function () {
-          window.close();
-        }, 500);
-      } else {
-        if (idToken) {
-          localStorage.setItem('temp_oauth_id_token', idToken);
-        }
-        if (accessToken) {
-          localStorage.setItem('temp_oauth_access_token', accessToken);
-        }
-        window.location.href = '/';
+          window.location.replace('/');
+        }, 400);
       }
     })();
   </script>

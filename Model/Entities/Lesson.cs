@@ -29,5 +29,9 @@ namespace Microlearning.Model.Entities
         public virtual ICollection<MediaAsset> MediaAssets { get; set; } = new List<MediaAsset>();
 
         public virtual ICollection<LessonProgress> LessonProgresses { get; set; } = new List<LessonProgress>();
+
+        public virtual ICollection<LessonAttachment> Attachments { get; set; } = new List<LessonAttachment>();
+
+        public virtual ICollection<UserQuizMistake> QuizMistakes { get; set; } = new List<UserQuizMistake>();
     }
 }

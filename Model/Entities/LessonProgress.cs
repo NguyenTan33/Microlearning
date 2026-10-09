@@ -12,6 +12,12 @@ namespace Microlearning.Model.Entities
 
         public decimal Percent { get; set; } = 0;
 
+        public double WatchedCoveragePercent { get; set; } = 0.0;
+
+        public double SkippedRatio { get; set; } = 0.0;
+
+        public bool IsEligibleForCompletion { get; set; } = true;
+
         public bool IsCompleted { get; set; } = false;
 
         public DateTime? CompletedAt { get; set; }

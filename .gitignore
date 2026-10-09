@@ -499,3 +499,8 @@ client/public/*.mp4
 *.mp3
 !client/public/audio/*.mp3
 
+# Mobile app temporary
+.expo/
+**/mobile/.expo/
+
+

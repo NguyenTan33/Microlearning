@@ -4,14 +4,18 @@ namespace Microlearning.Areas.Catalog.DTOs
         string Title,
         string? Description = null,
         string? ThumbnailUrl = null,
-        bool IsPublished = true
+        bool IsPublished = true,
+        bool IsPrivate = false,
+        string? AccessPassword = null
     );
 
     public record UpdateCourseRequest(
         string Title,
         string? Description = null,
         string? ThumbnailUrl = null,
-        bool IsPublished = true
+        bool IsPublished = true,
+        bool IsPrivate = false,
+        string? AccessPassword = null
     );
 
     public record CourseResponse(
@@ -23,7 +27,8 @@ namespace Microlearning.Areas.Catalog.DTOs
         bool IsPublished,
         DateTime CreatedAt,
         DateTime? UpdatedAt,
-        int TotalSubjects = 0
+        int TotalSubjects = 0,
+        bool IsPrivate = false
     );
 
     public record CourseDetailResponse(
@@ -35,6 +40,8 @@ namespace Microlearning.Areas.Catalog.DTOs
         bool IsPublished,
         DateTime CreatedAt,
         DateTime? UpdatedAt,
-        List<SubjectResponse> Subjects
+        List<SubjectResponse> Subjects,
+        bool IsPrivate = false,
+        bool HasAccess = true
     );
 }

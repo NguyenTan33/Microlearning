@@ -1,3 +1,4 @@
+using Microlearning.Areas.Gamification.Interfaces;
 using Microlearning.Areas.Progress.DTOs;
 using Microlearning.Areas.Progress.Interfaces;
 using Microlearning.Exceptions;
@@ -10,10 +11,17 @@ namespace Microlearning.Areas.Progress.Services
     public class ProgressService : IProgressService
     {
         private readonly ApplicationDbContext _dbContext;
+        private readonly IUserStreakService _streakService;
+        private readonly ILogger<ProgressService> _logger;
 
-        public ProgressService(ApplicationDbContext dbContext)
+        public ProgressService(
+            ApplicationDbContext dbContext,
+            IUserStreakService streakService,
+            ILogger<ProgressService> logger)
         {
             _dbContext = dbContext;
+            _streakService = streakService;
+            _logger = logger;
         }
 
         public async Task<LessonProgressResponse> SaveProgressAsync(string accountId, SaveProgressRequest request)
@@ -23,26 +31,49 @@ namespace Microlearning.Areas.Progress.Services
                 throw new BusinessException("Mã bài học không hợp lệ.");
             }
 
-            var lessonExists = await _dbContext.Lessons.AnyAsync(l => l.Id == request.LessonId);
-            if (!lessonExists)
+            var lesson = await _dbContext.Lessons
+                .Include(l => l.Subject)
+                .FirstOrDefaultAsync(l => l.Id == request.LessonId);
+
+            if (lesson == null)
             {
                 throw new BusinessException($"Không tìm thấy bài học với mã {request.LessonId}.");
+            }
+
+            // Tự động ghi danh học viên vào khóa học khi tham gia học bài giảng
+            if (lesson.Subject != null && lesson.Subject.CourseId > 0)
+            {
+                var courseId = lesson.Subject.CourseId;
+                var isEnrolled = await _dbContext.Enrollments
+                    .AnyAsync(e => e.AccountId == accountId && e.CourseId == courseId);
+
+                if (!isEnrolled)
+                {
+                    _dbContext.Enrollments.Add(new Model.Entities.Enrollment
+                    {
+                        AccountId = accountId,
+                        CourseId = courseId,
+                        Status = Model.Entities.Enums.EnrollmentStatus.Active,
+                        EnrolledAt = DateTime.UtcNow
+                    });
+                }
             }
 
             var progress = await _dbContext.LessonProgresses
                 .FirstOrDefaultAsync(p => p.AccountId == accountId && p.LessonId == request.LessonId);
 
+            bool isPercentCompleted = request.Percent >= 80;
+
             if (progress == null)
             {
-                bool isCompleted = request.Percent >= 90;
                 progress = new LessonProgress
                 {
                     AccountId = accountId,
                     LessonId = request.LessonId,
                     WatchedSeconds = Math.Max(0, request.WatchedSeconds),
                     Percent = Math.Clamp(request.Percent, 0, 100),
-                    IsCompleted = isCompleted,
-                    CompletedAt = isCompleted ? DateTime.UtcNow : null,
+                    IsCompleted = isPercentCompleted,
+                    CompletedAt = isPercentCompleted ? DateTime.UtcNow : null,
                     LastPlayedAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -55,10 +86,20 @@ namespace Microlearning.Areas.Progress.Services
                 progress.WatchedSeconds = Math.Max(progress.WatchedSeconds, request.WatchedSeconds);
                 progress.Percent = Math.Clamp(Math.Max(progress.Percent, request.Percent), 0, 100);
 
-                if (progress.Percent >= 90 && !progress.IsCompleted)
+                if (progress.Percent >= 80 || isPercentCompleted)
                 {
-                    progress.IsCompleted = true;
-                    progress.CompletedAt = DateTime.UtcNow;
+                    if (!progress.IsCompleted)
+                    {
+                        progress.IsCompleted = true;
+                        progress.CompletedAt = DateTime.UtcNow;
+                    }
+                    progress.WatchedCoveragePercent = Math.Max(progress.WatchedCoveragePercent, 100.0);
+                }
+                else if (progress.WatchedCoveragePercent > 0 && progress.WatchedCoveragePercent < 80)
+                {
+                    // Thu hồi IsCompleted nếu thời gian xem thực tế chưa đủ 80%
+                    progress.IsCompleted = false;
+                    progress.CompletedAt = null;
                 }
 
                 progress.LastPlayedAt = DateTime.UtcNow;
@@ -67,12 +108,27 @@ namespace Microlearning.Areas.Progress.Services
 
             await _dbContext.SaveChangesAsync();
 
+            // Tự động kích hoạt điểm danh Streak và kiểm tra Vương miện khi hoàn thành bài học
+            if (progress.IsCompleted || isPercentCompleted)
+            {
+                try
+                {
+                    await _streakService.RecordDailyLearningAsync(accountId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Lỗi khi cập nhật streak cho người dùng {AccountId}", accountId);
+                }
+            }
+
+            bool isActuallyCompleted = progress.IsCompleted && (progress.Percent >= 80 || progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+
             return new LessonProgressResponse(
                 progress.LessonId,
                 progress.WatchedSeconds,
                 progress.Percent,
-                progress.IsCompleted,
-                progress.CompletedAt,
+                isActuallyCompleted,
+                isActuallyCompleted ? progress.CompletedAt : null,
                 progress.LastPlayedAt
             );
         }
@@ -88,12 +144,14 @@ namespace Microlearning.Areas.Progress.Services
                 return null;
             }
 
+            bool isActuallyCompleted = progress.IsCompleted && (progress.Percent >= 80 || progress.WatchedCoveragePercent == 0 || progress.WatchedCoveragePercent >= 80);
+
             return new LessonProgressResponse(
                 progress.LessonId,
                 progress.WatchedSeconds,
                 progress.Percent,
-                progress.IsCompleted,
-                progress.CompletedAt,
+                isActuallyCompleted,
+                isActuallyCompleted ? progress.CompletedAt : null,
                 progress.LastPlayedAt
             );
         }
@@ -112,7 +170,7 @@ namespace Microlearning.Areas.Progress.Services
 
             var completedLessons = await _dbContext.LessonProgresses
                 .AsNoTracking()
-                .Where(p => p.AccountId == accountId && p.IsCompleted && p.Lesson!.Subject!.CourseId == courseId)
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
                 .CountAsync();
 
             decimal overallPercent = Math.Round(((decimal)completedLessons / totalLessons) * 100, 2);
@@ -123,6 +181,23 @@ namespace Microlearning.Areas.Progress.Services
                 completedLessons,
                 totalLessons
             );
+        }
+
+        public async Task<List<int>> GetCompletedLessonIdsAsync(string accountId, int? courseId = null)
+        {
+            var query = _dbContext.LessonProgresses
+                .AsNoTracking()
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80));
+
+            if (courseId.HasValue && courseId.Value > 0)
+            {
+                query = query.Where(p => p.Lesson!.Subject!.CourseId == courseId.Value);
+            }
+
+            return await query
+                .Select(p => p.LessonId)
+                .Distinct()
+                .ToListAsync();
         }
     }
 }

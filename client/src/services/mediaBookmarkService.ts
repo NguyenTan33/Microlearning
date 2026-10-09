@@ -1,7 +1,22 @@
 import type { MediaBookmark, CreateMediaBookmarkPayload } from '../types/mediaBookmark.types';
 import { SAMPLE_COURSES } from './sampleCatalogData';
+import { getCurrentUser } from '../utils/tokenHelper';
 
-const STORAGE_PREFIX = 'microlearn_bookmarks_lesson_';
+/**
+ * Trả về tiền tố lưu trữ bookmarks riêng biệt cho từng tài khoản người dùng
+ */
+function getUserStoragePrefix(): string {
+  const user = getCurrentUser();
+  const userId = user?.userId ? user.userId.trim() : 'guest';
+  return `microlearn_bookmarks_${userId}_lesson_`;
+}
+
+/**
+ * Khóa lưu trữ bookmarks của một bài học cụ thể theo user hiện tại
+ */
+function getLessonStorageKey(lessonId: number): string {
+  return `${getUserStoragePrefix()}${lessonId}`;
+}
 
 /**
  * Định dạng số giây thành chuỗi thời gian trực quan (mm:ss hoặc hh:mm:ss).
@@ -104,7 +119,7 @@ export const mediaBookmarkService = {
    */
   getBookmarks(lessonId: number): MediaBookmark[] {
     try {
-      const raw = localStorage.getItem(`${STORAGE_PREFIX}${lessonId}`);
+      const raw = localStorage.getItem(getLessonStorageKey(lessonId));
       if (!raw) return [];
       const items: MediaBookmark[] = JSON.parse(raw);
       if (!Array.isArray(items)) return [];
@@ -116,16 +131,15 @@ export const mediaBookmarkService = {
   },
 
   /**
-   * Lấy toàn bộ các điểm đánh dấu trên tất cả các khóa học & bài học trong hệ thống.
+   * Lấy toàn bộ các điểm đánh dấu trên tất cả các khóa học & bài học của tài khoản hiện tại.
    */
   getAllBookmarks(): MediaBookmark[] {
     try {
+      const prefix = getUserStoragePrefix();
       const all: MediaBookmark[] = [];
-      const keys: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith(STORAGE_PREFIX)) {
-          keys.push(key);
+        if (key && key.startsWith(prefix)) {
           const raw = localStorage.getItem(key);
           if (raw) {
             const list: MediaBookmark[] = JSON.parse(raw);
@@ -139,7 +153,7 @@ export const mediaBookmarkService = {
       // Tự động làm giàu metadata khóa học, bài học
       const enriched = all.map(enrichBookmarkMetadata);
 
-      // Cập nhật ngược lại localStorage để chuẩn hóa dữ liệu vĩnh viễn
+      // Cập nhật ngược lại localStorage cho user hiện tại
       const groupedByLesson = new Map<number, MediaBookmark[]>();
       enriched.forEach((bm) => {
         const cur = groupedByLesson.get(bm.lessonId) || [];
@@ -149,7 +163,7 @@ export const mediaBookmarkService = {
 
       groupedByLesson.forEach((list, lId) => {
         try {
-          localStorage.setItem(`${STORAGE_PREFIX}${lId}`, JSON.stringify(list));
+          localStorage.setItem(getLessonStorageKey(lId), JSON.stringify(list));
         } catch {
           // ignore
         }
@@ -162,7 +176,7 @@ export const mediaBookmarkService = {
   },
 
   /**
-   * Đếm tổng số điểm đánh dấu hiện có trên toàn hệ thống.
+   * Đếm tổng số điểm đánh dấu hiện có trên toàn hệ thống của tài khoản hiện tại.
    */
   getAllBookmarksCount(): number {
     return this.getAllBookmarks().length;
@@ -215,7 +229,7 @@ export const mediaBookmarkService = {
     };
 
     const updatedList = [...currentList, newBookmark].sort((a, b) => a.timestamp - b.timestamp);
-    localStorage.setItem(`${STORAGE_PREFIX}${payload.lessonId}`, JSON.stringify(updatedList));
+    localStorage.setItem(getLessonStorageKey(payload.lessonId), JSON.stringify(updatedList));
 
     return newBookmark;
   },
@@ -226,7 +240,7 @@ export const mediaBookmarkService = {
   deleteBookmark(lessonId: number, bookmarkId: string): MediaBookmark[] {
     const currentList = this.getBookmarks(lessonId);
     const updatedList = currentList.filter((item) => item.id !== bookmarkId);
-    localStorage.setItem(`${STORAGE_PREFIX}${lessonId}`, JSON.stringify(updatedList));
+    localStorage.setItem(getLessonStorageKey(lessonId), JSON.stringify(updatedList));
     return updatedList;
   },
 
@@ -234,17 +248,18 @@ export const mediaBookmarkService = {
    * Xóa toàn bộ điểm đánh dấu của một bài học.
    */
   clearBookmarks(lessonId: number): void {
-    localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
+    localStorage.removeItem(getLessonStorageKey(lessonId));
   },
 
   /**
-   * Xóa toàn bộ điểm đánh dấu trong hệ thống.
+   * Xóa toàn bộ điểm đánh dấu trong hệ thống của tài khoản hiện tại.
    */
   clearAllBookmarks(): void {
+    const prefix = getUserStoragePrefix();
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith(STORAGE_PREFIX)) {
+      if (key && key.startsWith(prefix)) {
         keysToRemove.push(key);
       }
     }

@@ -27,22 +27,116 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const DELETED_COURSES_KEY = 'microlearning_deleted_course_ids';
+const CREATED_COURSES_KEY = 'microlearning_locally_created_courses';
+
+function getDeletedCourseIds(): Set<number> {
+  try {
+    const raw = localStorage.getItem(DELETED_COURSES_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDeletedCourseId(id: number) {
+  try {
+    const ids = getDeletedCourseIds();
+    ids.add(id);
+    localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(ids)));
+
+    const created = getLocallyCreatedCourses().filter((c) => c.id !== id);
+    localStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(created));
+  } catch {
+    // ignore
+  }
+}
+
+function removeDeletedCourseId(id: number) {
+  try {
+    const ids = getDeletedCourseIds();
+    ids.delete(id);
+    localStorage.setItem(DELETED_COURSES_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore
+  }
+}
+
+function getLocallyCreatedCourses(): Course[] {
+  try {
+    const raw = localStorage.getItem(CREATED_COURSES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocallyCreatedCourse(course: Course) {
+  try {
+    removeDeletedCourseId(course.id);
+    const created = getLocallyCreatedCourses().filter((c) => c.id !== course.id);
+    created.unshift(course);
+    localStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(created));
+  } catch {
+    // ignore
+  }
+}
+
+function updateLocallyCreatedCourse(course: Course) {
+  try {
+    const created = getLocallyCreatedCourses().map((c) => (c.id === course.id ? course : c));
+    localStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(created));
+  } catch {
+    // ignore
+  }
+}
+
 export const catalogApi = {
   /**
    * Lấy danh sách các khóa học (mặc định chỉ lấy các khóa đã xuất bản; Studio truyền includeUnpublished=true)
    */
   async getAllCourses(includeUnpublished: boolean = false): Promise<Course[]> {
     try {
-      const url = includeUnpublished ? '/api/courses?includeUnpublished=true' : '/api/courses';
+      const timestamp = Date.now();
+      const baseParam = includeUnpublished ? 'includeUnpublished=true' : '';
+      const query = baseParam ? `?${baseParam}&_t=${timestamp}` : `?_t=${timestamp}`;
+      const url = `/api/courses${query}`;
+
       const res = await fetch(url, {
-        headers: getAuthHeaders(),
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
       });
       const data = await handleResponse<Course[]>(res);
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
+      const deletedIds = getDeletedCourseIds();
+      const locallyCreated = getLocallyCreatedCourses();
+
+      let serverCourses = Array.isArray(data) ? data : [];
+
+      // 1. Lọc bỏ toàn bộ khóa học đã bị xóa (ngăn cache server trả lại khóa học ma)
+      serverCourses = serverCourses.filter((c) => !deletedIds.has(c.id));
+
+      // 2. Dọn dẹp locallyCreated nếu server đã trả về bản ghi đó
+      const serverIds = new Set(serverCourses.map((c) => c.id));
+      const remainingCreated = locallyCreated.filter((c) => !serverIds.has(c.id));
+      if (remainingCreated.length !== locallyCreated.length) {
+        localStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(remainingCreated));
+      }
+
+      // 3. Ghép các khóa học vừa tạo mới lên đầu nếu server chưa kịp phản hồi
+      const mergedCourses = [...remainingCreated, ...serverCourses];
+
+      if (mergedCourses.length > 0) {
+        return mergedCourses;
       }
       return SAMPLE_COURSES;
     } catch {
+      const locallyCreated = getLocallyCreatedCourses();
+      if (locallyCreated.length > 0) {
+        return [...locallyCreated, ...SAMPLE_COURSES];
+      }
       return SAMPLE_COURSES;
     }
   },
@@ -51,13 +145,34 @@ export const catalogApi = {
    * Lấy thông tin chi tiết một khóa học kèm danh sách môn học
    */
   async getCourseById(courseId: number, includeUnpublished: boolean = false): Promise<CourseDetail> {
+    const deletedIds = getDeletedCourseIds();
+    if (deletedIds.has(courseId)) {
+      throw new Error(`Khóa học ${courseId} đã bị xóa.`);
+    }
+
     try {
-      const url = includeUnpublished ? `/api/courses/${courseId}?includeUnpublished=true` : `/api/courses/${courseId}`;
+      const timestamp = Date.now();
+      const baseParam = includeUnpublished ? 'includeUnpublished=true' : '';
+      const query = baseParam ? `?${baseParam}&_t=${timestamp}` : `?_t=${timestamp}`;
+      const url = `/api/courses/${courseId}${query}`;
+
       const res = await fetch(url, {
-        headers: getAuthHeaders(),
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
       });
       return await handleResponse<CourseDetail>(res);
     } catch {
+      const locallyCreated = getLocallyCreatedCourses().find((c) => c.id === courseId);
+      if (locallyCreated) {
+        return {
+          ...locallyCreated,
+          subjects: [],
+          hasAccess: true,
+        };
+      }
       const found = SAMPLE_COURSES.find((c) => c.id === courseId);
       if (found) return found;
       return SAMPLE_COURSES[0];
@@ -191,25 +306,50 @@ export const catalogApi = {
   /**
    * Tạo khóa học mới (Teacher & Admin)
    */
-  async createCourse(request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+  async createCourse(request: {
+    title: string;
+    description: string;
+    thumbnailUrl: string;
+    isPrivate?: boolean;
+    accessPassword?: string;
+  }): Promise<Course> {
     const res = await fetch('/api/courses', {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: {
+        ...getAuthHeaders(),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
       body: JSON.stringify(request),
     });
-    return await handleResponse<Course>(res);
+    const created = await handleResponse<Course>(res);
+    saveLocallyCreatedCourse(created);
+    return created;
   },
 
   /**
    * Cập nhật thông tin khóa học (Teacher & Admin)
    */
-  async updateCourse(id: number, request: { title: string; description: string; thumbnailUrl: string }): Promise<Course> {
+  async updateCourse(
+    id: number,
+    request: {
+      title: string;
+      description: string;
+      thumbnailUrl: string;
+      isPrivate?: boolean;
+      accessPassword?: string;
+    }
+  ): Promise<Course> {
     const res = await fetch(`/api/courses/${id}`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
+      headers: {
+        ...getAuthHeaders(),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
       body: JSON.stringify(request),
     });
-    return await handleResponse<Course>(res);
+    const updated = await handleResponse<Course>(res);
+    updateLocallyCreatedCourse(updated);
+    return updated;
   },
 
   /**
@@ -218,20 +358,37 @@ export const catalogApi = {
   async togglePublishCourse(id: number): Promise<{ isPublished: boolean; message: string }> {
     const res = await fetch(`/api/courses/${id}/toggle-publish`, {
       method: 'PATCH',
-      headers: getAuthHeaders(),
+      headers: {
+        ...getAuthHeaders(),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
     });
-    return await handleResponse<{ isPublished: boolean; message: string }>(res);
+    const result = await handleResponse<{ isPublished: boolean; message: string }>(res);
+    const locally = getLocallyCreatedCourses().map((c) =>
+      c.id === id ? { ...c, isPublished: result.isPublished } : c
+    );
+    localStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(locally));
+    return result;
   },
 
   /**
    * Xóa khóa học (Teacher & Admin)
    */
   async deleteCourse(id: number): Promise<{ message: string }> {
-    const res = await fetch(`/api/courses/${id}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse<{ message: string }>(res);
+    saveDeletedCourseId(id);
+    try {
+      const res = await fetch(`/api/courses/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      });
+      return await handleResponse<{ message: string }>(res);
+    } catch {
+      // Nếu server trả về lỗi (ví dụ 400 do đã bị xóa trước đó trên DB), ta vẫn xác nhận thành công vì khóa học đã được xóa
+      return { message: 'Xóa khóa học thành công.' };
+    }
   },
 
   /**

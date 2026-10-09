@@ -35,7 +35,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
   const [historyList, setHistoryList] = useState<QuizHistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
-  const [startTime] = useState<string>(() => new Date().toISOString());
+  const [startTime, setStartTime] = useState<string>(() => new Date().toISOString());
   const [currentPage, setCurrentPage] = useState<number>(1);
   const QUESTIONS_PER_PAGE = 5;
 
@@ -46,6 +46,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     setSelectedAnswers({});
     setNoticeMessage(null);
     setCurrentPage(1);
+    setStartTime(new Date().toISOString());
 
     try {
       const data = await quizApi.getQuizByLesson(lessonId);
@@ -79,14 +80,23 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quiz || quiz.questions.length === 0) return;
+  // Số lượng câu hỏi đã được trả lời
+  const answeredCount = Object.keys(selectedAnswers).filter(
+    (k) => (selectedAnswers[Number(k)] || []).length > 0
+  ).length;
 
-    // Kiểm tra học viên đã chọn đủ câu hỏi chưa
-    const answeredCount = Object.keys(selectedAnswers).filter(
-      (k) => (selectedAnswers[Number(k)] || []).length > 0
-    ).length;
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!quiz || quiz.questions.length === 0 || submitting) return;
+
+    // Chặn hoàn toàn trường hợp nộp giấy trắng (chưa chọn câu nào)
+    if (answeredCount === 0) {
+      setNoticeMessage('⚠️ Bạn chưa chọn câu trả lời nào. Vui lòng làm bài trước khi bấm nộp bài!');
+      return;
+    }
 
     if (answeredCount < quiz.questions.length) {
       if (!confirm(`Bạn mới trả lời ${answeredCount}/${quiz.questions.length} câu. Bạn có chắc chắn muốn nộp bài ngay?`)) {
@@ -121,7 +131,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
       // Cập nhật lại danh sách lịch sử thi
       quizApi.getQuizHistory(quiz.id).then(setHistoryList).catch(() => {});
 
-      if (onAttemptSubmitted) {
+      if (onAttemptSubmitted && result.isPassed) {
         onAttemptSubmitted();
       }
     } catch (err: unknown) {
@@ -131,11 +141,29 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
     }
   };
 
-  const handleRetake = () => {
+  const handleRetake = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Xác nhận làm lại đề thi từ đầu, tách biệt hoàn toàn với hành vi nộp bài
+    if (!confirm('Bạn có chắc chắn muốn làm lại bài thi này không? Toàn bộ câu trả lời sẽ được làm mới.')) {
+      return;
+    }
+
     setAttemptResult(null);
     setSelectedAnswers({});
     setNoticeMessage(null);
     setCurrentPage(1);
+    setStartTime(new Date().toISOString());
+
+    setTimeout(() => {
+      const container = document.getElementById('interactive-quiz-container');
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
   };
 
   if (loading) {
@@ -163,7 +191,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
   );
 
   return (
-    <div className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-4 sm:p-6 shadow-xl space-y-5">
+    <div id="interactive-quiz-container" className="w-full rounded-2xl bg-[#090D1A] border border-white/10 p-4 sm:p-6 shadow-xl space-y-5">
       {/* Quiz Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
         <div className="space-y-1">
@@ -253,7 +281,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
       )}
 
       {/* Danh sách câu hỏi */}
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-5">
         <div className="space-y-5">
           {currentQuestions.map((question, qIdx) => {
             const actualIndex = (currentPage - 1) * QUESTIONS_PER_PAGE + qIdx + 1;
@@ -379,7 +407,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
               <span>
                 Đã chọn:{' '}
                 <strong className="text-white">
-                  {Object.keys(selectedAnswers).filter((k) => (selectedAnswers[Number(k)] || []).length > 0).length}
+                  {answeredCount}
                 </strong>
                 /{quiz.questions.length} câu
               </span>
@@ -393,18 +421,22 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {attemptResult ? (
               <button
+                key="btn-retake-quiz"
                 type="button"
                 onClick={handleRetake}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Làm lại đề thi</span>
               </button>
             ) : (
               <button
-                type="submit"
-                disabled={submitting}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-50 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95"
+                key="btn-submit-quiz"
+                type="button"
+                disabled={submitting || answeredCount === 0}
+                onClick={handleSubmit}
+                title={answeredCount === 0 ? 'Vui lòng chọn câu trả lời trước khi nộp bài' : 'Nộp bài để chấm điểm'}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95"
               >
                 {submitting ? (
                   <>
@@ -421,7 +453,7 @@ export const InteractiveQuizCard: React.FC<InteractiveQuizCardProps> = ({
             )}
           </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 };

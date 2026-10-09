@@ -1,24 +1,32 @@
 import type { Enrollment } from '../types/catalog.types';
 import { SAMPLE_COURSES } from './sampleCatalogData';
+import { getCurrentUser } from '../utils/tokenHelper';
 
-const LOCAL_ENROLLMENTS_KEY = 'microlearning_enrolled_courses';
+function getLocalEnrollmentsKey(): string {
+  const user = getCurrentUser();
+  const userId = user?.userId ? user.userId.trim() : 'guest';
+  return `microlearning_enrolled_courses_${userId}`;
+}
 
 function getLocalEnrollments(): number[] {
   try {
-    const raw = localStorage.getItem(LOCAL_ENROLLMENTS_KEY);
+    const raw = localStorage.getItem(getLocalEnrollmentsKey());
     if (raw) return JSON.parse(raw);
   } catch {
     // ignore
   }
-  // Mặc định tự động ghi danh vào 2 khóa học: Excel và React Web IT
-  return [1, 3];
+  return [];
 }
 
 function saveLocalEnrollment(courseId: number): void {
   const current = getLocalEnrollments();
   if (!current.includes(courseId)) {
     current.push(courseId);
-    localStorage.setItem(LOCAL_ENROLLMENTS_KEY, JSON.stringify(current));
+    try {
+      localStorage.setItem(getLocalEnrollmentsKey(), JSON.stringify(current));
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -55,10 +63,11 @@ export const enrollmentApi = {
       });
       return await handleResponse<Enrollment>(res);
     } catch {
+      const user = getCurrentUser();
       const course = SAMPLE_COURSES.find((c) => c.id === courseId) || SAMPLE_COURSES[0];
       return {
         id: courseId,
-        accountId: 'current-user',
+        accountId: user?.userId || 'current-user',
         courseId,
         courseTitle: course.title,
         courseThumbnail: course.thumbnailUrl,
@@ -77,24 +86,27 @@ export const enrollmentApi = {
       const res = await fetch('/api/enrollments/my-courses', {
         headers: getAuthHeaders(),
       });
-      const data = await handleResponse<Enrollment[]>(res);
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
       }
-      throw new Error('Fallback');
+      throw new Error('Fallback to local');
     } catch {
+      const user = getCurrentUser();
       const enrolledIds = getLocalEnrollments();
       return enrolledIds.map((id) => {
         const course = SAMPLE_COURSES.find((c) => c.id === id) || SAMPLE_COURSES[0];
         return {
           id,
-          accountId: 'current-user',
+          accountId: user?.userId || 'current-user',
           courseId: id,
           courseTitle: course.title,
           courseThumbnail: course.thumbnailUrl,
           status: 1,
-          enrolledAt: '2026-10-01T08:00:00Z',
-          overallProgressPercent: id === 1 ? 45 : id === 3 ? 20 : 0,
+          enrolledAt: new Date().toISOString(),
+          overallProgressPercent: 0,
         };
       });
     }

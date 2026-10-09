@@ -34,6 +34,20 @@ namespace Microlearning.Areas.Enrollment.Services
 
             if (existing != null)
             {
+                var totalLessons = await _dbContext.Lessons
+                    .AsNoTracking()
+                    .Where(l => l.Subject!.CourseId == courseId && l.IsPublished)
+                    .CountAsync();
+
+                var completedLessons = totalLessons > 0
+                    ? await _dbContext.LessonProgresses
+                        .AsNoTracking()
+                        .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && p.Lesson!.Subject!.CourseId == courseId)
+                        .CountAsync()
+                    : 0;
+
+                decimal progress = totalLessons > 0 ? Math.Round(((decimal)completedLessons / totalLessons) * 100, 2) : 0;
+
                 return new EnrollmentResponse(
                     existing.Id,
                     existing.AccountId,
@@ -41,7 +55,10 @@ namespace Microlearning.Areas.Enrollment.Services
                     course.Title,
                     course.ThumbnailUrl,
                     existing.Status,
-                    existing.EnrolledAt
+                    existing.EnrolledAt,
+                    progress,
+                    completedLessons,
+                    totalLessons
                 );
             }
 
@@ -56,6 +73,11 @@ namespace Microlearning.Areas.Enrollment.Services
             _dbContext.Enrollments.Add(enrollment);
             await _dbContext.SaveChangesAsync();
 
+            var newTotalLessons = await _dbContext.Lessons
+                .AsNoTracking()
+                .Where(l => l.Subject!.CourseId == courseId && l.IsPublished)
+                .CountAsync();
+
             return new EnrollmentResponse(
                 enrollment.Id,
                 enrollment.AccountId,
@@ -63,7 +85,10 @@ namespace Microlearning.Areas.Enrollment.Services
                 course.Title,
                 course.ThumbnailUrl,
                 enrollment.Status,
-                enrollment.EnrolledAt
+                enrollment.EnrolledAt,
+                0,
+                0,
+                newTotalLessons
             );
         }
 
@@ -74,19 +99,48 @@ namespace Microlearning.Areas.Enrollment.Services
                 .Include(e => e.Course)
                 .Where(e => e.AccountId == accountId)
                 .OrderByDescending(e => e.EnrolledAt)
-                .Select(e => new EnrollmentResponse(
+                .ToListAsync();
+
+            if (enrollments.Count == 0)
+            {
+                return new List<EnrollmentResponse>();
+            }
+
+            var courseIds = enrollments.Select(e => e.CourseId).Distinct().ToList();
+
+            var lessonCounts = await _dbContext.Lessons
+                .AsNoTracking()
+                .Where(l => courseIds.Contains(l.Subject!.CourseId) && l.IsPublished)
+                .GroupBy(l => l.Subject!.CourseId)
+                .Select(g => new { CourseId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CourseId, x => x.Count);
+
+            var completedCounts = await _dbContext.LessonProgresses
+                .AsNoTracking()
+                .Where(p => p.AccountId == accountId && p.IsCompleted && (p.Percent >= 80 || p.WatchedCoveragePercent == 0 || p.WatchedCoveragePercent >= 80) && courseIds.Contains(p.Lesson!.Subject!.CourseId))
+                .GroupBy(p => p.Lesson!.Subject!.CourseId)
+                .Select(g => new { CourseId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CourseId, x => x.Count);
+
+            return enrollments.Select(e =>
+            {
+                var total = lessonCounts.GetValueOrDefault(e.CourseId, 0);
+                var completed = completedCounts.GetValueOrDefault(e.CourseId, 0);
+                decimal progress = total > 0 ? Math.Round(((decimal)completed / total) * 100, 2) : 0;
+
+                return new EnrollmentResponse(
                     e.Id,
                     e.AccountId,
                     e.CourseId,
-                    e.Course!.Title,
-                    e.Course.ThumbnailUrl,
+                    e.Course?.Title ?? string.Empty,
+                    e.Course?.ThumbnailUrl,
                     e.Status,
                     e.EnrolledAt,
-                    0
-                ))
-                .ToListAsync();
-
-            return enrollments;
+                    progress,
+                    completed,
+                    total
+                );
+            }).ToList();
         }
     }
 }

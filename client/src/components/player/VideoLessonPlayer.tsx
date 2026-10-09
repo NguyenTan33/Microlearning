@@ -22,10 +22,99 @@ import {
 } from 'lucide-react';
 import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { catalogApi } from '../../services/catalogApi';
-import type { LessonMediaInfo } from '../../types/media.types';
+import { parseVideoUrl, type LessonMediaInfo } from '../../types/media.types';
 import { progressApi } from '../../services/progressApi';
 import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBookmarkService';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
+import { LessonAttachmentsTab } from './LessonAttachmentsTab';
+
+interface YTPlayerInstance {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  mute: () => void;
+  unMute: () => void;
+  isMuted: () => boolean;
+  setPlaybackRate: (suggestedRate: number) => void;
+  getPlayerState: () => number;
+  destroy: () => void;
+}
+
+interface YTPlayerEvent {
+  target: YTPlayerInstance;
+  data: number;
+}
+
+interface YTPlayerOptions {
+  videoId?: string;
+  width?: string | number;
+  height?: string | number;
+  playerVars?: {
+    enablejsapi?: number;
+    rel?: number;
+    modestbranding?: number;
+    playsinline?: number;
+    origin?: string;
+    autoplay?: number;
+    controls?: number;
+  };
+  events?: {
+    onReady?: (event: { target: YTPlayerInstance }) => void;
+    onStateChange?: (event: YTPlayerEvent) => void;
+    onError?: (event: { target: YTPlayerInstance; data: number }) => void;
+  };
+}
+
+interface YTNamespace {
+  Player: new (
+    elementId: string | HTMLElement,
+    options: YTPlayerOptions
+  ) => YTPlayerInstance;
+  PlayerState: {
+    UNSTARTED: number;
+    ENDED: number;
+    PLAYING: number;
+    PAUSED: number;
+    BUFFERING: number;
+    CUED: number;
+  };
+}
+
+const loadYouTubeIframeApi = (): Promise<YTNamespace> => {
+  return new Promise((resolve) => {
+    const win = window as unknown as { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void };
+    if (win.YT && win.YT.Player) {
+      resolve(win.YT);
+      return;
+    }
+
+    const prevReady = win.onYouTubeIframeAPIReady;
+    win.onYouTubeIframeAPIReady = () => {
+      if (prevReady) {
+        try {
+          prevReady();
+        } catch {}
+      }
+      if (win.YT) {
+        resolve(win.YT);
+      }
+    };
+
+    if (!document.getElementById('yt-iframe-api-script')) {
+      const tag = document.createElement('script');
+      tag.id = 'yt-iframe-api-script';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      } else {
+        document.head.appendChild(tag);
+      }
+    }
+  });
+};
 
 interface VideoLessonPlayerProps {
   mediaId: number;
@@ -36,7 +125,8 @@ interface VideoLessonPlayerProps {
   initialSeekTime?: number | null;
   onOpenNotebookView?: () => void;
   onOpenBookmarksView?: () => void;
-  onProgressSaved?: () => void;
+  onProgressSaved?: (isCompleted: boolean) => void;
+  onWatchedPercentChange?: (percent: number) => void;
 }
 
 export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
@@ -49,9 +139,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   onOpenNotebookView,
   onOpenBookmarksView,
   onProgressSaved,
+  onWatchedPercentChange,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const ytPlayerRef = useRef<YTPlayerInstance | null>(null);
+  const pendingSeekTimeRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const youtubeContainerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
@@ -61,23 +155,38 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [videoError, setVideoError] = useState<string | null>(null);
   const [mediaInfo, setMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [initialSeekDone, setInitialSeekDone] = useState<boolean>(false);
+  const initialSeekDoneRef = useRef<boolean>(false);
   const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
   const [isAddFlagModalOpen, setIsAddFlagModalOpen] = useState<boolean>(false);
   const [flagTitleInput, setFlagTitleInput] = useState<string>('');
   const [flagNoteInput, setFlagNoteInput] = useState<string>('');
   const [flagTimestamp, setFlagTimestamp] = useState<number>(0);
 
+  // Anti-cheat Interval Union tracking (Feature 2) & Bottom Tabs (Feature 1)
+  const [antiCheatWarning, setAntiCheatWarning] = useState<string | null>(null);
+  const [activeBottomTab, setActiveBottomTab] = useState<'info' | 'attachments'>('info');
+  const watchedIntervalsRef = useRef<Array<{ start: number; end: number }>>([]);
+  const segmentStartRef = useRef<number | null>(null);
+
   const lastSavedPercentRef = useRef<number>(0);
+  const isCompletionNotifiedRef = useRef<boolean>(false);
 
   // 1. Tải URL phát trực tuyến HTTP 206 (hoặc phát từ Offline Blob) & nạp danh sách cắm cờ
   useEffect(() => {
     let objectUrl: string | null = null;
     let isCancelled = false;
 
-    setInitialSeekDone(false);
+    initialSeekDoneRef.current = false;
+    pendingSeekTimeRef.current = null;
+    isCompletionNotifiedRef.current = false;
     setIsPlaying(false);
     setVideoError(null);
+    setAntiCheatWarning(null);
+    watchedIntervalsRef.current = [];
+    segmentStartRef.current = null;
+    setCurrentTime(0);
+    setDuration(0);
+    lastSavedPercentRef.current = 0;
 
     const streamTargetId = lessonId || mediaId;
 
@@ -119,11 +228,17 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     progressApi
       .getLessonProgress(lessonId)
       .then((prog) => {
-        if (prog && prog.watchedSeconds > 0 && videoRef.current) {
-          lastSavedPercentRef.current = Number(prog.percent);
+        if (isCancelled) return;
+        const currentP = prog ? Number(prog.percent) || 0 : 0;
+        lastSavedPercentRef.current = currentP;
+        if (prog && prog.watchedSeconds > 2 && currentP < 90) {
+          pendingSeekTimeRef.current = prog.watchedSeconds;
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (isCancelled) return;
+        lastSavedPercentRef.current = 0;
+      });
 
     return () => {
       isCancelled = true;
@@ -133,11 +248,24 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     };
   }, [mediaId, lessonId]);
 
-  // 2. Lưu tiến độ trực tuyến lên hệ thống
+  // 2. Lưu tiến độ trực tuyến lên hệ thống (Tích hợp Interval Union Anti-Cheat)
   const handleSaveProgress = useCallback(
     async (time: number, total: number, forceSave: boolean = false) => {
       if (total <= 0) return;
+      // Không tự ý lưu tiến độ khi video chưa được phát (tránh lưu đè khi vừa tải video hoặc vừa chuyển bài)
+      if (!isPlaying && !forceSave) return;
       const percent = Math.min(100, (time / total) * 100);
+
+      // Ghi nhận đoạn đang xem liên tục vào intervals
+      if (segmentStartRef.current === null) {
+        segmentStartRef.current = time;
+      } else if (time > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(time * 10) / 10,
+        });
+        segmentStartRef.current = time;
+      }
 
       // Lưu khi đạt mốc tăng >= 10% hoặc hoàn thành bài hoặc khi học viên tạm dừng (forceSave)
       const diff = percent - lastSavedPercentRef.current;
@@ -145,27 +273,167 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         lastSavedPercentRef.current = percent;
 
         try {
-          await progressApi.saveProgress(lessonId, time, percent);
-          setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
+          // Gọi API kiểm tra độ phủ dải xem chống tua (Interval Union Anti-cheat)
+          const coverageRes = await progressApi.recordVideoCoverage(
+            lessonId,
+            total,
+            time,
+            watchedIntervalsRef.current
+          );
+
+          if (!coverageRes.isEligibleForCompletion && coverageRes.skippedRatio > 0.2) {
+            setAntiCheatWarning(
+              `⚠️ Cảnh báo chống tua: Bạn đã tua bỏ qua ${(coverageRes.skippedRatio * 100).toFixed(0)}% thời lượng video. Bài học yêu cầu xem thực tế tối thiểu 80% để tính hoàn thành. Hãy xem đầy đủ nội dung nhé!`
+            );
+          } else {
+            setAntiCheatWarning(null);
+          }
+
+          if (coverageRes.isCompleted) {
+            setSaveNotice('🎉 Chúc mừng! Bạn đã hoàn thành bài học này.');
+            window.dispatchEvent(new Event('lesson-progress-updated'));
+            if (!isCompletionNotifiedRef.current) {
+              isCompletionNotifiedRef.current = true;
+              if (onProgressSaved) onProgressSaved(true);
+            }
+          } else {
+            setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}% (Xem thực: ${coverageRes.watchedCoveragePercent.toFixed(0)}%)`);
+            if (onProgressSaved) onProgressSaved(false);
+          }
+
           setTimeout(() => setSaveNotice(null), 3000);
-          if (onProgressSaved) onProgressSaved();
         } catch {
-          // Bỏ qua lỗi mạng tức thời
+          // Fallback lưu cơ bản nếu coverage API tạm gián đoạn
+          try {
+            await progressApi.saveProgress(lessonId, time, percent);
+            setSaveNotice(`Đã lưu tiến độ: ${percent.toFixed(0)}%`);
+            setTimeout(() => setSaveNotice(null), 3000);
+            if (percent >= 90) {
+              if (!isCompletionNotifiedRef.current) {
+                isCompletionNotifiedRef.current = true;
+                if (onProgressSaved) onProgressSaved(true);
+              }
+            } else {
+              if (onProgressSaved) onProgressSaved(false);
+            }
+          } catch {
+            // Bỏ qua lỗi mạng tức thời
+          }
         }
       }
     },
     [lessonId, onProgressSaved]
   );
 
+  const handleSaveProgressRef = useRef(handleSaveProgress);
+  handleSaveProgressRef.current = handleSaveProgress;
+
+  const onProgressSavedRef = useRef(onProgressSaved);
+  onProgressSavedRef.current = onProgressSaved;
+
+  const onWatchedPercentChangeRef = useRef(onWatchedPercentChange);
+  onWatchedPercentChangeRef.current = onWatchedPercentChange;
+
+  const getCurrentPlayerTime = useCallback((): number => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const t = ytPlayerRef.current.getCurrentTime();
+        if (!isNaN(t) && t >= 0) return t;
+      } catch {}
+    }
+    if (videoRef.current) {
+      return videoRef.current.currentTime;
+    }
+    return currentTime;
+  }, [mediaInfo, currentTime]);
+
   const togglePlay = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (isPlaying) {
+          ytPlayerRef.current.pauseVideo();
+          setIsPlaying(false);
+          const cur = ytPlayerRef.current.getCurrentTime();
+          const dur = ytPlayerRef.current.getDuration();
+          handleSaveProgress(cur, dur, true);
+          segmentStartRef.current = null;
+        } else {
+          try {
+            segmentStartRef.current = ytPlayerRef.current.getCurrentTime();
+          } catch {}
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        }
+      } catch {}
+      return;
+    }
+
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
+      if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(videoRef.current.currentTime * 10) / 10,
+        });
+        segmentStartRef.current = null;
+      }
       handleSaveProgress(videoRef.current.currentTime, videoRef.current.duration, true);
     } else {
+      segmentStartRef.current = videoRef.current.currentTime;
       videoRef.current.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
+  };
+
+  const handleRewind10 = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        const target = Math.max(0, cur - 10);
+        ytPlayerRef.current.seekTo(target, true);
+        setCurrentTime(target);
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+    }
+  };
+
+  const handleForward10 = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        const dur = ytPlayerRef.current.getDuration();
+        const target = Math.min(dur || duration, cur + 10);
+        ytPlayerRef.current.seekTo(target, true);
+        setCurrentTime(target);
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
+    }
+  };
+
+  const handleToggleMute = () => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (isMuted) {
+          ytPlayerRef.current.unMute();
+          setIsMuted(false);
+        } else {
+          ytPlayerRef.current.mute();
+          setIsMuted(true);
+        }
+      } catch {}
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
   };
 
   const handleRetryStream = () => {
@@ -187,12 +455,29 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     const dur = videoRef.current.duration || 0;
     setCurrentTime(cur);
     setDuration(dur);
+    if (dur > 0 && onWatchedPercentChange) {
+      onWatchedPercentChange(Math.min(100, (cur / dur) * 100));
+    }
     handleSaveProgress(cur, dur, false);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(targetTime, true);
+        setCurrentTime(targetTime);
+      } catch {}
+      return;
+    }
     if (videoRef.current) {
+      if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
+        watchedIntervalsRef.current.push({
+          start: Math.round(segmentStartRef.current * 10) / 10,
+          end: Math.round(videoRef.current.currentTime * 10) / 10,
+        });
+      }
+      segmentStartRef.current = targetTime;
       videoRef.current.currentTime = targetTime;
       setCurrentTime(targetTime);
     }
@@ -203,6 +488,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     const nextSpeed = speeds[nextIdx];
     setPlaybackSpeed(nextSpeed);
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.setPlaybackRate(nextSpeed);
+      } catch {}
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = nextSpeed;
     }
@@ -223,22 +514,208 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     }
   };
 
-  // Nhảy tới mốc cắm cờ nếu được truyền từ bên ngoài (Mục Đánh Dấu)
+  // Nhảy tới mốc cắm cờ nếu được truyền từ bên ngoài (Mục Đánh Dấu / Bookmark Library)
   useEffect(() => {
-    if (initialSeekTime !== undefined && initialSeekTime !== null && initialSeekTime > 0 && videoRef.current) {
-      videoRef.current.currentTime = initialSeekTime;
-      setCurrentTime(initialSeekTime);
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-      setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
-      setTimeout(() => setSaveNotice(null), 3000);
+    if (initialSeekTime !== undefined && initialSeekTime !== null && initialSeekTime > 0) {
+      pendingSeekTimeRef.current = initialSeekTime;
+
+      // 1. YouTube Player
+      if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.seekTo(initialSeekTime, true);
+          ytPlayerRef.current.playVideo();
+          setCurrentTime(initialSeekTime);
+          setIsPlaying(true);
+          setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
+          setTimeout(() => setSaveNotice(null), 3000);
+          pendingSeekTimeRef.current = null;
+          initialSeekDoneRef.current = true;
+        } catch {}
+        return;
+      }
+
+      // 2. HTML5 Video Player
+      if (videoRef.current && videoRef.current.readyState >= 1) {
+        videoRef.current.currentTime = initialSeekTime;
+        setCurrentTime(initialSeekTime);
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+        setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
+        setTimeout(() => setSaveNotice(null), 3000);
+        pendingSeekTimeRef.current = null;
+        initialSeekDoneRef.current = true;
+      }
     }
-  }, [initialSeekTime]);
+  }, [initialSeekTime, mediaInfo]);
+
+  // Khởi tạo YouTube IFrame API và điều khiển video YouTube an toàn (chống xung đột React DOM removeChild)
+  const youtubeEmbedUrl =
+    mediaInfo && mediaInfo.sourceType === 'youtube'
+      ? mediaInfo.embedUrl || mediaInfo.externalUrl || mediaInfo.streamUrl || ''
+      : null;
+
+  useEffect(() => {
+    if (!mediaInfo || mediaInfo.sourceType !== 'youtube' || !youtubeEmbedUrl) {
+      return;
+    }
+
+    const container = youtubeContainerRef.current;
+    if (!container) return;
+
+    let isCancelled = false;
+    let timerId: number | null = null;
+    let playerInstance: YTPlayerInstance | null = null;
+
+    // Trích xuất videoId từ URL
+    const parsed = parseVideoUrl(youtubeEmbedUrl);
+    const videoId = parsed.videoId;
+
+    // Làm sạch DOM nội bộ của container mà không đụng chạm Virtual DOM của React
+    container.innerHTML = '';
+
+    const mountDiv = document.createElement('div');
+    const mountId = `yt-player-target-${lessonId}-${Date.now()}`;
+    mountDiv.id = mountId;
+    mountDiv.className = 'w-full h-full aspect-video';
+    container.appendChild(mountDiv);
+
+    const initYT = async () => {
+      try {
+        const YT = await loadYouTubeIframeApi();
+        if (isCancelled || !document.getElementById(mountId)) return;
+
+        playerInstance = new YT.Player(mountId, {
+          videoId: videoId || undefined,
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            enablejsapi: 1,
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event) => {
+              if (isCancelled) return;
+              ytPlayerRef.current = event.target;
+              try {
+                const dur = event.target.getDuration();
+                if (dur > 0) setDuration(dur);
+
+                if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
+                  const targetTime = Math.min(Math.max(0, dur - 2), pendingSeekTimeRef.current);
+                  event.target.seekTo(targetTime, true);
+                  setCurrentTime(targetTime);
+                  event.target.playVideo();
+                  setIsPlaying(true);
+                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(targetTime)}`);
+                  setTimeout(() => setSaveNotice(null), 3000);
+                  pendingSeekTimeRef.current = null;
+                  initialSeekDoneRef.current = true;
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0 && lastSavedPercentRef.current < 90) {
+                  const resumeTime = (lastSavedPercentRef.current / 100) * dur;
+                  if (resumeTime > 2 && resumeTime < dur - 5) {
+                    event.target.seekTo(resumeTime, true);
+                    setCurrentTime(resumeTime);
+                  }
+                  initialSeekDoneRef.current = true;
+                } else {
+                  event.target.seekTo(0, true);
+                  setCurrentTime(0);
+                  initialSeekDoneRef.current = true;
+                }
+              } catch {}
+            },
+            onStateChange: (event) => {
+              if (isCancelled) return;
+              if (event.data === YT.PlayerState.PLAYING) {
+                setIsPlaying(true);
+                try {
+                  segmentStartRef.current = event.target.getCurrentTime();
+                } catch {}
+              } else if (event.data === YT.PlayerState.PAUSED) {
+                setIsPlaying(false);
+                try {
+                  const cur = event.target.getCurrentTime();
+                  const dur = event.target.getDuration();
+                  handleSaveProgressRef.current(cur, dur, true);
+                  segmentStartRef.current = null;
+                } catch {}
+              } else if (event.data === YT.PlayerState.ENDED) {
+                setIsPlaying(false);
+                try {
+                  const dur = event.target.getDuration();
+                  handleSaveProgressRef.current(dur, dur, true);
+                  segmentStartRef.current = null;
+                  if (!isCompletionNotifiedRef.current) {
+                    isCompletionNotifiedRef.current = true;
+                    if (onProgressSavedRef.current) {
+                      onProgressSavedRef.current(true);
+                    }
+                  }
+                } catch {}
+              }
+            },
+          },
+        });
+        ytPlayerRef.current = playerInstance;
+      } catch (err) {
+        console.warn('Lỗi khởi tạo YouTube API, dùng iframe thuần dự phòng:', err);
+        if (!isCancelled && container) {
+          container.innerHTML = '';
+          const fallbackIframe = document.createElement('iframe');
+          fallbackIframe.src = youtubeEmbedUrl;
+          fallbackIframe.className = 'w-full h-full border-0 aspect-video';
+          fallbackIframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+          fallbackIframe.allowFullscreen = true;
+          container.appendChild(fallbackIframe);
+        }
+      }
+    };
+
+    initYT();
+
+    // Polling định kỳ đồng bộ thời gian và thanh tua khi xem video YouTube
+    timerId = window.setInterval(() => {
+      if (ytPlayerRef.current) {
+        try {
+          const cur = ytPlayerRef.current.getCurrentTime();
+          const dur = ytPlayerRef.current.getDuration();
+          if (!isNaN(cur) && cur >= 0) {
+            setCurrentTime(cur);
+            if (dur > 0) {
+              setDuration(dur);
+              const watchedPct = Math.min(100, (cur / dur) * 100);
+              if (onWatchedPercentChangeRef.current) {
+                onWatchedPercentChangeRef.current(watchedPct);
+              }
+            }
+            handleSaveProgressRef.current(cur, dur, false);
+          }
+        } catch {}
+      }
+    }, 500);
+
+    return () => {
+      isCancelled = true;
+      if (timerId) clearInterval(timerId);
+      try {
+        if (playerInstance) {
+          playerInstance.destroy();
+        }
+      } catch {}
+      ytPlayerRef.current = null;
+      if (container) {
+        container.innerHTML = '';
+      }
+    };
+  }, [lessonId, mediaInfo?.sourceType, youtubeEmbedUrl]);
 
   // 3. Xử lý cắm cờ mốc thời gian (Thêm điểm đánh dấu)
   const handleAddBookmark = useCallback(
     (title: string, note?: string) => {
-      const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
+      const curTime = getCurrentPlayerTime();
       const newBm = mediaBookmarkService.addBookmark({
         lessonId,
         mediaId,
@@ -253,11 +730,11 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       setSaveNotice(`Đã cắm cờ lúc ${newBm.formattedTime}`);
       setTimeout(() => setSaveNotice(null), 3000);
     },
-    [lessonId, mediaId, courseId, courseTitle, lessonTitle, currentTime]
+    [getCurrentPlayerTime, lessonId, mediaId, courseId, courseTitle, lessonTitle]
   );
 
   const handleOpenAddFlagModal = () => {
-    const curTime = videoRef.current ? videoRef.current.currentTime : currentTime;
+    const curTime = getCurrentPlayerTime();
     setFlagTimestamp(curTime);
     setFlagTitleInput(lessonTitle || 'Mốc ghi nhớ');
     setFlagNoteInput('');
@@ -283,6 +760,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   // 5. Xử lý nhảy tới mốc cắm cờ (Seek to flag)
   const handleSeekToBookmark = useCallback((timestamp: number) => {
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.seekTo(timestamp, true);
+        ytPlayerRef.current.playVideo();
+        setCurrentTime(timestamp);
+        setIsPlaying(true);
+        setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
+        setTimeout(() => setSaveNotice(null), 2500);
+        return;
+      } catch {}
+    }
+
     if (videoRef.current) {
       videoRef.current.currentTime = timestamp;
       setCurrentTime(timestamp);
@@ -290,8 +779,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       setIsPlaying(true);
       setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
       setTimeout(() => setSaveNotice(null), 2500);
+    } else {
+      pendingSeekTimeRef.current = timestamp;
+      setCurrentTime(timestamp);
+      setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
+      setTimeout(() => setSaveNotice(null), 2500);
     }
-  }, []);
+  }, [mediaInfo]);
 
   return (
     <div className="space-y-4">
@@ -311,7 +805,21 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
       {/* Video Screen Area */}
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {mediaInfo && (mediaInfo.sourceType === 'youtube' || mediaInfo.sourceType === 'vimeo') && mediaInfo.embedUrl ? (
+        {mediaInfo && mediaInfo.sourceType === 'youtube' && mediaInfo.embedUrl ? (
+          <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
+            <div
+              ref={youtubeContainerRef}
+              className="w-full h-full aspect-video flex items-center justify-center overflow-hidden"
+            />
+            {/* Badge hiển thị nguồn nhúng ngoài */}
+            <div className="absolute top-3 right-3 pointer-events-none z-10">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span>YouTube Video</span>
+              </span>
+            </div>
+          </div>
+        ) : mediaInfo && mediaInfo.sourceType === 'vimeo' && mediaInfo.embedUrl ? (
           <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
             <iframe
               src={mediaInfo.embedUrl}
@@ -324,17 +832,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             {/* Badge hiển thị nguồn nhúng ngoài */}
             <div className="absolute top-3 right-3 pointer-events-none z-10">
               <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-semibold shadow-lg">
-                {mediaInfo.sourceType === 'youtube' ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span>YouTube Video</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                    <span>Vimeo Video</span>
-                  </>
-                )}
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Vimeo Video</span>
               </span>
             </div>
           </div>
@@ -377,20 +876,44 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={() => {
               if (videoRef.current) {
-                setDuration(videoRef.current.duration || 0);
-                if (!initialSeekDone && lastSavedPercentRef.current > 0) {
-                  const resumeTime = (lastSavedPercentRef.current / 100) * (videoRef.current.duration || 0);
-                  if (resumeTime > 2) {
+                const dur = videoRef.current.duration || 0;
+                setDuration(dur);
+                if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
+                  const targetTime = Math.min(Math.max(0, dur - 2), pendingSeekTimeRef.current);
+                  videoRef.current.currentTime = targetTime;
+                  setCurrentTime(targetTime);
+                  videoRef.current.play().catch(() => {});
+                  setIsPlaying(true);
+                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(targetTime)}`);
+                  setTimeout(() => setSaveNotice(null), 3000);
+                  pendingSeekTimeRef.current = null;
+                  initialSeekDoneRef.current = true;
+                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0 && lastSavedPercentRef.current < 90) {
+                  const resumeTime = (lastSavedPercentRef.current / 100) * dur;
+                  if (resumeTime > 2 && resumeTime < dur - 5) {
                     videoRef.current.currentTime = resumeTime;
                     setCurrentTime(resumeTime);
                   }
-                  setInitialSeekDone(true);
+                  initialSeekDoneRef.current = true;
+                } else {
+                  // Mặc định bài mới bắt đầu từ 0:00
+                  videoRef.current.currentTime = 0;
+                  setCurrentTime(0);
+                  initialSeekDoneRef.current = true;
                 }
               }
             }}
             onEnded={() => {
               setIsPlaying(false);
-              if (videoRef.current) handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
+              if (videoRef.current) {
+                handleSaveProgress(videoRef.current.duration, videoRef.current.duration, true);
+              }
+              if (!isCompletionNotifiedRef.current) {
+                isCompletionNotifiedRef.current = true;
+                if (onProgressSaved) {
+                  onProgressSaved(true);
+                }
+              }
             }}
             onError={() => {
               if (videoSrc && !videoSrc.includes('test.mp4')) {
@@ -472,11 +995,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Lùi 10s */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-                }
-              }}
+              onClick={handleRewind10}
               title="Lùi 10 giây"
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
@@ -485,11 +1004,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Tiến 10s */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-                }
-              }}
+              onClick={handleForward10}
               title="Tua tới 10 giây"
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
@@ -498,12 +1013,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
             {/* Mute/Unmute */}
             <button
-              onClick={() => {
-                if (videoRef.current) {
-                  videoRef.current.muted = !isMuted;
-                  setIsMuted(!isMuted);
-                }
-              }}
+              onClick={handleToggleMute}
               title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
               className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
             >
@@ -576,6 +1086,48 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Cảnh báo Chống Gian Lận Tua Video (> 30%) */}
+      {antiCheatWarning && (
+        <div className="mx-3 my-2 p-3 bg-amber-950/80 border border-amber-500/40 rounded-xl text-amber-200 text-xs flex items-center gap-2 animate-fadeIn shadow-md">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{antiCheatWarning}</span>
+        </div>
+      )}
+
+      {/* Tabs Bên Dưới Video: Tổng quan vs Tài liệu đính kèm */}
+      <div className="p-4 border-t border-white/5 space-y-4">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('info')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+              activeBottomTab === 'info'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Thông tin bài học
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveBottomTab('attachments')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              activeBottomTab === 'attachments'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>📁 Tài liệu đính kèm (Word/PDF)</span>
+          </button>
+        </div>
+
+        {activeBottomTab === 'attachments' && (
+          <div className="pt-1 animate-fadeIn">
+            <LessonAttachmentsTab lessonId={lessonId} />
+          </div>
+        )}
       </div>
     </div>
 

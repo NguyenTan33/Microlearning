@@ -5,6 +5,8 @@ export interface Course {
   thumbnailUrl?: string;
   version: number;
   isPublished: boolean;
+  isPrivate?: boolean;
+  hasAccess?: boolean;
   createdAt: string;
   updatedAt?: string;
   totalSubjects: number;
@@ -12,6 +14,18 @@ export interface Course {
 
 export interface CourseDetail extends Course {
   subjects: Subject[];
+}
+
+export interface LessonAttachment {
+  id: number;
+  lessonId: number;
+  fileName: string;
+  originalFileName: string;
+  fileType: 'PDF' | 'WORD';
+  fileUrl: string;
+  fileSizeBytes: number;
+  sha256Checksum: string;
+  createdAt: string;
 }
 
 export interface Subject {
@@ -97,6 +111,8 @@ export interface Enrollment {
   status: number;
   enrolledAt: string;
   overallProgressPercent: number;
+  completedLessons?: number;
+  totalLessons?: number;
 }
 
 export interface LessonProgress {

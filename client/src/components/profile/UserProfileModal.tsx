@@ -24,7 +24,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { UserProfile, UserLearningStats, CourseLearningProgress } from '../../types/userProfile.types';
-import type { CourseDetail } from '../../types/catalog.types';
+import type { Course, CourseDetail } from '../../types/catalog.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 import { userProfileService } from '../../services/userProfileService';
 import { authApi } from '../../services/authApi';
@@ -34,7 +34,7 @@ interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: UserTokenPayload | null;
-  allCourses: CourseDetail[];
+  allCourses: Array<CourseDetail | Course>;
   completedLessonIds: number[];
   onSelectCourse: (courseId: number) => void;
   onProfileUpdated?: (profile: UserProfile) => void;
@@ -122,10 +122,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       enrollmentApi
         .getMyEnrollments()
         .then((enrolled) => {
-          const enrolledIds = enrolled.map((e) => e.courseId);
           const { stats: calculatedStats, courseList } = userProfileService.calculateLearningStats(
+            enrolled,
             allCourses,
-            enrolledIds,
             completedLessonIds
           );
           setStats(calculatedStats);
@@ -133,8 +132,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         })
         .catch(() => {
           const { stats: fallbackStats, courseList } = userProfileService.calculateLearningStats(
+            [],
             allCourses,
-            [1, 3],
             completedLessonIds
           );
           setStats(fallbackStats);
