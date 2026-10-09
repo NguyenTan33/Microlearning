@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { generateGuid } from './guidHelper';
+import { authApi } from '../services/authApi';
 
 const DEVICE_ID_KEY = 'MICROLEARN_DEVICE_ID';
 
@@ -38,4 +39,22 @@ export function getDeviceInfo(): {
     osVersion: `${Platform.OS} ${Platform.Version}`,
     appVersion: '1.0.0',
   };
+}
+
+/**
+ * Đăng ký thiết bị ngầm lên Azure mà không làm phiền người dùng
+ */
+export async function registerDeviceSilently(): Promise<void> {
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    const info = getDeviceInfo();
+    await authApi.registerDevice({
+      deviceId,
+      deviceModel: info.deviceModel,
+      osVersion: info.osVersion,
+      appVersion: info.appVersion,
+    });
+  } catch {
+    // Hoàn toàn im lặng khi offline hoặc lỗi mạng
+  }
 }

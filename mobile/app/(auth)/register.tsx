@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { User as UserIcon, Phone, Lock, ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
+import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -43,6 +44,7 @@ export default function RegisterScreen() {
       });
 
       await setAuth(res.user, res.accessToken, res.refreshToken);
+      registerDeviceSilently();
       router.replace('/(tabs)');
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Đăng ký thất bại. Vui lòng thử lại.';
