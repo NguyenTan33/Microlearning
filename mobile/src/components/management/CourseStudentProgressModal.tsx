@@ -57,13 +57,13 @@ export const CourseStudentProgressModal: React.FC<CourseStudentProgressModalProp
 
           {loading ? (
             <ActivityIndicator color="#06B6D4" style={{ marginVertical: 32 }} />
-          ) : students.length === 0 ? (
+          ) : !Array.isArray(students) || students.length === 0 ? (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyText}>Chưa có thông tin tiến độ học viên.</Text>
             </View>
           ) : (
             <ScrollView style={styles.studentList}>
-              {students.map((st) => (
+              {(Array.isArray(students) ? students : []).map((st) => (
                 <View key={st.accountId} style={styles.studentCard}>
                   <View style={styles.avatarCircle}>
                     <User color="#06B6D4" size={18} />
