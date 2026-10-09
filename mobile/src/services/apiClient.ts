@@ -13,9 +13,15 @@ export const apiClient = axios.create({
 export async function initializeApiBaseUrl(): Promise<string> {
   try {
     const customUrl = await secureStorage.getItem(STORAGE_KEYS.SERVER_URL);
-    if (customUrl) {
-      apiClient.defaults.baseURL = customUrl;
-      return customUrl;
+    if (
+      customUrl &&
+      !customUrl.includes('192.168.') &&
+      !customUrl.includes('localhost') &&
+      !customUrl.includes('127.0.0.1')
+    ) {
+      const clean = customUrl.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+      apiClient.defaults.baseURL = clean;
+      return clean;
     }
   } catch {
     // fallback
@@ -25,7 +31,7 @@ export async function initializeApiBaseUrl(): Promise<string> {
 }
 
 export async function setApiBaseUrl(url: string): Promise<void> {
-  const trimmed = url.replace(/\/+$/, '');
+  const trimmed = url.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
   apiClient.defaults.baseURL = trimmed;
   await secureStorage.setItem(STORAGE_KEYS.SERVER_URL, trimmed);
 }
