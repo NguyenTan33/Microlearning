@@ -3,17 +3,27 @@ import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.
 
 export const catalogRepository = {
   async saveCourses(courses: Course[]): Promise<void> {
-    const db = await getSQLiteDatabase();
-    const now = new Date().toISOString();
-    await db.withTransactionAsync(async () => {
-      for (const c of courses) {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [c.id, c.title, c.description || '', c.thumbnailUrl || '', c.totalSubjects || 0, now]
-        );
+    try {
+      const db = await getSQLiteDatabase();
+      const now = new Date().toISOString();
+      const persist = async () => {
+        for (const c of courses) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [c.id, c.title, c.description || '', c.thumbnailUrl || '', c.totalSubjects || 0, now]
+          );
+        }
+      };
+
+      try {
+        await db.withTransactionAsync(persist);
+      } catch {
+        await persist();
       }
-    });
+    } catch (err) {
+      console.warn('[catalogRepository] saveCourses error:', err);
+    }
   },
 
   async getAllCourses(): Promise<Course[]> {
@@ -26,7 +36,8 @@ export const catalogRepository = {
     try {
       const db = await getSQLiteDatabase();
       const now = new Date().toISOString();
-      await db.withTransactionAsync(async () => {
+
+      const persistOperations = async () => {
         await db.runAsync(
           `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
            VALUES (?, ?, ?, ?, ?, ?)`,
@@ -62,7 +73,14 @@ export const catalogRepository = {
             }
           }
         }
-      });
+      };
+
+      try {
+        await db.withTransactionAsync(persistOperations);
+      } catch {
+        // Fallback to sequential execution if a transaction is already active
+        await persistOperations();
+      }
     } catch (saveErr) {
       console.warn('[catalogRepository] saveCourseDetail error (safe ignored):', saveErr);
     }
