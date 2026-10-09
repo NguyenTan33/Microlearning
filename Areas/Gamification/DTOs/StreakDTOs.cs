@@ -9,6 +9,7 @@ namespace Microlearning.Areas.Gamification.DTOs
         int CompletedLessons,
         int TotalEligibleLessons,
         double OverallProgressPercent,
-        string StatusMessage
+        string StatusMessage,
+        bool IsNewStreakToday = false
     );
 }

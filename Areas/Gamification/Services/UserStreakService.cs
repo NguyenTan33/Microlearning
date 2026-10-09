@@ -78,6 +78,8 @@ namespace Microlearning.Areas.Gamification.Services
             var today = DateOnly.FromDateTime(nowUtc7);
             var yesterday = today.AddDays(-1);
 
+            bool isNewStreakToday = false;
+
             if (streak == null)
             {
                 streak = new UserStreak
@@ -89,6 +91,7 @@ namespace Microlearning.Areas.Gamification.Services
                     UpdatedAt = DateTime.UtcNow
                 };
                 _dbContext.UserStreaks.Add(streak);
+                isNewStreakToday = true;
             }
             else
             {
@@ -97,6 +100,7 @@ namespace Microlearning.Areas.Gamification.Services
                     streak.CurrentStreak = 1;
                     streak.LongestStreak = Math.Max(streak.LongestStreak, 1);
                     streak.LastActiveDate = today;
+                    isNewStreakToday = true;
                 }
                 else if (streak.LastActiveDate == yesterday)
                 {
@@ -104,14 +108,20 @@ namespace Microlearning.Areas.Gamification.Services
                     streak.CurrentStreak += 1;
                     streak.LongestStreak = Math.Max(streak.LongestStreak, streak.CurrentStreak);
                     streak.LastActiveDate = today;
+                    isNewStreakToday = true;
                 }
                 else if (streak.LastActiveDate < yesterday)
                 {
                     // Bị đứt chuỗi -> bắt đầu lại chuỗi 1
                     streak.CurrentStreak = 1;
                     streak.LastActiveDate = today;
+                    isNewStreakToday = true;
                 }
-                // Nếu streak.LastActiveDate == today: Đã học hôm nay rồi, không tăng streak ngày nữa
+                else
+                {
+                    // streak.LastActiveDate == today: Đã học hôm nay rồi, không tăng streak ngày nữa
+                    isNewStreakToday = false;
+                }
                 streak.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -125,7 +135,7 @@ namespace Microlearning.Areas.Gamification.Services
 
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Ghi nhận hoạt động học tập cho {UserId}: Streak={Streak}, HasCrown={Crown}", userId, streak.CurrentStreak, streak.HasMasterCrown);
+            _logger.LogInformation("Ghi nhận hoạt động học tập cho {UserId}: Streak={Streak}, HasCrown={Crown}, IsNewToday={IsNew}", userId, streak.CurrentStreak, streak.HasMasterCrown, isNewStreakToday);
 
             double progressPercent = totalLessons > 0 ? Math.Round((double)completedLessons / totalLessons * 100.0, 1) : 0;
             string message = crownEarned
@@ -141,7 +151,8 @@ namespace Microlearning.Areas.Gamification.Services
                 completedLessons,
                 totalLessons,
                 progressPercent,
-                message
+                message,
+                isNewStreakToday
             );
         }
 
