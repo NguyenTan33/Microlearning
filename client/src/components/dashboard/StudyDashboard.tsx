@@ -528,20 +528,20 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
     const wasCompletedBefore = lessonInitialStateRef.current.wasCompleted;
     const isLessonEligible = !wasCompletedBefore || initialPercent < 80;
 
-    if (isLessonEligible) {
-      try {
-        const todayStr = streakApi.getTodayString();
-        const lastCelebratedDate = localStorage.getItem('microlearning_streak_celebrated_date');
-        const alreadyCelebratedToday = lastCelebratedDate === todayStr;
+    // Kiểm tra đa tầng xem ngày hôm nay đã từng ăn mừng chuỗi streak chưa
+    const alreadyCelebratedToday = streakApi.hasCelebratedToday(currentUser?.userId);
 
+    if (isLessonEligible && !alreadyCelebratedToday) {
+      // KHÓA ĐỒNG BỘ NGAY LẬP TỨC: chặn đứng race condition từ nhiều event onEnded / timeupdate
+      streakApi.markCelebratedToday(currentUser?.userId);
+
+      try {
         const streakData = await streakApi.pingDailyActivity();
 
-        // Chỉ hiển thị hiệu ứng ăn mừng cho bài học đầu tiên trong ngày (chưa từng hiện hôm nay)
-        // và bài học này thực sự kích hoạt hoặc duy trì chuỗi học tập mới hôm nay
-        const shouldCelebrate = !alreadyCelebratedToday && (streakData.isNewStreakToday ?? (streakData.currentStreak > 0));
+        // Chỉ hiển thị popup ăn mừng nếu là streak thực sự hợp lệ (không bị đánh dấu false từ backend/local)
+        const shouldCelebrate = streakData.isNewStreakToday !== false && (streakData.currentStreak > 0);
 
         if (shouldCelebrate) {
-          localStorage.setItem('microlearning_streak_celebrated_date', todayStr);
           setStreakFlyUpInfo({
             currentStreak: Math.max(1, streakData.currentStreak || 1),
             message: streakData.statusMessage || 'Bạn đã hoàn thành bài học và duy trì ngọn lửa học tập hôm nay!',
@@ -551,6 +551,9 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       } catch (err) {
         console.warn('Lỗi khi ghi nhận streak:', err);
       }
+    } else {
+      // Các bài học tiếp theo trong cùng ngày: âm thầm ping để đồng bộ DB nếu cần thiết mà TUYỆT ĐỐI không bật popup
+      streakApi.pingDailyActivity().catch(() => {});
     }
 
     // Đánh dấu lại trạng thái bài hiện tại đã hoàn thành để không kích hoạt lặp lại trong phiên
