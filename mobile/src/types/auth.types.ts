@@ -11,19 +11,19 @@ export interface User {
 export interface AuthTokenResponse {
   accessToken: string;
   refreshToken: string;
-  expiresInSeconds?: number;
+  expiresAt?: string;
   user: User;
 }
 
 export interface LoginRequest {
   phoneNumber: string;
-  passwordHash: string;
+  password: string;
 }
 
 export interface RegisterRequest {
   fullName: string;
   phoneNumber: string;
-  passwordHash: string;
+  password: string;
 }
 
 export interface OtpVerifyRequest {

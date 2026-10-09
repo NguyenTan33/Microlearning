@@ -27,7 +27,7 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
-// Request Interceptor: Attach JWT Access Token
+// Request Interceptor: Attach Bearer Token
 apiClient.interceptors.request.use(
   async (config) => {
     const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -66,7 +66,7 @@ apiClient.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        const res = await axios.post(`${API_BASE_URL}/api/auth/refresh-token`, {
+        const res = await axios.post(`${API_BASE_URL}/api/Auth/refresh`, {
           refreshToken,
         });
 

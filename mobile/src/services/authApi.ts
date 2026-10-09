@@ -9,17 +9,17 @@ import type {
 
 export const authApi = {
   async login(data: LoginRequest): Promise<AuthTokenResponse> {
-    const res = await apiClient.post<AuthTokenResponse>('/api/auth/login', data);
+    const res = await apiClient.post<AuthTokenResponse>('/api/Auth/login', data);
     return res.data;
   },
 
   async register(data: RegisterRequest): Promise<AuthTokenResponse> {
-    const res = await apiClient.post<AuthTokenResponse>('/api/auth/register', data);
+    const res = await apiClient.post<AuthTokenResponse>('/api/Auth/register', data);
     return res.data;
   },
 
   async verifyOtp(data: OtpVerifyRequest): Promise<{ success: boolean; message: string }> {
-    const res = await apiClient.post<{ success: boolean; message: string }>('/api/auth/verify-otp', data);
+    const res = await apiClient.post<{ success: boolean; message: string }>('/api/Auth/verify-otp', data);
     return res.data;
   },
 
