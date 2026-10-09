@@ -13,13 +13,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Sparkles, Phone, Lock, ArrowRight, Eye, EyeOff, Zap, Settings, HelpCircle } from 'lucide-react-native';
+import { Sparkles, Phone, Lock, ArrowRight, Eye, EyeOff, Zap, HelpCircle } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { registerDeviceSilently } from '../../src/utils/deviceHelper';
 import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
-import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
 import { startGoogleOAuth, startFacebookOAuth } from '../../src/services/socialAuthService';
 import type { AuthTokenResponse } from '../../src/types/auth.types';
 
@@ -33,7 +32,6 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showServerConfig, setShowServerConfig] = useState(false);
   const [activeSocial, setActiveSocial] = useState<'google' | 'facebook' | null>(null);
   const [isSocialLoading, setIsSocialLoading] = useState(false);
 
@@ -153,17 +151,6 @@ export default function LoginScreen() {
       <StatusBar barStyle="light-content" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Top Gear Settings Button */}
-          <View style={styles.topBar}>
-            <TouchableOpacity
-              style={styles.settingsBtn}
-              onPress={() => setShowServerConfig(true)}
-              activeOpacity={0.7}
-            >
-              <Settings color="#38BDF8" size={20} />
-            </TouchableOpacity>
-          </View>
-
           {/* Top Hero Brand Header */}
           <View style={styles.logoContainer}>
             <View style={styles.logoGlowRing}>
@@ -187,13 +174,6 @@ export default function LoginScreen() {
             {errorMsg ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{errorMsg}</Text>
-                <TouchableOpacity
-                  style={styles.errorFixBtn}
-                  onPress={() => setShowServerConfig(true)}
-                >
-                  <Settings color="#38BDF8" size={14} />
-                  <Text style={styles.errorFixBtnText}>Đổi Máy Chủ / Đăng Nhập Demo</Text>
-                </TouchableOpacity>
               </View>
             ) : null}
 
@@ -279,12 +259,6 @@ export default function LoginScreen() {
         onClose={() => setShowForgotPassword(false)}
         initialPhoneNumber={phoneNumber}
       />
-
-      <ServerConfigModal
-        visible={showServerConfig}
-        onClose={() => setShowServerConfig(false)}
-        onDemoLogin={() => router.replace('/(tabs)')}
-      />
     </SafeAreaView>
   );
 }
@@ -298,21 +272,6 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
     flexGrow: 1,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 10,
-  },
-  settingsBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#090D1A',
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
@@ -391,22 +350,6 @@ const styles = StyleSheet.create({
     color: '#F43F5E',
     fontSize: 12,
     lineHeight: 18,
-  },
-  errorFixBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  errorFixBtnText: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '700',
   },
   inputGroup: {
     marginBottom: 16,
