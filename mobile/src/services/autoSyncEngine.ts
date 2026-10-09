@@ -8,6 +8,8 @@ import { syncApi } from './syncApi';
 import { catalogApi } from './catalogApi';
 import { streakApi } from './streakApi';
 import { guidHelper } from '../utils/guidHelper';
+import { secureStorage } from '../utils/secureStorage';
+import { STORAGE_KEYS } from '../utils/constants';
 
 let isSyncing = false;
 let syncTimer: NodeJS.Timeout | null = null;
@@ -62,6 +64,12 @@ export const autoSyncEngine = {
     try {
       const netState = await NetInfo.fetch();
       if (!netState.isConnected || !netState.isInternetReachable) {
+        return;
+      }
+
+      // Chỉ đồng bộ khi người dùng đã đăng nhập và có token
+      const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (!token) {
         return;
       }
 

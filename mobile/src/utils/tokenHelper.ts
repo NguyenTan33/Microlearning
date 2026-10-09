@@ -14,39 +14,45 @@ export interface UserTokenPayload {
  * Giải mã an toàn chuỗi Base64 / Base64Url đa nền tảng (React Native & Web)
  */
 function base64Decode(str: string): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let output = '';
+  const normalized = str.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
 
-  let normalized = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (normalized.length % 4) {
-    normalized += '=';
-  }
-
-  let bc = 0;
-  let bs = 0;
-  let idx = 0;
-
-  while (idx < normalized.length) {
-    const char = normalized.charAt(idx++);
-    const charIndex = chars.indexOf(char);
-    if (~charIndex) {
-      bs = bc % 4 ? bs * 64 + charIndex : charIndex;
-      if (bc++ % 4) {
-        output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
-      }
+  for (let i = 0; i < normalized.length; i++) {
+    const val = chars.indexOf(normalized[i]);
+    if (val === -1) continue;
+    buffer = (buffer << 6) | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
     }
   }
 
-  try {
-    return decodeURIComponent(
-      output
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-  } catch {
-    return output;
+  let output = '';
+  let i = 0;
+  while (i < bytes.length) {
+    const c = bytes[i++];
+    if (c > 191 && c < 224) {
+      const c2 = bytes[i++];
+      output += String.fromCharCode(((c & 31) << 6) | (c2 & 63));
+    } else if (c > 223 && c < 240) {
+      const c2 = bytes[i++];
+      const c3 = bytes[i++];
+      output += String.fromCharCode(((c & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+    } else if (c <= 127) {
+      output += String.fromCharCode(c);
+    } else {
+      const c2 = bytes[i++];
+      const c3 = bytes[i++];
+      const c4 = bytes[i++];
+      const code = (((c & 7) << 18) | ((c2 & 63) << 12) | ((c3 & 63) << 6) | (c4 & 63)) - 0x10000;
+      output += String.fromCharCode(0xd800 + (code >> 10), 0xdc00 + (code & 0x3ff));
+    }
   }
+  return output;
 }
 
 /**

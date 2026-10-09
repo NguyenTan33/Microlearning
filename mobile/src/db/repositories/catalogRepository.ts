@@ -3,17 +3,27 @@ import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.
 
 export const catalogRepository = {
   async saveCourses(courses: Course[]): Promise<void> {
-    const db = await getSQLiteDatabase();
-    const now = new Date().toISOString();
-    await db.withTransactionAsync(async () => {
-      for (const c of courses) {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [c.id, c.title, c.description || '', c.thumbnailUrl || '', c.totalSubjects || 0, now]
-        );
+    try {
+      const db = await getSQLiteDatabase();
+      const now = new Date().toISOString();
+      const persist = async () => {
+        for (const c of courses) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [c.id, c.title, c.description || '', c.thumbnailUrl || '', c.totalSubjects || 0, now]
+          );
+        }
+      };
+
+      try {
+        await db.withTransactionAsync(persist);
+      } catch {
+        await persist();
       }
-    });
+    } catch (err) {
+      console.warn('[catalogRepository] saveCourses error:', err);
+    }
   },
 
   async getAllCourses(): Promise<Course[]> {
@@ -23,45 +33,57 @@ export const catalogRepository = {
   },
 
   async saveCourseDetail(detail: CourseDetail): Promise<void> {
-    const db = await getSQLiteDatabase();
-    const now = new Date().toISOString();
-    await db.withTransactionAsync(async () => {
-      await db.runAsync(
-        `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [detail.id, detail.title, detail.description || '', detail.thumbnailUrl || '', detail.subjects?.length || 0, now]
-      );
+    try {
+      const db = await getSQLiteDatabase();
+      const now = new Date().toISOString();
 
-      if (detail.subjects) {
-        for (const s of detail.subjects) {
-          await db.runAsync(
-            `INSERT OR REPLACE INTO LocalSubjects (id, courseId, title, description, sortOrder, totalLessons)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [s.id, detail.id, s.title, s.description || '', s.sortOrder || 1, s.lessons?.length || 0]
-          );
+      const persistOperations = async () => {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, totalSubjects, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [detail.id, detail.title, detail.description || '', detail.thumbnailUrl || '', detail.subjects?.length || 0, now]
+        );
 
-          if (s.lessons) {
-            for (const l of s.lessons) {
-              await db.runAsync(
-                `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                  l.id,
-                  s.id,
-                  l.title,
-                  l.description || '',
-                  l.durationSeconds || 0,
-                  l.sortOrder || 1,
-                  l.hasQuiz ? 1 : 0,
-                  l.videoUrl || '',
-                  l.audioTtsUrl || '',
-                ]
-              );
+        if (detail.subjects) {
+          for (const s of detail.subjects) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO LocalSubjects (id, courseId, title, description, sortOrder, totalLessons)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [s.id, detail.id, s.title, s.description || '', s.sortOrder || 1, s.lessons?.length || 0]
+            );
+
+            if (s.lessons) {
+              for (const l of s.lessons) {
+                await db.runAsync(
+                  `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    l.id,
+                    s.id,
+                    l.title,
+                    l.description || '',
+                    l.durationSeconds || 0,
+                    l.sortOrder || 1,
+                    l.hasQuiz ? 1 : 0,
+                    l.videoUrl || '',
+                    l.audioTtsUrl || '',
+                  ]
+                );
+              }
             }
           }
         }
+      };
+
+      try {
+        await db.withTransactionAsync(persistOperations);
+      } catch {
+        // Fallback to sequential execution if a transaction is already active
+        await persistOperations();
       }
-    });
+    } catch (saveErr) {
+      console.warn('[catalogRepository] saveCourseDetail error (safe ignored):', saveErr);
+    }
   },
 
   async getCourseDetailById(courseId: number): Promise<CourseDetail | null> {

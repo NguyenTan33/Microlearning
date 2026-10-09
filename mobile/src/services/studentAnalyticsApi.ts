@@ -15,32 +15,20 @@ export interface StudentProgressDetail {
 export const studentAnalyticsApi = {
   async getStudentsProgress(courseId: number): Promise<StudentProgressDetail[]> {
     try {
-      const res = await apiClient.get<StudentProgressDetail[]>(
+      const res = await apiClient.get<any>(
         `/api/admin/courses/${courseId}/analytics/students-progress`
       );
-      return res.data;
-    } catch {
-      // Mock data when offline or server unreachable
-      return [
-        {
-          accountId: 'st-1',
-          fullName: 'Nguyễn Văn Học',
-          phoneNumber: '0912345678',
-          completedLessons: 8,
-          totalLessons: 10,
-          progressPercent: 80,
-          hasCompletedCourse: false,
-        },
-        {
-          accountId: 'st-2',
-          fullName: 'Trần Thị Giỏi',
-          phoneNumber: '0988776655',
-          completedLessons: 10,
-          totalLessons: 10,
-          progressPercent: 100,
-          hasCompletedCourse: true,
-        },
-      ];
+      const raw = res.data;
+      if (Array.isArray(raw)) {
+        return raw;
+      }
+      if (raw && Array.isArray(raw.items)) {
+        return raw.items;
+      }
+      return [];
+    } catch (err) {
+      console.warn(`[StudentAnalyticsApi] Error fetching students progress for course ${courseId}:`, err);
+      return [];
     }
   },
 };
