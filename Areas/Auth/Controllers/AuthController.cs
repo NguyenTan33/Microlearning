@@ -104,6 +104,52 @@ namespace Microlearning.Areas.Auth.Controllers
             return Ok(response);
         }
 
+        // OAUTH DEEP LINK CALLBACK
+        [AllowAnonymous]
+        [HttpGet("oauth-callback")]
+        public ContentResult OAuthCallback()
+        {
+            var html = @"<!DOCTYPE html>
+<html lang=""vi"">
+<head>
+  <meta charset=""utf-8"">
+  <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
+  <title>MicroLearning OAuth</title>
+  <style>
+    body { background-color: #070B18; color: #F8FAFC; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .loader { width: 40px; height: 40px; border: 3px solid #1E293B; border-top-color: #6366F1; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    a.btn { display: inline-block; margin-top: 24px; padding: 12px 24px; background: #6366F1; color: #fff; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class=""loader""></div>
+  <h2>Đang chuyển hướng về MicroLearning...</h2>
+  <p style=""color: #94A3B8;"">Vui lòng đợi giây lát hoặc bấm nút bên dưới.</p>
+  <div id=""action-container""></div>
+  <script>
+    (function() {
+      var hash = window.location.hash ? window.location.hash.substring(1) : '';
+      var search = window.location.search ? window.location.search.substring(1) : '';
+      var queryParams = hash || search;
+      var deepLink = 'microlearning://oauth-callback?' + queryParams;
+      
+      window.location.href = deepLink;
+
+      setTimeout(function() {
+        var container = document.getElementById('action-container');
+        if (container) {
+          container.innerHTML = '<a class=""btn"" href=""' + deepLink + '"">Mở Ứng Dụng MicroLearning</a>';
+        }
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>";
+
+            return Content(html, "text/html", System.Text.Encoding.UTF8);
+        }
+
         // REFRESH TOKEN
         [AllowAnonymous]
         [EnableRateLimiting("AuthPolicy")]

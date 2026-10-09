@@ -46,7 +46,7 @@ export const catalogApi = {
     // Live composition: Tự động tải danh sách live subjects và lessons từ SQL để dữ liệu luôn mới 100%
     try {
       const liveSubjects = await this.getSubjectsByCourse(courseId);
-      if (Array.isArray(liveSubjects)) {
+      if (Array.isArray(liveSubjects) && liveSubjects.length > 0) {
         const subjectsWithLessons = await Promise.all(
           liveSubjects.map(async (subj) => {
             try {
@@ -131,6 +131,7 @@ export const catalogApi = {
       title: string;
       description: string;
       thumbnailUrl?: string;
+      isPublished?: boolean;
       isPrivate?: boolean;
       accessPassword?: string;
     }

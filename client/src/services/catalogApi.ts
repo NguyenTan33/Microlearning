@@ -335,6 +335,7 @@ export const catalogApi = {
       title: string;
       description: string;
       thumbnailUrl: string;
+      isPublished?: boolean;
       isPrivate?: boolean;
       accessPassword?: string;
     }
