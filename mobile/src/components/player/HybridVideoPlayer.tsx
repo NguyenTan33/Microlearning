@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { HardDrive, Globe } from 'lucide-react-native';
+import { HardDrive, Globe, Maximize2, AlertCircle } from 'lucide-react-native';
 import { downloadManager } from '../../services/downloadManager';
 import { autoSyncEngine } from '../../services/autoSyncEngine';
+import { catalogApi } from '../../services/catalogApi';
 
 interface HybridVideoPlayerProps {
   lessonId: number;
@@ -21,36 +22,58 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   const [sourceUri, setSourceUri] = useState<string | null>(null);
   const [isOfflineSource, setIsOfflineSource] = useState<boolean>(false);
   const [isLoadingSource, setIsLoadingSource] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const lastRecordedTimeRef = useRef<number>(0);
+  const videoViewRef = useRef<VideoView | null>(null);
 
-  // 1. Phân giải nguồn phát: Ưu tiên file offline trong máy, fallback online HTTP 206
+  // 1. Phân giải nguồn phát: Ưu tiên file offline, tiếp theo là Media Info thật từ Azure API
   useEffect(() => {
     let isMounted = true;
     setIsLoadingSource(true);
+    setLoadError(null);
 
-    downloadManager
-      .resolvePlayableVideoUri(lessonId, onlineStreamUrl)
-      .then((resolved) => {
+    const resolveStream = async () => {
+      try {
+        let streamTargetUrl = onlineStreamUrl;
+
+        // Nếu chưa có streamUrl, truy vấn trực tiếp /api/media/lesson/{id}/info từ Azure API
+        if (!streamTargetUrl) {
+          try {
+            const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+            if (mediaInfo) {
+              streamTargetUrl = mediaInfo.streamUrl || mediaInfo.externalUrl || undefined;
+            }
+          } catch {
+            // Không lấy được online media info
+          }
+        }
+
+        const resolved = await downloadManager.resolvePlayableVideoUri(lessonId, streamTargetUrl);
         if (isMounted) {
-          setSourceUri(resolved.uri);
-          setIsOfflineSource(resolved.isOffline);
+          if (resolved.uri) {
+            setSourceUri(resolved.uri);
+            setIsOfflineSource(resolved.isOffline);
+          } else {
+            setLoadError('Bài học này chưa có video hoặc đang được xử lý.');
+          }
           setIsLoadingSource(false);
         }
-      })
-      .catch(() => {
+      } catch (err) {
         if (isMounted) {
-          setSourceUri(onlineStreamUrl || null);
-          setIsOfflineSource(false);
+          setLoadError('Không thể nạp nguồn video bài học.');
           setIsLoadingSource(false);
         }
-      });
+      }
+    };
+
+    resolveStream();
 
     return () => {
       isMounted = false;
     };
   }, [lessonId, onlineStreamUrl]);
 
-  // 2. Khởi tạo player với expo-video thế hệ mới
+  // 2. Khởi tạo player với expo-video
   const player = useVideoPlayer(sourceUri || '', (p) => {
     p.loop = false;
   });
@@ -81,19 +104,26 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     };
   }, [player, lessonId, durationSeconds, onCompleted]);
 
+  const handleToggleFullscreen = () => {
+    if (videoViewRef.current) {
+      videoViewRef.current.enterFullscreen();
+    }
+  };
+
   if (isLoadingSource) {
     return (
       <View style={styles.videoContainer}>
         <ActivityIndicator size="large" color="#6366F1" />
-        <Text style={styles.resolvingText}>Đang chuẩn bị luồng video...</Text>
+        <Text style={styles.resolvingText}>Đang kết nối luồng phát video Azure...</Text>
       </View>
     );
   }
 
-  if (!sourceUri) {
+  if (loadError || !sourceUri) {
     return (
       <View style={styles.videoContainer}>
-        <Text style={styles.errorText}>Không tìm thấy tệp video bài học.</Text>
+        <AlertCircle color="#F59E0B" size={28} />
+        <Text style={styles.errorText}>{loadError || 'Chưa gắn tệp video cho bài học này.'}</Text>
       </View>
     );
   }
@@ -101,10 +131,13 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   return (
     <View style={styles.videoContainer}>
       <VideoView
+        ref={videoViewRef}
         player={player}
         style={styles.video}
         contentFit="contain"
         nativeControls={true}
+        fullscreenOptions={{ enable: true }}
+        allowsPictureInPicture={true}
       />
 
       {/* Badge chỉ định nguồn phát */}
@@ -117,10 +150,19 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         ) : (
           <>
             <Globe color="#38BDF8" size={13} />
-            <Text style={styles.onlineSourceText}>Phát trực tuyến (HTTP 206)</Text>
+            <Text style={styles.onlineSourceText}>Phát Azure Cloud</Text>
           </>
         )}
       </View>
+
+      {/* Nút phóng to toàn màn hình */}
+      <TouchableOpacity
+        style={styles.fullscreenBtn}
+        onPress={handleToggleFullscreen}
+        activeOpacity={0.8}
+      >
+        <Maximize2 color="#FFFFFF" size={14} />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -148,9 +190,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   errorText: {
-    color: '#EF4444',
+    color: '#F59E0B',
     fontSize: 13,
     fontWeight: '500',
+    marginTop: 6,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   sourceBadge: {
     position: 'absolute',
@@ -163,6 +208,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
     gap: 5,
+    zIndex: 10,
+  },
+  fullscreenBtn: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    padding: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     zIndex: 10,
   },
   offlineSourceText: {

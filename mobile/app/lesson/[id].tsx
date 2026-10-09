@@ -18,6 +18,9 @@ import {
   Paperclip,
   BookOpen,
   Lock,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
 } from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
@@ -32,6 +35,7 @@ import { downloadManager } from '../../src/services/downloadManager';
 import { outboxRepository } from '../../src/db/repositories/outboxRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { generateGuid } from '../../src/utils/guidHelper';
+import { streakApi } from '../../src/services/streakApi';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -42,6 +46,7 @@ export default function LessonScreen() {
   const { downloadedLessonIds, refreshDownloads } = useDownloadStore();
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [siblingLessons, setSiblingLessons] = useState<Lesson[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [watchedPercent, setWatchedPercent] = useState<number>(0);
   const [downloading, setDownloading] = useState(false);
@@ -52,26 +57,35 @@ export default function LessonScreen() {
   const [showAttachments, setShowAttachments] = useState(false);
   const [showNotebook, setShowNotebook] = useState(false);
   const [showStreakModal, setShowStreakModal] = useState(false);
+  const [currentStreakCount, setCurrentStreakCount] = useState(1);
 
   const isOfflineReady = downloadedLessonIds.has(lessonId);
 
   const loadLesson = useCallback(async () => {
     try {
-      // 1. SQLite First
+      // 1. Đọc từ SQLite trước
       let item = await catalogRepository.getLessonById(lessonId);
       if (item) {
         setLesson(item);
       }
 
-      // 2. API fetch if online
+      // 2. Tải trực tiếp từ Azure API
       try {
         item = await catalogApi.getLessonById(lessonId);
         setLesson(item);
+
+        // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
+        if (item.subjectId) {
+          const siblings = await catalogApi.getLessonsBySubject(item.subjectId);
+          if (Array.isArray(siblings)) {
+            setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
+          }
+        }
       } catch {
         // Fallback SQLite
       }
 
-      // Check progress
+      // 3. Kiểm tra tiến độ học
       const progress = await progressRepository.getByLessonId(lessonId);
       if (progress) {
         setIsCompleted(progress.isCompleted === 1);
@@ -87,6 +101,11 @@ export default function LessonScreen() {
   useEffect(() => {
     loadLesson();
   }, [loadLesson]);
+
+  // Xác định bài trước và bài sau
+  const currentIndex = siblingLessons.findIndex((l) => l.id === lessonId);
+  const prevLesson = currentIndex > 0 ? siblingLessons[currentIndex - 1] : null;
+  const nextLesson = currentIndex >= 0 && currentIndex < siblingLessons.length - 1 ? siblingLessons[currentIndex + 1] : null;
 
   const handleCompleteLesson = async () => {
     try {
@@ -108,6 +127,16 @@ export default function LessonScreen() {
         createdAt: new Date().toISOString(),
       });
 
+      // Điểm danh streak thật trên Azure API
+      try {
+        const streak = await streakApi.pingStreak();
+        if (streak && streak.currentStreak) {
+          setCurrentStreakCount(streak.currentStreak);
+        }
+      } catch {
+        // ignore
+      }
+
       setShowStreakModal(true);
     } catch (err) {
       console.warn('[Lesson] Complete error:', err);
@@ -115,32 +144,46 @@ export default function LessonScreen() {
   };
 
   const handleDownload = async () => {
-    if (!lesson || !lesson.videoUrl) {
-      Alert.alert('Thông báo', 'Bài học này chưa hỗ trợ video ngoại tuyến.');
-      return;
-    }
+    if (!lesson) return;
 
     setDownloading(true);
     setDownloadProgress(0);
 
-    const localUri = await downloadManager.downloadLessonVideo(
-      lessonId,
-      lesson.videoUrl,
-      lesson.title,
-      (pct) => setDownloadProgress(pct)
-    );
+    try {
+      let downloadUrl = lesson.videoUrl;
+      if (!downloadUrl) {
+        const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+        downloadUrl = mediaInfo?.streamUrl || mediaInfo?.externalUrl || undefined;
+      }
 
-    setDownloading(false);
-    if (localUri) {
-      await refreshDownloads();
-      Alert.alert('Thành công! 💾', 'Đã tải bài học về bộ nhớ offline.');
-    } else {
-      Alert.alert('Lỗi', 'Không thể tải bài học. Vui lòng thử lại.');
+      if (!downloadUrl) {
+        Alert.alert('Thông báo', 'Bài học này chưa có tệp video trực tiếp để tải.');
+        setDownloading(false);
+        return;
+      }
+
+      const localUri = await downloadManager.downloadLessonVideo(
+        lessonId,
+        downloadUrl,
+        lesson.title,
+        (pct) => setDownloadProgress(pct)
+      );
+
+      if (localUri) {
+        await refreshDownloads();
+        Alert.alert('Thành công! 💾', 'Đã tải bài học về bộ nhớ ngoại tuyến.');
+      } else {
+        Alert.alert('Lỗi', 'Không thể tải bài học. Vui lòng thử lại sau.');
+      }
+    } catch {
+      Alert.alert('Lỗi', 'Quá trình tải ngoại tuyến gặp sự cố.');
+    } finally {
+      setDownloading(false);
     }
   };
 
   if (loading) {
-    return <LoadingIndicator message="Đang nạp video bài giảng..." />;
+    return <LoadingIndicator message="Đang nạp bài giảng..." />;
   }
 
   if (!lesson) {
@@ -156,7 +199,6 @@ export default function LessonScreen() {
     );
   }
 
-  // Strict 60% coverage quiz unlock condition
   const canTakeQuiz = isCompleted || watchedPercent >= 60;
 
   return (
@@ -172,13 +214,50 @@ export default function LessonScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Hybrid Video Player (Expo Video) */}
+        {/* Trình phát Video Hybrid kết nối Azure Media Stream */}
         <HybridVideoPlayer
           lessonId={lessonId}
           onlineStreamUrl={lesson.videoUrl}
           durationSeconds={lesson.durationSeconds}
           onCompleted={handleCompleteLesson}
         />
+
+        {/* Thanh Điều Hướng: Nút Bài Trước & Bài Tiếp Theo */}
+        <View style={styles.navRow}>
+          <TouchableOpacity
+            style={[styles.navBtn, !prevLesson && styles.navBtnDisabled]}
+            disabled={!prevLesson}
+            onPress={() => {
+              if (prevLesson) router.replace(`/lesson/${prevLesson.id}`);
+            }}
+            activeOpacity={0.7}
+          >
+            <ChevronLeft color={prevLesson ? '#818CF8' : '#475569'} size={18} />
+            <Text style={[styles.navBtnText, !prevLesson && styles.navBtnTextDisabled]} numberOfLines={1}>
+              Bài trước
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.navIndicator}>
+            <Text style={styles.navIndicatorText}>
+              {currentIndex >= 0 ? `${currentIndex + 1}/${siblingLessons.length}` : ''}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.navBtn, !nextLesson && styles.navBtnDisabled]}
+            disabled={!nextLesson}
+            onPress={() => {
+              if (nextLesson) router.replace(`/lesson/${nextLesson.id}`);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.navBtnText, !nextLesson && styles.navBtnTextDisabled]} numberOfLines={1}>
+              Bài tiếp
+            </Text>
+            <ChevronRight color={nextLesson ? '#818CF8' : '#475569'} size={18} />
+          </TouchableOpacity>
+        </View>
 
         {/* Quick Toolbar: Attachments & Notebook */}
         <View style={styles.toolBarRow}>
@@ -201,7 +280,7 @@ export default function LessonScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Lesson Metadata & Action Buttons */}
+        {/* Thông tin Bài học & Nút Hoàn thành / Tải Offline */}
         <View style={styles.lessonMetaSection}>
           <Text style={styles.lessonTitle}>{lesson.title}</Text>
           <Text style={styles.lessonDesc}>
@@ -239,14 +318,14 @@ export default function LessonScreen() {
 
         {/* Audio TTS Player */}
         <AudioTtsPlayer
+          lessonId={lessonId}
           lessonTitle={lesson.title}
-          lessonContent={lesson.description}
-          audioTtsUrl={lesson.audioTtsUrl}
+          lessonContent={lesson.description || lesson.title}
         />
 
-        {/* Quiz CTA Card with 60% Strict Coverage Rule */}
+        {/* Khối bài thi trắc nghiệm */}
         {lesson.hasQuiz ? (
-          <View style={[styles.quizCtaCard, !canTakeQuiz && styles.quizCtaCardLocked]}>
+          <View style={styles.quizCtaCard}>
             <View style={styles.quizIconBox}>
               <FileQuestion color={canTakeQuiz ? '#F59E0B' : '#64748B'} size={24} />
             </View>
@@ -298,8 +377,24 @@ export default function LessonScreen() {
 
       <DuolingoStreakCelebrationModal
         visible={showStreakModal}
-        streakCount={5}
-        onClose={() => setShowStreakModal(false)}
+        streakCount={currentStreakCount}
+        onClose={() => {
+          setShowStreakModal(false);
+          // Gợi ý tự động chuyển sang bài tiếp theo nếu có
+          if (nextLesson) {
+            Alert.alert(
+              'Tiếp tục bài tiếp theo?',
+              `Bạn có muốn chuyển sang "${nextLesson.title}" không?`,
+              [
+                { text: 'Ở lại', style: 'cancel' },
+                {
+                  text: 'Học tiếp',
+                  onPress: () => router.replace(`/lesson/${nextLesson.id}`),
+                },
+              ]
+            );
+          }
+        }}
       />
     </SafeAreaView>
   );
@@ -326,6 +421,46 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 36 },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 10,
+  },
+  navBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0E1428',
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  navBtnDisabled: {
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  navBtnText: {
+    color: '#818CF8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  navBtnTextDisabled: {
+    color: '#475569',
+  },
+  navIndicator: {
+    paddingHorizontal: 8,
+  },
+  navIndicatorText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   toolBarRow: {
     flexDirection: 'row',
     gap: 10,
@@ -379,40 +514,37 @@ const styles = StyleSheet.create({
   downloadActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    justifyContent: 'center',
+    backgroundColor: '#0E1428',
     borderRadius: 12,
-    paddingHorizontal: 14,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
+    borderColor: '#334155',
   },
   downloadActionBtnDone: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
   },
-  downloadActionText: { color: '#818CF8', fontSize: 13, fontWeight: '700' },
+  downloadActionText: { color: '#E2E8F0', fontSize: 13, fontWeight: '600' },
   downloadActionTextDone: { color: '#10B981' },
   quizCtaCard: {
+    backgroundColor: '#0B0F19',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
     gap: 12,
-    marginTop: 10,
-  },
-  quizCtaCardLocked: {
-    borderColor: '#1E293B',
-    opacity: 0.8,
+    marginTop: 14,
   },
   quizIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -420,16 +552,28 @@ const styles = StyleSheet.create({
   quizCtaSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
   startQuizBtn: {
     backgroundColor: '#F59E0B',
-    paddingHorizontal: 14,
     paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   startQuizBtnDisabled: {
     backgroundColor: '#1E293B',
   },
-  startQuizText: { color: '#070B17', fontSize: 12, fontWeight: '800' },
-  errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  errorTitle: { color: '#F43F5E', fontSize: 16, fontWeight: '700', marginBottom: 14 },
-  backBtn: { backgroundColor: '#6366F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
-  backBtnText: { color: '#FFFFFF', fontWeight: '700' },
+  startQuizText: { color: '#000000', fontSize: 12, fontWeight: '700' },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  errorTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  backBtn: {
+    backgroundColor: '#6366F1',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  backBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 });
