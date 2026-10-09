@@ -1,52 +1,66 @@
-import { apiClient } from './apiClient';
+import { secureStorage } from '../utils/secureStorage';
+import type { MediaBookmark, CreateMediaBookmarkPayload } from '../types/mediaBookmark.types';
 
-export interface MediaBookmarkItem {
-  id: number;
-  lessonId: number;
-  lessonTitle: string;
-  timestampSeconds: number;
-  noteText: string;
-  createdAt: string;
+const BOOKMARK_STORAGE_KEY = 'microlearning_media_bookmarks_store';
+
+export function formatBookmarkTime(secs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(secs));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+  }
+  return `${pad(minutes)}:${pad(seconds)}`;
 }
 
 export const mediaBookmarkService = {
-  /**
-   * Lấy danh sách các mốc đánh dấu bài học của học viên
-   */
-  async getBookmarks(): Promise<MediaBookmarkItem[]> {
+  async getAllBookmarks(): Promise<MediaBookmark[]> {
     try {
-      const response = await apiClient.get<MediaBookmarkItem[]>('/media/bookmarks');
-      return response.data;
+      const raw = await secureStorage.getItem(BOOKMARK_STORAGE_KEY);
+      if (!raw) return [];
+      const list = JSON.parse(raw) as MediaBookmark[];
+      return Array.isArray(list) ? list : [];
     } catch {
       return [];
     }
   },
 
-  /**
-   * Thêm mốc thời gian đánh dấu bài học
-   */
-  async addBookmark(lessonId: number, timestampSeconds: number, noteText: string): Promise<MediaBookmarkItem | null> {
-    try {
-      const response = await apiClient.post<MediaBookmarkItem>('/media/bookmarks', {
-        lessonId,
-        timestampSeconds,
-        noteText,
-      });
-      return response.data;
-    } catch {
-      return null;
-    }
+  async getBookmarksByLesson(lessonId: number): Promise<MediaBookmark[]> {
+    const all = await this.getAllBookmarks();
+    return all
+      .filter((b) => b.lessonId === lessonId)
+      .sort((a, b) => a.timestamp - b.timestamp);
   },
 
-  /**
-   * Xóa mốc đánh dấu
-   */
-  async removeBookmark(bookmarkId: number): Promise<boolean> {
-    try {
-      await apiClient.delete(`/media/bookmarks/${bookmarkId}`);
-      return true;
-    } catch {
-      return true;
-    }
+  async addBookmark(payload: CreateMediaBookmarkPayload): Promise<MediaBookmark> {
+    const all = await this.getAllBookmarks();
+    const formattedTime = formatBookmarkTime(payload.timestamp);
+    const newBookmark: MediaBookmark = {
+      id: `bm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      lessonId: payload.lessonId,
+      mediaId: payload.mediaId,
+      courseId: payload.courseId || 1,
+      courseTitle: payload.courseTitle || 'Khóa học Microlearning',
+      lessonTitle: payload.lessonTitle || 'Bài học',
+      timestamp: Number(payload.timestamp.toFixed(1)),
+      formattedTime,
+      title: payload.title.trim(),
+      note: payload.note?.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    all.push(newBookmark);
+    await secureStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(all));
+    return newBookmark;
+  },
+
+  async deleteBookmark(bookmarkId: string): Promise<void> {
+    const all = await this.getAllBookmarks();
+    const filtered = all.filter((b) => b.id !== bookmarkId);
+    await secureStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(filtered));
   },
 };

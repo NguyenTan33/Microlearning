@@ -1,233 +1,215 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
   Text,
+  StyleSheet,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
-import { X, Bookmark, Clock, Trash2, ArrowRight } from 'lucide-react-native';
-import { mediaBookmarkService, MediaBookmarkItem } from '../../services/mediaBookmarkService';
-import { formatDuration } from '../../utils/formatters';
+import {
+  X,
+  Bookmark,
+  Clock,
+  Play,
+  Trash2,
+  BookOpen,
+} from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import {
+  mediaBookmarkService,
+} from '../../services/mediaBookmarkService';
+import type { MediaBookmark } from '../../types/mediaBookmark.types';
 
 interface BookmarkLibraryModalProps {
   visible: boolean;
   onClose: () => void;
-  onNavigateToBookmark?: (lessonId: number, timestampSeconds: number) => void;
+  onSelectBookmark?: (bm: MediaBookmark) => void;
 }
 
 export const BookmarkLibraryModal: React.FC<BookmarkLibraryModalProps> = ({
   visible,
   onClose,
-  onNavigateToBookmark,
+  onSelectBookmark,
 }) => {
-  const [bookmarks, setBookmarks] = useState<MediaBookmarkItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [bookmarks, setBookmarks] = useState<MediaBookmark[]>([]);
 
-  const loadBookmarks = async () => {
-    setLoading(true);
-    try {
-      const data = await mediaBookmarkService.getBookmarks();
-      setBookmarks(data);
-    } catch {
-      setBookmarks([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadBookmarks = useCallback(async () => {
+    const list = await mediaBookmarkService.getAllBookmarks();
+    setBookmarks(list);
+  }, []);
 
   useEffect(() => {
     if (visible) {
       loadBookmarks();
     }
-  }, [visible]);
+  }, [visible, loadBookmarks]);
 
-  const handleRemove = async (id: number) => {
-    try {
-      await mediaBookmarkService.removeBookmark(id);
-      setBookmarks(bookmarks.filter((b) => b.id !== id));
-    } catch {
-      Alert.alert('Lỗi', 'Không thể xóa mốc đánh dấu.');
+  const handleDelete = async (id: string) => {
+    await mediaBookmarkService.deleteBookmark(id);
+    loadBookmarks();
+  };
+
+  const handleOpenBookmark = (bm: MediaBookmark) => {
+    onClose();
+    if (onSelectBookmark) {
+      onSelectBookmark(bm);
+    } else {
+      router.push(`/lesson/${bm.lessonId}`);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <View style={styles.titleRow}>
-              <Bookmark color="#38BDF8" size={24} fill="#38BDF8" />
-              <Text style={styles.modalTitle}>Thư Viện Đánh Dấu Bài Học</Text>
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <View style={styles.iconBox}>
+              <Bookmark color="#6366F1" size={20} fill="#6366F1" />
             </View>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <X color="#94A3B8" size={20} />
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.headerTitle}>Mục Đánh Dấu & Video Yêu Thích</Text>
+              <Text style={styles.headerSubtitle}>Các mốc thời gian bài giảng bạn đã lưu lại</Text>
+            </View>
           </View>
-
-          {loading ? (
-            <ActivityIndicator size="large" color="#6366F1" style={{ marginVertical: 30 }} />
-          ) : bookmarks.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Bookmark color="#64748B" size={48} />
-              <Text style={styles.emptyTitle}>Chưa có mốc đánh dấu nào</Text>
-              <Text style={styles.emptySub}>
-                Khi xem video bài giảng, bấm Đánh dấu để lưu lại các mốc thời gian quan trọng.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView style={styles.bookmarksList}>
-              {bookmarks.map((bm) => (
-                <View key={bm.id} style={styles.bmCard}>
-                  <View style={styles.bmInfo}>
-                    <Text style={styles.bmLesson}>{bm.lessonTitle}</Text>
-                    <View style={styles.timeTag}>
-                      <Clock color="#38BDF8" size={12} />
-                      <Text style={styles.timeText}>{formatDuration(bm.timestampSeconds)}</Text>
-                    </View>
-                    {bm.noteText && <Text style={styles.bmNote}>"{bm.noteText}"</Text>}
-                  </View>
-
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={() => handleRemove(bm.id)}
-                    >
-                      <Trash2 color="#EF4444" size={18} />
-                    </TouchableOpacity>
-
-                    {onNavigateToBookmark && (
-                      <TouchableOpacity
-                        style={styles.openBtn}
-                        onPress={() => {
-                          onClose();
-                          onNavigateToBookmark(bm.lessonId, bm.timestampSeconds);
-                        }}
-                      >
-                        <ArrowRight color="#FFFFFF" size={18} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          )}
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+            <X color="#94A3B8" size={22} />
+          </TouchableOpacity>
         </View>
+
+        {bookmarks.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Bookmark color="#475569" size={48} />
+            <Text style={styles.emptyTitle}>Chưa có mốc đánh dấu nào</Text>
+            <Text style={styles.emptyDesc}>
+              Khi xem video bài giảng, hãy bấm biểu tượng Cắm Cờ hoặc Đánh Dấu để lưu lại khoảnh khắc quan trọng.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.countText}>Đang lưu {bookmarks.length} mốc đánh dấu</Text>
+
+            {bookmarks.map((bm) => (
+              <View key={bm.id} style={styles.bookmarkCard}>
+                <TouchableOpacity
+                  style={styles.cardMain}
+                  onPress={() => handleOpenBookmark(bm)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.timeBadge}>
+                    <Clock color="#6366F1" size={13} />
+                    <Text style={styles.timeBadgeText}>{bm.formattedTime}</Text>
+                  </View>
+
+                  <View style={styles.cardInfo}>
+                    <Text style={styles.bmTitle} numberOfLines={1}>
+                      {bm.title || bm.lessonTitle}
+                    </Text>
+                    <Text style={styles.bmCourse} numberOfLines={1}>
+                      {bm.courseTitle} • {bm.lessonTitle}
+                    </Text>
+                    {bm.note ? <Text style={styles.bmNote}>Ghi chú: {bm.note}</Text> : null}
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.cardActions}>
+                  <TouchableOpacity
+                    style={styles.playBtn}
+                    onPress={() => handleOpenBookmark(bm)}
+                    activeOpacity={0.7}
+                  >
+                    <Play color="#FFFFFF" size={14} fill="#FFFFFF" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDelete(bm.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Trash2 color="#EF4444" size={16} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalContent: {
-    maxHeight: '85%',
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 20,
-  },
-  modalHeader: {
+  container: { flex: 1, backgroundColor: '#070B17' },
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  modalTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  closeButton: {
-    padding: 6,
-    backgroundColor: '#334155',
-    borderRadius: 12,
-  },
-  emptyBox: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  emptyTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 12,
-  },
-  emptySub: {
-    color: '#94A3B8',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: 20,
-  },
-  bookmarksList: {
-    maxHeight: 400,
-  },
-  bmCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 48,
+    paddingBottom: 14,
     backgroundColor: '#0F172A',
-    borderColor: '#334155',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
+  headerSubtitle: { color: '#94A3B8', fontSize: 11 },
+  closeBtn: { padding: 4 },
+  listContent: { padding: 16, gap: 10 },
+  countText: { color: '#64748B', fontSize: 12, marginBottom: 4 },
+  bookmarkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderColor: '#1E293B',
+    gap: 12,
   },
-  bmInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  bmLesson: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  timeTag: {
+  cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  timeText: {
-    color: '#38BDF8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  bmNote: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  actionRow: {
-    flexDirection: 'row',
+  timeBadgeText: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
+  cardInfo: { flex: 1 },
+  bmTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  bmCourse: { color: '#94A3B8', fontSize: 11 },
+  bmNote: { color: '#38BDF8', fontSize: 11, marginTop: 2 },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  playBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6366F1',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
   deleteBtn: {
-    padding: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  openBtn: {
-    padding: 8,
-    backgroundColor: '#6366F1',
-    borderRadius: 10,
-  },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  emptyTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
+  emptyDesc: { color: '#64748B', fontSize: 13, textAlign: 'center', lineHeight: 18 },
 });
