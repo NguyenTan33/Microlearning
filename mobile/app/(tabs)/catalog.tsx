@@ -128,8 +128,14 @@ export default function CatalogScreen() {
     return <LoadingIndicator message="Đang nạp danh mục khóa học Azure..." />;
   }
 
-  // Filter Logic
-  const categories = ['ALL', 'Lập trình', 'Cơ sở dữ liệu', 'Văn phòng', 'Kỹ năng'];
+  // Filter Logic: Danh mục động dựa trên khóa học thực tế
+  const categories = React.useMemo(() => {
+    const cats = new Set<string>();
+    courses.forEach((c) => {
+      if (c.category) cats.add(c.category);
+    });
+    return cats.size > 0 ? ['ALL', ...Array.from(cats)] : ['ALL'];
+  }, [courses]);
 
   const filteredCourses = courses.filter((c) => {
     const matchesSearch =

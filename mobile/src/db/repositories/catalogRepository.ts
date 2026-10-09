@@ -1,13 +1,33 @@
 import { getSQLiteDatabase } from '../sqliteClient';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 
+const DUMMY_KEYWORDS = ['excel', 'word', 'react', 'sql server', '.net 8', 'offline-first'];
+
+function isDummyTitle(title: string): boolean {
+  const lower = (title || '').toLowerCase();
+  return DUMMY_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 export const catalogRepository = {
   async saveCourses(courses: Course[]): Promise<void> {
     try {
       const db = await getSQLiteDatabase();
       const now = new Date().toISOString();
+      const realCourses = courses.filter((c) => !isDummyTitle(c.title));
+
       const persist = async () => {
-        for (const c of courses) {
+        // Xóa các khóa học mẫu cũ
+        await db.runAsync(`
+          DELETE FROM LocalCourses 
+          WHERE LOWER(title) LIKE '%excel%' 
+             OR LOWER(title) LIKE '%word%' 
+             OR LOWER(title) LIKE '%react%' 
+             OR LOWER(title) LIKE '%sql server%' 
+             OR LOWER(title) LIKE '%.net 8%' 
+             OR LOWER(title) LIKE '%offline-first%';
+        `);
+
+        for (const c of realCourses) {
           await db.runAsync(
             `INSERT OR REPLACE INTO LocalCourses (id, title, description, thumbnailUrl, isPublished, totalSubjects, updatedAt)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -36,11 +56,25 @@ export const catalogRepository = {
 
   async getAllCourses(): Promise<Course[]> {
     const db = await getSQLiteDatabase();
+    try {
+      await db.runAsync(`
+        DELETE FROM LocalCourses 
+        WHERE LOWER(title) LIKE '%excel%' 
+           OR LOWER(title) LIKE '%word%' 
+           OR LOWER(title) LIKE '%react%' 
+           OR LOWER(title) LIKE '%sql server%' 
+           OR LOWER(title) LIKE '%.net 8%' 
+           OR LOWER(title) LIKE '%offline-first%';
+      `);
+    } catch {}
+
     const rows = await db.getAllAsync<any>(`SELECT * FROM LocalCourses ORDER BY id ASC`);
-    return rows.map((r) => ({
-      ...r,
-      isPublished: r.isPublished === 1 || r.isPublished === true,
-    }));
+    return rows
+      .filter((r) => !isDummyTitle(r.title || ''))
+      .map((r) => ({
+        ...r,
+        isPublished: r.isPublished === 1 || r.isPublished === true,
+      }));
   },
 
   async deleteCourse(courseId: number): Promise<void> {
