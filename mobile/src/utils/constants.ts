@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 
-// Auto-detect host machine IP address from Expo Metro packager
+export const AZURE_CLOUD_URL = 'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net';
+
 const getHostIp = (): string => {
   const hostUri = Constants.expoConfig?.hostUri || Constants.linkingUri;
   if (hostUri) {
@@ -9,13 +10,14 @@ const getHostIp = (): string => {
       return ip;
     }
   }
-  return '192.168.1.43'; // Default LAN IP fallback
+  return '192.168.1.43';
 };
 
-const hostIp = getHostIp();
+export const LOCAL_DEV_URL = `http://${getHostIp()}:5124`;
 
+// Default to production Azure Cloud URL so physical devices connect seamlessly
 export const API_BASE_URL: string =
-  process.env.EXPO_PUBLIC_API_URL || `http://${hostIp}:5124`;
+  process.env.EXPO_PUBLIC_API_URL || AZURE_CLOUD_URL;
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'microlearning_access_token',
@@ -23,6 +25,7 @@ export const STORAGE_KEYS = {
   USER_INFO: 'microlearning_user_info',
   DEVICE_ID: 'microlearning_device_id',
   WIFI_ONLY_SYNC: 'microlearning_wifi_only_sync',
+  SERVER_URL: 'microlearning_custom_server_url',
 };
 
 export const THEME_COLORS = {

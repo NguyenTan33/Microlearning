@@ -13,9 +13,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Sparkles, Phone, Lock, ArrowRight, ShieldCheck, Eye, EyeOff, Zap } from 'lucide-react-native';
+import { Sparkles, Phone, Lock, ArrowRight, Eye, EyeOff, Zap, Settings, HelpCircle } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
+import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
+import { ServerConfigModal } from '../../src/components/common/ServerConfigModal';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -26,6 +29,8 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showServerConfig, setShowServerConfig] = useState(false);
 
   const handleLogin = async () => {
     if (!phoneNumber.trim() || !password.trim()) {
@@ -42,7 +47,6 @@ export default function LoginScreen() {
         password: password.trim(),
       });
 
-      // Handle backend response format: construct user object if needed
       const user = res.user || {
         id: 'user-1',
         fullName: phoneNumber.trim(),
@@ -53,11 +57,11 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } catch (err: unknown) {
       console.warn('[Login Error]', err);
-      const msg =
+      const serverMsg =
         err && typeof err === 'object' && 'response' in err && (err as any).response?.data?.message
           ? (err as any).response.data.message
-          : 'Không thể kết nối đến máy chủ Backend (Port 5124). Vui lòng kiểm tra Server!';
-      setErrorMsg(msg);
+          : 'Không thể kết nối đến máy chủ. Vui lòng bấm biểu tượng Bánh Răng ở góc trên để đổi Server hoặc vào chế độ Thử Nghiệm!';
+      setErrorMsg(serverMsg);
     } finally {
       setLoading(false);
     }
@@ -65,9 +69,20 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#070B18" />
+      <StatusBar barStyle="light-content" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Top Gear Settings Button */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.settingsBtn}
+              onPress={() => setShowServerConfig(true)}
+              activeOpacity={0.7}
+            >
+              <Settings color="#38BDF8" size={20} />
+            </TouchableOpacity>
+          </View>
+
           {/* Top Hero Brand Header */}
           <View style={styles.logoContainer}>
             <View style={styles.logoGlowRing}>
@@ -91,6 +106,13 @@ export default function LoginScreen() {
             {errorMsg ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{errorMsg}</Text>
+                <TouchableOpacity
+                  style={styles.errorFixBtn}
+                  onPress={() => setShowServerConfig(true)}
+                >
+                  <Settings color="#38BDF8" size={14} />
+                  <Text style={styles.errorFixBtnText}>Đổi Máy Chủ / Đăng Nhập Demo</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
 
@@ -111,7 +133,12 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Mật khẩu</Text>
+              <View style={styles.passwordLabelRow}>
+                <Text style={styles.inputLabel}>Mật khẩu</Text>
+                <TouchableOpacity onPress={() => setShowForgotPassword(true)}>
+                  <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.inputContainer}>
                 <Lock color="#06B6D4" size={18} />
                 <TextInput
@@ -148,6 +175,9 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
+            {/* Social Auth Buttons (Google & Facebook) */}
+            <SocialAuthButtons />
+
             <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/register')}>
               <Text style={styles.switchText}>Chưa có tài khoản? </Text>
               <Text style={styles.switchHighlight}>Đăng ký ngay</Text>
@@ -155,6 +185,19 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Modals */}
+      <ForgotPasswordModal
+        visible={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+        initialPhoneNumber={phoneNumber}
+      />
+
+      <ServerConfigModal
+        visible={showServerConfig}
+        onClose={() => setShowServerConfig(false)}
+        onDemoLogin={() => router.replace('/(tabs)')}
+      />
     </SafeAreaView>
   );
 }
@@ -169,9 +212,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexGrow: 1,
   },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 10,
+  },
+  settingsBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
   },
   logoGlowRing: {
     padding: 4,
@@ -179,7 +237,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6, 182, 212, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(6, 182, 212, 0.3)',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   logoBadge: {
     width: 60,
@@ -196,13 +254,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: 0.5,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   appSubtitle: {
     color: '#94A3B8',
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   cyberPill: {
     flexDirection: 'row',
@@ -236,7 +294,7 @@ const styles = StyleSheet.create({
   },
   errorBox: {
     backgroundColor: 'rgba(244, 63, 94, 0.15)',
-    padding: 12,
+    padding: 14,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(244, 63, 94, 0.3)',
@@ -245,16 +303,42 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#F43F5E',
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 18,
+  },
+  errorFixBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  errorFixBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '700',
   },
   inputGroup: {
     marginBottom: 16,
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   inputLabel: {
     color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '600',
   },
   inputContainer: {
     flexDirection: 'row',

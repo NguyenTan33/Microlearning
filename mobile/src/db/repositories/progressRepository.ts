@@ -60,4 +60,8 @@ export const progressRepository = {
   async getProgress(lessonId: number): Promise<LessonProgressRecord | null> {
     return await this.getProgressByLessonId(lessonId);
   },
+
+  async getByLessonId(lessonId: number): Promise<LessonProgressRecord | null> {
+    return await this.getProgressByLessonId(lessonId);
+  },
 };

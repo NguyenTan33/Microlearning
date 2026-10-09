@@ -15,20 +15,23 @@ import {
   CheckCircle2,
   FileQuestion,
   Headphones,
-  Flame,
-  Bookmark,
-  Sparkles,
+  Paperclip,
+  BookOpen,
+  Lock,
 } from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
+import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
+import { AudioTtsPlayer } from '../../src/components/player/AudioTtsPlayer';
+import { LessonAttachmentsModal } from '../../src/components/player/LessonAttachmentsModal';
+import { NotebookModal } from '../../src/components/notebook/NotebookModal';
+import { DuolingoStreakCelebrationModal } from '../../src/components/common/DuolingoStreakCelebrationModal';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
 import { downloadManager } from '../../src/services/downloadManager';
-import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { outboxRepository } from '../../src/db/repositories/outboxRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { generateGuid } from '../../src/utils/guidHelper';
-import { formatDuration } from '../../src/utils/formatters';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -40,9 +43,15 @@ export default function LessonScreen() {
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [watchedPercent, setWatchedPercent] = useState<number>(0);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Modals state
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [showNotebook, setShowNotebook] = useState(false);
+  const [showStreakModal, setShowStreakModal] = useState(false);
 
   const isOfflineReady = downloadedLessonIds.has(lessonId);
 
@@ -62,9 +71,12 @@ export default function LessonScreen() {
         // Fallback SQLite
       }
 
-      // Check completion status
-      const completedList = await progressRepository.getCompletedLessonIds();
-      setIsCompleted(completedList.includes(lessonId));
+      // Check progress
+      const progress = await progressRepository.getByLessonId(lessonId);
+      if (progress) {
+        setIsCompleted(progress.isCompleted === 1);
+        setWatchedPercent(progress.percent || 0);
+      }
     } catch (err) {
       console.warn('[Lesson] Load error:', err);
     } finally {
@@ -79,11 +91,10 @@ export default function LessonScreen() {
   const handleCompleteLesson = async () => {
     try {
       setIsCompleted(true);
+      setWatchedPercent(100);
 
-      // Save to SQLite
       await progressRepository.saveProgress(lessonId, lesson?.durationSeconds || 180, 100.0, true);
 
-      // Add to Outbox Queue for auto sync
       await outboxRepository.addOutboxItem({
         clientOperationId: generateGuid(),
         operationType: 'LESSON_PROGRESS',
@@ -97,7 +108,7 @@ export default function LessonScreen() {
         createdAt: new Date().toISOString(),
       });
 
-      Alert.alert('Chúc mừng! 🔥', 'Bạn đã hoàn thành bài học và tăng 1 ngày Streak!');
+      setShowStreakModal(true);
     } catch (err) {
       console.warn('[Lesson] Complete error:', err);
     }
@@ -145,6 +156,9 @@ export default function LessonScreen() {
     );
   }
 
+  // Strict 60% coverage quiz unlock condition
+  const canTakeQuiz = isCompleted || watchedPercent >= 60;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Top Header */}
@@ -158,19 +172,41 @@ export default function LessonScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Mock Video Container */}
-        <View style={styles.videoPlayerBox}>
-          <View style={styles.videoPlaceholderContent}>
-            <Sparkles color="#818CF8" size={36} />
-            <Text style={styles.videoPlaceholderTitle}>{lesson.title}</Text>
-            <Text style={styles.videoPlaceholderTime}>Thời lượng: {formatDuration(lesson.durationSeconds)}</Text>
-          </View>
+        {/* Hybrid Video Player (Expo Video) */}
+        <HybridVideoPlayer
+          lessonId={lessonId}
+          onlineStreamUrl={lesson.videoUrl}
+          durationSeconds={lesson.durationSeconds}
+          onCompleted={handleCompleteLesson}
+        />
+
+        {/* Quick Toolbar: Attachments & Notebook */}
+        <View style={styles.toolBarRow}>
+          <TouchableOpacity
+            style={styles.toolBtn}
+            onPress={() => setShowAttachments(true)}
+            activeOpacity={0.7}
+          >
+            <Paperclip color="#38BDF8" size={16} />
+            <Text style={styles.toolBtnText}>Tài liệu đính kèm</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.toolBtn}
+            onPress={() => setShowNotebook(true)}
+            activeOpacity={0.7}
+          >
+            <BookOpen color="#818CF8" size={16} />
+            <Text style={styles.toolBtnText}>Sổ ghi chú</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Lesson Metadata & Action Buttons */}
         <View style={styles.lessonMetaSection}>
           <Text style={styles.lessonTitle}>{lesson.title}</Text>
-          <Text style={styles.lessonDesc}>{lesson.description || 'Xem video ngắn và làm bài trắc nghiệm.'}</Text>
+          <Text style={styles.lessonDesc}>
+            {lesson.description || 'Xem video ngắn và làm bài trắc nghiệm củng cố kiến thức.'}
+          </Text>
 
           <View style={styles.actionsRow}>
             <TouchableOpacity
@@ -201,72 +237,196 @@ export default function LessonScreen() {
           </View>
         </View>
 
-        {/* Audio TTS Section */}
-        {lesson.audioTtsUrl ? (
-          <View style={styles.ttsCard}>
-            <Headphones color="#8B5CF6" size={20} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.ttsTitle}>Nghe bài giảng giọng đọc AI (Audio TTS)</Text>
-              <Text style={styles.ttsSubText}>Học tập thụ động khi di chuyển hoặc đọc tài liệu</Text>
-            </View>
-          </View>
-        ) : null}
+        {/* Audio TTS Player */}
+        <AudioTtsPlayer
+          lessonTitle={lesson.title}
+          lessonContent={lesson.description}
+          audioTtsUrl={lesson.audioTtsUrl}
+        />
 
-        {/* Quiz CTA Card */}
+        {/* Quiz CTA Card with 60% Strict Coverage Rule */}
         {lesson.hasQuiz ? (
-          <View style={styles.quizCtaCard}>
+          <View style={[styles.quizCtaCard, !canTakeQuiz && styles.quizCtaCardLocked]}>
             <View style={styles.quizIconBox}>
-              <FileQuestion color="#F59E0B" size={24} />
+              <FileQuestion color={canTakeQuiz ? '#F59E0B' : '#64748B'} size={24} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.quizCtaTitle}>Bài thi trắc nghiệm củng cố</Text>
-              <Text style={styles.quizCtaSub}>Kiểm tra ngay kiến thức vừa học</Text>
+              <Text style={styles.quizCtaSub}>
+                {canTakeQuiz
+                  ? 'Kiểm tra ngay kiến thức vừa học'
+                  : `Cần xem ≥60% video để mở khóa (Hiện tại: ${Math.round(watchedPercent)}%)`}
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={styles.startQuizBtn}
-              onPress={() => router.push(`/quiz/${lessonId}`)}
+              style={[styles.startQuizBtn, !canTakeQuiz && styles.startQuizBtnDisabled]}
+              onPress={() => {
+                if (!canTakeQuiz) {
+                  Alert.alert(
+                    'Khóa bài thi',
+                    `Bạn cần xem tối thiểu 60% thời lượng bài học để làm trắc nghiệm (Tiến độ hiện tại: ${Math.round(watchedPercent)}%).`
+                  );
+                  return;
+                }
+                router.push(`/quiz/${lessonId}`);
+              }}
               activeOpacity={0.8}
             >
-              <Text style={styles.startQuizText}>Làm bài thi</Text>
+              {canTakeQuiz ? (
+                <Text style={styles.startQuizText}>Làm bài thi</Text>
+              ) : (
+                <Lock color="#94A3B8" size={16} />
+              )}
             </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Modals */}
+      <LessonAttachmentsModal
+        visible={showAttachments}
+        lessonId={lessonId}
+        onClose={() => setShowAttachments(false)}
+      />
+
+      <NotebookModal
+        visible={showNotebook}
+        lessonId={lessonId}
+        onClose={() => setShowNotebook(false)}
+      />
+
+      <DuolingoStreakCelebrationModal
+        visible={showStreakModal}
+        streakCount={5}
+        onClose={() => setShowStreakModal(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#070B17' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1E293B', gap: 12 },
-  headerBackBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+    gap: 12,
+  },
+  headerBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 36 },
-  videoPlayerBox: { width: '100%', height: 210, backgroundColor: '#0F172A', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(99, 102, 241, 0.3)', overflow: 'hidden', marginBottom: 20 },
-  videoPlaceholderContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  videoPlaceholderTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginTop: 10, textAlign: 'center' },
-  videoPlaceholderTime: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
-  lessonMetaSection: { backgroundColor: '#0F172A', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#1E293B', marginBottom: 16 },
+  toolBarRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginVertical: 12,
+  },
+  toolBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  toolBtnText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lessonMetaSection: {
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 10,
+  },
   lessonTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '700', marginBottom: 6 },
   lessonDesc: { color: '#94A3B8', fontSize: 13, lineHeight: 18, marginBottom: 16 },
   actionsRow: { flexDirection: 'row', gap: 10 },
-  completeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 12, gap: 6 },
-  completeBtnDone: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
+  completeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  completeBtnDone: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
   completeBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   completeBtnTextDone: { color: '#10B981' },
-  downloadActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(99, 102, 241, 0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, gap: 6, borderWidth: 1, borderColor: 'rgba(99, 102, 241, 0.3)' },
-  downloadActionBtnDone: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+  downloadActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  downloadActionBtnDone: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
   downloadActionText: { color: '#818CF8', fontSize: 13, fontWeight: '700' },
   downloadActionTextDone: { color: '#10B981' },
-  ttsCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#1E293B', gap: 12, marginBottom: 16 },
-  ttsTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '600' },
-  ttsSubText: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
-  quizCtaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)', gap: 12 },
-  quizIconBox: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(245, 158, 11, 0.15)', alignItems: 'center', justifyContent: 'center' },
+  quizCtaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    gap: 12,
+    marginTop: 10,
+  },
+  quizCtaCardLocked: {
+    borderColor: '#1E293B',
+    opacity: 0.8,
+  },
+  quizIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   quizCtaTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
   quizCtaSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
-  startQuizBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  startQuizBtn: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  startQuizBtnDisabled: {
+    backgroundColor: '#1E293B',
+  },
   startQuizText: { color: '#070B17', fontSize: 12, fontWeight: '800' },
   errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
   errorTitle: { color: '#F43F5E', fontSize: 16, fontWeight: '700', marginBottom: 14 },

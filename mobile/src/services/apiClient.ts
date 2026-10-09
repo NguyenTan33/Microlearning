@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
+import { API_BASE_URL, AZURE_CLOUD_URL, STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
 
 export const apiClient = axios.create({
@@ -9,6 +9,33 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+export async function initializeApiBaseUrl(): Promise<string> {
+  try {
+    const customUrl = await secureStorage.getItem(STORAGE_KEYS.SERVER_URL);
+    if (customUrl) {
+      apiClient.defaults.baseURL = customUrl;
+      return customUrl;
+    }
+  } catch {
+    // fallback
+  }
+  apiClient.defaults.baseURL = API_BASE_URL;
+  return API_BASE_URL;
+}
+
+export async function setApiBaseUrl(url: string): Promise<void> {
+  const trimmed = url.replace(/\/+$/, '');
+  apiClient.defaults.baseURL = trimmed;
+  await secureStorage.setItem(STORAGE_KEYS.SERVER_URL, trimmed);
+}
+
+export function getApiBaseUrl(): string {
+  return apiClient.defaults.baseURL || API_BASE_URL;
+}
+
+// Auto init on module load
+initializeApiBaseUrl();
 
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -27,7 +54,7 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
-// Request Interceptor: Attach Bearer Token
+// Request Interceptor: Attach Bearer Token & Ensure baseURL
 apiClient.interceptors.request.use(
   async (config) => {
     const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -66,7 +93,8 @@ apiClient.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        const res = await axios.post(`${API_BASE_URL}/api/Auth/refresh`, {
+        const currentBase = getApiBaseUrl();
+        const res = await axios.post(`${currentBase}/api/Auth/refresh`, {
           refreshToken,
         });
 
