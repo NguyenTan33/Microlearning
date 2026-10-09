@@ -198,14 +198,19 @@ export default function StudyHomeScreen() {
     return <LoadingIndicator message="Đang nạp bài học & tiến độ thực..." />;
   }
 
-  // Tìm bài học tiếp theo chưa học
+  // Tìm bài học tiếp theo chưa học và đếm số bài hoàn thành của khóa hiện tại
   let nextLesson: Lesson | null = null;
   let totalLessonsCount = 0;
+  let courseCompletedLessonsCount = 0;
+
   if (course && course.subjects) {
     for (const sub of course.subjects) {
       if (sub.lessons) {
         totalLessonsCount += sub.lessons.length;
         for (const les of sub.lessons) {
+          if (completedIds.has(les.id)) {
+            courseCompletedLessonsCount++;
+          }
           if (!nextLesson && !completedIds.has(les.id)) {
             nextLesson = les;
           }
@@ -218,7 +223,9 @@ export default function StudyHomeScreen() {
   }
 
   const completionRate =
-    totalLessonsCount > 0 ? Math.round((completedIds.size / totalLessonsCount) * 100) : 0;
+    totalLessonsCount > 0
+      ? Math.min(100, Math.max(0, Math.round((courseCompletedLessonsCount / totalLessonsCount) * 100)))
+      : 0;
   const streakCount = streakData?.currentStreak || 0;
 
   return (
@@ -430,7 +437,7 @@ export default function StudyHomeScreen() {
             </View>
             <View style={styles.courseHeroFooter}>
               <Text style={styles.progressSubText}>
-                Đã hoàn thành {completedIds.size}/{totalLessonsCount} bài học
+                Đã hoàn thành {courseCompletedLessonsCount}/{totalLessonsCount} bài học
               </Text>
               <View style={styles.viewDetailLink}>
                 <Text style={styles.viewDetailText}>Vào học khóa này</Text>
