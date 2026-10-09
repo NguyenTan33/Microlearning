@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 
 export const downloadManager = {
@@ -9,7 +9,8 @@ export const downloadManager = {
     onProgress?: (percent: number) => void
   ): Promise<string | null> {
     try {
-      const dirPath = `${FileSystem.documentDirectory}downloads/videos/`;
+      const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+      const dirPath = `${docDir}downloads/videos/`;
       const dirInfo = await FileSystem.getInfoAsync(dirPath);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
@@ -37,7 +38,6 @@ export const downloadManager = {
 
       const fileInfo = await FileSystem.getInfoAsync(result.uri);
       const sizeBytes = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-      const now = new Date().toISOString();
 
       await downloadRepository.saveDownloadedMedia({
         lessonId,
@@ -45,8 +45,6 @@ export const downloadManager = {
         localPath: result.uri,
         fileSizeBytes: sizeBytes,
         checksum: 'sha256-verified',
-        downloadedAt: now,
-        lastPlayedAt: now,
         isPinned: 0,
         status: 'DOWNLOADED',
       });
@@ -67,6 +65,24 @@ export const downloadManager = {
       await downloadRepository.deleteDownloadByLessonId(lessonId);
     } catch (err) {
       console.warn('[DownloadManager] Delete error:', err);
+    }
+  },
+
+  async resolvePlayableVideoUri(
+    lessonId: number,
+    videoRemoteUrl?: string
+  ): Promise<{ uri: string | null; isOffline: boolean }> {
+    try {
+      const downloaded = await downloadRepository.getByLessonId(lessonId);
+      if (downloaded && downloaded.status === 'DOWNLOADED' && downloaded.localPath) {
+        const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
+        if (fileInfo.exists) {
+          return { uri: downloaded.localPath, isOffline: true };
+        }
+      }
+      return { uri: videoRemoteUrl || null, isOffline: false };
+    } catch {
+      return { uri: videoRemoteUrl || null, isOffline: false };
     }
   },
 };

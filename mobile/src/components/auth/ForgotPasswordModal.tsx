@@ -62,7 +62,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
         otpCode: otpCode.trim(),
       });
 
-      if (res.isSuccess || otpCode.trim() === '123456') {
+      if (res.success || otpCode.trim() === '123456') {
         setStep(3);
       } else {
         Alert.alert('Lỗi', res.message || 'Mã OTP không đúng.');

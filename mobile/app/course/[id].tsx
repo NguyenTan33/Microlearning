@@ -17,15 +17,21 @@ import { progressRepository } from '../../src/db/repositories/progressRepository
 import { formatDuration } from '../../src/utils/formatters';
 import type { CourseDetail } from '../../src/types/catalog.types';
 
+import { useAuthStore } from '../../src/store/useAuthStore';
+import { CourseStudentProgressModal } from '../../src/components/management/CourseStudentProgressModal';
+import { Users } from 'lucide-react-native';
+
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const courseId = Number(id);
+  const { isTeacher, isAdmin } = useAuthStore();
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showStudentProgressModal, setShowStudentProgressModal] = useState(false);
 
   const loadCourse = useCallback(async () => {
     try {
@@ -98,6 +104,17 @@ export default function CourseDetailScreen() {
           <Text style={styles.courseTitle}>{course.title}</Text>
           <Text style={styles.authorText}>Giảng viên: {course.authorName || 'Microlearning'}</Text>
           <Text style={styles.descText}>{course.description || 'Khóa học Microlearning chất lượng cao.'}</Text>
+
+          {(isTeacher || isAdmin) && (
+            <TouchableOpacity
+              style={styles.analyticsBtn}
+              onPress={() => setShowStudentProgressModal(true)}
+              activeOpacity={0.8}
+            >
+              <Users color="#06B6D4" size={16} />
+              <Text style={styles.analyticsBtnText}>Xem Tiến Độ Học Viên Khoá Học</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={styles.sectionTitle}>Nội dung chương trình học</Text>
@@ -139,6 +156,13 @@ export default function CourseDetailScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <CourseStudentProgressModal
+        visible={showStudentProgressModal}
+        courseId={courseId}
+        courseTitle={course.title}
+        onClose={() => setShowStudentProgressModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -162,6 +186,23 @@ const styles = StyleSheet.create({
   courseTitle: { color: '#F8FAFC', fontSize: 20, fontWeight: '800', marginBottom: 4 },
   authorText: { color: '#818CF8', fontSize: 13, fontWeight: '600', marginBottom: 10 },
   descText: { color: '#94A3B8', fontSize: 13, lineHeight: 18 },
+  analyticsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    gap: 8,
+    marginTop: 14,
+  },
+  analyticsBtnText: {
+    color: '#06B6D4',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   sectionTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '700', marginBottom: 14 },
   subjectCard: { backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#1E293B', marginBottom: 14 },
   subjectTitle: { color: '#E2E8F0', fontSize: 15, fontWeight: '600', marginBottom: 12 },

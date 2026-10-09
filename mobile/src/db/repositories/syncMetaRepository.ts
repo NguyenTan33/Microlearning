@@ -1,51 +1,40 @@
-import { getDatabase } from '../sqliteClient';
+import { getSQLiteDatabase } from '../sqliteClient';
 
 export const syncMetaRepository = {
-  /**
-   * Lấy số Sequence Checkpoint hiện tại của thiết bị (mặc định 0)
-   */
-  async getCheckpointSequence(): Promise<number> {
-    const db = await getDatabase();
+  async getMeta(key: string): Promise<string | null> {
+    const db = await getSQLiteDatabase();
     const row = await db.getFirstAsync<{ value: string }>(
-      `SELECT value FROM SyncMeta WHERE key = 'checkpointSequence';`
+      `SELECT value FROM SyncMeta WHERE key = ?;`,
+      [key]
     );
-    if (!row) return 0;
-    const num = parseInt(row.value, 10);
+    return row?.value || null;
+  },
+
+  async saveMeta(key: string, value: string): Promise<void> {
+    const db = await getSQLiteDatabase();
+    const now = new Date().toISOString();
+    await db.runAsync(
+      `INSERT OR REPLACE INTO SyncMeta (key, value, updatedAt) VALUES (?, ?, ?);`,
+      [key, value, now]
+    );
+  },
+
+  async getCheckpointSequence(): Promise<number> {
+    const val = await this.getMeta('checkpointSequence');
+    if (!val) return 0;
+    const num = parseInt(val, 10);
     return isNaN(num) ? 0 : num;
   },
 
-  /**
-   * Cập nhật số Sequence Checkpoint mới sau khi Delta Sync Pull thành công
-   */
   async setCheckpointSequence(sequence: number): Promise<void> {
-    const db = await getDatabase();
-    const now = new Date().toISOString();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO SyncMeta (key, value, updatedAt) VALUES ('checkpointSequence', ?, ?);`,
-      [sequence.toString(), now]
-    );
+    await this.saveMeta('checkpointSequence', sequence.toString());
   },
 
-  /**
-   * Lưu mốc thời gian lần đồng bộ thành công gần nhất
-   */
   async setLastSyncTime(isoDate: string): Promise<void> {
-    const db = await getDatabase();
-    const now = new Date().toISOString();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO SyncMeta (key, value, updatedAt) VALUES ('lastSyncTime', ?, ?);`,
-      [isoDate, now]
-    );
+    await this.saveMeta('lastSyncTime', isoDate);
   },
 
-  /**
-   * Lấy mốc thời gian lần đồng bộ thành công gần nhất
-   */
   async getLastSyncTime(): Promise<string | null> {
-    const db = await getDatabase();
-    const row = await db.getFirstAsync<{ value: string }>(
-      `SELECT value FROM SyncMeta WHERE key = 'lastSyncTime';`
-    );
-    return row?.value || null;
+    return await this.getMeta('lastSyncTime');
   },
 };

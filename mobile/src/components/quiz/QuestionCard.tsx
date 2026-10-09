@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Check } from 'lucide-react-native';
-import type { QuizQuestion } from '../../types/catalog.types';
+import type { QuizQuestion, QuizOption } from '../../types/quiz.types';
 
 interface QuestionCardProps {
   question: QuizQuestion;
@@ -24,13 +24,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         <Text style={styles.stepText}>
           Câu hỏi {index + 1} / {total}
         </Text>
-        <Text style={styles.pointsText}>{question.points} điểm</Text>
       </View>
 
-      <Text style={styles.questionText}>{question.content}</Text>
+      <Text style={styles.questionText}>{question.questionText}</Text>
 
       <View style={styles.optionsList}>
-        {question.options.map((option, optIdx) => {
+        {question.options.map((option: QuizOption, optIdx: number) => {
           const isSelected = selectedOptionIds.includes(option.id);
           const optionLabel = String.fromCharCode(65 + optIdx); // A, B, C, D
 

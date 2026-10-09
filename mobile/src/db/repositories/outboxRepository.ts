@@ -18,6 +18,10 @@ export const outboxRepository = {
     );
   },
 
+  async addItem(item: Omit<SyncOutboxItem, 'retryCount' | 'status'>): Promise<void> {
+    await this.addOutboxItem(item);
+  },
+
   async getPendingItems(): Promise<SyncOutboxItem[]> {
     const db = await getSQLiteDatabase();
     const rows = await db.getAllAsync<SyncOutboxItem>(

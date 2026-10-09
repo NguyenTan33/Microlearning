@@ -11,7 +11,12 @@ export interface LessonProgressRecord {
 }
 
 export const progressRepository = {
-  async saveProgress(lessonId: number, watchedSeconds: number, percent: number, isCompleted: boolean): Promise<void> {
+  async saveProgress(
+    lessonId: number,
+    watchedSeconds: number,
+    percent: number,
+    isCompleted: boolean
+  ): Promise<void> {
     const db = await getSQLiteDatabase();
     const now = new Date().toISOString();
     const doneInt = isCompleted ? 1 : 0;
@@ -30,6 +35,11 @@ export const progressRepository = {
     );
   },
 
+  async markClean(lessonId: number): Promise<void> {
+    const db = await getSQLiteDatabase();
+    await db.runAsync(`UPDATE LocalLessonProgress SET isDirty = 0 WHERE lessonId = ?`, [lessonId]);
+  },
+
   async getCompletedLessonIds(): Promise<number[]> {
     const db = await getSQLiteDatabase();
     const rows = await db.getAllAsync<{ lessonId: number }>(
@@ -45,5 +55,13 @@ export const progressRepository = {
       [lessonId]
     );
     return record || null;
+  },
+
+  async getProgress(lessonId: number): Promise<LessonProgressRecord | null> {
+    return await this.getProgressByLessonId(lessonId);
+  },
+
+  async getByLessonId(lessonId: number): Promise<LessonProgressRecord | null> {
+    return await this.getProgressByLessonId(lessonId);
   },
 };

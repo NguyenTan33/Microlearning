@@ -7,6 +7,8 @@ export function formatDuration(seconds: number): string {
   return `${formattedMins}:${formattedSecs}`;
 }
 
+export const formatTime = formatDuration;
+
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B';
   const k = 1024;

@@ -39,7 +39,7 @@ export default function RegisterScreen() {
       const res = await authApi.register({
         fullName,
         phoneNumber,
-        passwordHash: password,
+        password,
       });
 
       await setAuth(res.user, res.accessToken, res.refreshToken);
