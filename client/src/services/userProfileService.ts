@@ -132,8 +132,12 @@ export const userProfileService = {
     if (isEnrollmentList) {
       const enrollments = enrolledOrCourses as Enrollment[];
       const catalogCourses = (enrolledIdsOrAllCourses as Array<Course | CourseDetail>) || [];
+      const validEnrollments =
+        catalogCourses.length > 0
+          ? enrollments.filter((enr) => catalogCourses.some((c) => c.id === enr.courseId))
+          : enrollments;
 
-      courseList = enrollments.map((enr) => {
+      courseList = validEnrollments.map((enr) => {
         const foundCourse = catalogCourses.find((c) => c.id === enr.courseId);
 
         let courseTotalLessons = 0;
