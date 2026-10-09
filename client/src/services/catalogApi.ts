@@ -5,7 +5,6 @@ import type {
   Lesson,
   LessonPackageResponse,
 } from '../types/catalog.types';
-import { SAMPLE_COURSES, SAMPLE_QUIZZES } from './sampleCatalogData';
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('accessToken');
@@ -131,13 +130,10 @@ export const catalogApi = {
       if (mergedCourses.length > 0) {
         return mergedCourses;
       }
-      return SAMPLE_COURSES;
+      return [];
     } catch {
       const locallyCreated = getLocallyCreatedCourses();
-      if (locallyCreated.length > 0) {
-        return [...locallyCreated, ...SAMPLE_COURSES];
-      }
-      return SAMPLE_COURSES;
+      return locallyCreated;
     }
   },
 
@@ -173,9 +169,7 @@ export const catalogApi = {
           hasAccess: true,
         };
       }
-      const found = SAMPLE_COURSES.find((c) => c.id === courseId);
-      if (found) return found;
-      return SAMPLE_COURSES[0];
+      throw new Error(`Không tìm thấy dữ liệu khóa học ${courseId}.`);
     }
   },
 
@@ -194,8 +188,7 @@ export const catalogApi = {
       });
       return await handleResponse<Subject[]>(res);
     } catch {
-      const found = SAMPLE_COURSES.find((c) => c.id === courseId);
-      return found?.subjects || [];
+      return [];
     }
   },
 
@@ -217,10 +210,6 @@ export const catalogApi = {
       });
       return await handleResponse<Lesson[]>(res);
     } catch {
-      for (const course of SAMPLE_COURSES) {
-        const subj = course.subjects.find((s) => s.id === subjectId);
-        if (subj?.lessons) return subj.lessons;
-      }
       return [];
     }
   },
@@ -235,13 +224,7 @@ export const catalogApi = {
       });
       return await handleResponse<Lesson>(res);
     } catch {
-      for (const course of SAMPLE_COURSES) {
-        for (const subj of course.subjects) {
-          const l = subj.lessons?.find((item) => item.id === lessonId);
-          if (l) return l;
-        }
-      }
-      return SAMPLE_COURSES[0].subjects[0].lessons![0];
+      throw new Error(`Không tìm thấy bài giảng ${lessonId}.`);
     }
   },
 
@@ -249,70 +232,10 @@ export const catalogApi = {
    * Lấy toàn bộ gói dữ liệu của bài học để học và lưu trữ ngoại tuyến
    */
   async getLessonPackage(lessonId: number): Promise<LessonPackageResponse> {
-    try {
-      const res = await fetch(`/api/lessons/${lessonId}/package`, {
-        headers: getAuthHeaders(),
-      });
-      return await handleResponse<LessonPackageResponse>(res);
-    } catch {
-      let foundLesson: Lesson | null = null;
-      for (const course of SAMPLE_COURSES) {
-        for (const subj of course.subjects) {
-          const l = subj.lessons?.find((item) => item.id === lessonId);
-          if (l) {
-            foundLesson = l;
-            break;
-          }
-        }
-        if (foundLesson) break;
-      }
-
-      const lesson = foundLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
-      const quiz = SAMPLE_QUIZZES[lessonId];
-
-      return {
-        lessonId: lesson.id,
-        subjectId: lesson.subjectId,
-        title: lesson.title,
-        description: lesson.description,
-        durationSeconds: lesson.durationSeconds,
-        sortOrder: lesson.sortOrder,
-        version: lesson.version,
-        mediaAssets: [
-          {
-            id: lesson.id,
-            type: 1,
-            fileName: 'test.mp4',
-            blobKey: 'videos/test.mp4',
-            sizeBytes: 17979812,
-            checksum: '38a141d8684b59ffeb40dcdf65278e9b926248c7f56022551ce4e82910bab68c',
-            durationSeconds: lesson.durationSeconds,
-            status: 3,
-          },
-        ],
-        quiz: quiz
-          ? {
-              id: quiz.id,
-              title: quiz.title,
-              passScore: quiz.passScore,
-              version: quiz.version,
-              questions: quiz.questions.map((q) => ({
-                id: q.id,
-                content: q.content,
-                explanation: q.explanation,
-                points: q.points,
-                sortOrder: q.sortOrder,
-                questionType: q.questionType,
-                options: q.options.map((o) => ({
-                  id: o.id,
-                  optionText: o.optionText,
-                  sortOrder: o.sortOrder,
-                })),
-              })),
-            }
-          : undefined,
-      };
-    }
+    const res = await fetch(`/api/lessons/${lessonId}/package`, {
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<LessonPackageResponse>(res);
   },
 
   /**

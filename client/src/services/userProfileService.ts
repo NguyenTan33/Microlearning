@@ -1,6 +1,5 @@
 import type { UserProfile, UserLearningStats, CourseLearningProgress } from '../types/userProfile.types';
 import type { Course, CourseDetail, Enrollment } from '../types/catalog.types';
-import { SAMPLE_COURSES } from './sampleCatalogData';
 import { mediaBookmarkService } from './mediaBookmarkService';
 
 const PROFILE_STORAGE_PREFIX = 'microlearning_user_profile_';
@@ -135,9 +134,7 @@ export const userProfileService = {
       const catalogCourses = (enrolledIdsOrAllCourses as Array<Course | CourseDetail>) || [];
 
       courseList = enrollments.map((enr) => {
-        const foundCourse =
-          catalogCourses.find((c) => c.id === enr.courseId) ||
-          SAMPLE_COURSES.find((c) => c.id === enr.courseId);
+        const foundCourse = catalogCourses.find((c) => c.id === enr.courseId);
 
         let courseTotalLessons = 0;
         let courseCompletedLessons = 0;

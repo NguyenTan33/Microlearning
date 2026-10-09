@@ -25,6 +25,7 @@ import {
   ChevronUp,
   Sparkles,
   Flame,
+  FolderPlus,
 } from 'lucide-react';
 import type { Course, CourseDetail, Lesson } from '../../types/catalog.types';
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
@@ -52,7 +53,32 @@ import { catalogApi } from '../../services/catalogApi';
 import { progressApi } from '../../services/progressApi';
 import { enrollmentApi } from '../../services/enrollmentApi';
 import { streakApi } from '../../services/streakApi';
-import { SAMPLE_COURSES } from '../../services/sampleCatalogData';
+
+const EMPTY_COURSE: CourseDetail = {
+  id: 0,
+  title: 'Chưa có khóa học',
+  description: 'Vui lòng chọn hoặc tạo khóa học từ Studio để bắt đầu học tập.',
+  thumbnailUrl: '',
+  version: 1,
+  isPublished: true,
+  createdAt: new Date().toISOString(),
+  totalSubjects: 0,
+  subjects: [],
+};
+
+const EMPTY_LESSON: Lesson = {
+  id: 0,
+  subjectId: 0,
+  title: 'Chưa có bài học',
+  description: '',
+  durationSeconds: 0,
+  sortOrder: 1,
+  version: 1,
+  isPublished: true,
+  createdAt: new Date().toISOString(),
+  hasQuiz: false,
+  mediaAssetCount: 0,
+};
 
 interface StudyDashboardProps {
   onLogout: () => void;
@@ -247,13 +273,12 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         }
       }
 
-      // Chỉ fallback về SAMPLE_COURSES khi không tìm thấy targetCourse từ API
       if (!targetCourse) {
-        targetCourse = SAMPLE_COURSES[0];
+        targetCourse = courses.length > 0 ? { ...courses[0], subjects: [] } : EMPTY_COURSE;
       }
 
       // Lưu lại khóa học đang học để khi F5 / mở lại app không bị nhảy sai khóa và tự động ghi danh
-      if (targetCourse?.id) {
+      if (targetCourse?.id && targetCourse.id > 0) {
         try {
           localStorage.setItem('microlearning_last_course_id', String(targetCourse.id));
         } catch {}
@@ -262,7 +287,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
       // Tìm bài học đầu tiên trong targetCourse (nếu khóa học đã có môn học & bài học)
       targetLesson = null;
-      if (targetCourse.subjects && targetCourse.subjects.length > 0) {
+      if (targetCourse?.subjects && targetCourse.subjects.length > 0) {
         for (const subj of targetCourse.subjects) {
           if (subj.lessons && subj.lessons.length > 0) {
             targetLesson = subj.lessons[0];
@@ -336,8 +361,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
           .catch(() => {});
       }
     } catch {
-      setCurrentCourse(SAMPLE_COURSES[0]);
-      setActiveLesson(SAMPLE_COURSES[0].subjects[0].lessons![0]);
+      setCurrentCourse(EMPTY_COURSE);
+      setActiveLesson(null);
     } finally {
       setLoadingWorkspace(false);
     }
@@ -583,8 +608,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
   }, []);
 
   // Tính danh sách bài học phẳng để hỗ trợ Prev / Next Lesson
-  const effectiveCourse = currentCourse || SAMPLE_COURSES[0];
-  const effectiveLesson = activeLesson || SAMPLE_COURSES[0].subjects[0].lessons![0];
+  const effectiveCourse = currentCourse || EMPTY_COURSE;
+  const effectiveLesson = activeLesson || (effectiveCourse.subjects && effectiveCourse.subjects[0]?.lessons?.[0]) || EMPTY_LESSON;
 
   // Tiến độ xem video của bài giảng hiện tại (cách ly độc lập từng bài, chống tràn tiến độ)
   const currentLessonWatchedPercent = useMemo(() => {
@@ -619,26 +644,17 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         catalogApi
           .getCourseById(bm.courseId)
           .then((c) => {
-            if (c) setCurrentCourse(c);
+            if (c) {
+              setCurrentCourse(c);
+              const found = c.subjects?.flatMap((s) => s.lessons || []).find((l) => l.id === bm.lessonId);
+              if (found) setActiveLesson(found);
+            }
           })
           .catch(() => {});
       }
 
-      // 2. Tìm bài giảng tương ứng
-      let targetLesson = flatLessons.find((l) => l.id === bm.lessonId);
-      if (!targetLesson) {
-        for (const c of SAMPLE_COURSES) {
-          for (const s of c.subjects) {
-            const l = s.lessons?.find((item) => item.id === bm.lessonId);
-            if (l) {
-              setCurrentCourse(c);
-              targetLesson = l;
-              break;
-            }
-          }
-        }
-      }
-
+      // 2. Tìm bài giảng tương ứng trong khóa học hiện tại
+      const targetLesson = flatLessons.find((l) => l.id === bm.lessonId);
       if (targetLesson) {
         setActiveLesson(targetLesson);
       }
@@ -1167,8 +1183,13 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                   <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 pb-[max(env(safe-area-inset-bottom,0px),2rem)]">
                     <LessonSidebar
                       course={effectiveCourse}
-                      activeLessonId={effectiveLesson.id}
+                      activeLessonId={effectiveLesson?.id || 0}
                       completedLessonIds={completedLessonIds}
+                      allCourses={catalogCourses}
+                      onSelectCourse={(id) => {
+                        handleSelectCourseFromCatalog(id);
+                        setIsMobileCurriculumOpen(false);
+                      }}
                       onSelectLesson={(lesson) => {
                         handleSelectLesson(lesson);
                         setIsMobileCurriculumOpen(false);
@@ -1189,8 +1210,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
               <aside className="hidden lg:block lg:col-span-4 sticky top-20">
                 <LessonSidebar
                   course={effectiveCourse}
-                  activeLessonId={effectiveLesson.id}
+                  activeLessonId={effectiveLesson?.id || 0}
                   completedLessonIds={completedLessonIds}
+                  allCourses={catalogCourses}
+                  onSelectCourse={handleSelectCourseFromCatalog}
                   onSelectLesson={handleSelectLesson}
                   onBackToCatalog={() => setCurrentView('CATALOG')}
                 />
@@ -1198,12 +1221,33 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
 
               {/* Cột phải: Video Player + Điều hướng bài + Trợ lý giọng đọc AI + Trắc nghiệm */}
               <section className="lg:col-span-8 space-y-6">
-                {/* 1. Trình phát Video trực tuyến thông minh */}
-                <div className="space-y-3">
-                  <VideoLessonPlayer
-                    key={effectiveLesson.id}
-                    mediaId={effectiveLesson.id}
-                    lessonId={effectiveLesson.id}
+                {!effectiveLesson || effectiveLesson.id === 0 ? (
+                  <div className="py-24 flex flex-col items-center justify-center gap-4 text-center p-8 rounded-2xl bg-[#090D1A] border border-white/10 shadow-xl">
+                    <BookOpen className="w-12 h-12 text-indigo-400 opacity-80" />
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-white">Khóa học chưa có bài giảng</h3>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        Khóa học này hiện chưa có bài học được xuất bản. Vui lòng chọn khóa học khác hoặc vào Studio để thêm nội dung.
+                      </p>
+                    </div>
+                    {isTeacherOrAdmin && (
+                      <button
+                        onClick={() => setIsCourseMgmtOpen(true)}
+                        className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/30 cursor-pointer"
+                      >
+                        <FolderPlus className="w-4 h-4" />
+                        <span>Mở Studio Đăng Tải</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* 1. Trình phát Video trực tuyến thông minh */}
+                    <div className="space-y-3">
+                      <VideoLessonPlayer
+                        key={effectiveLesson.id}
+                        mediaId={effectiveLesson.id}
+                        lessonId={effectiveLesson.id}
                     lessonTitle={effectiveLesson.title}
                     courseId={effectiveCourse?.id}
                     courseTitle={effectiveCourse?.title}
@@ -1379,7 +1423,9 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     </div>
                   )}
                 </div>
-              </section>
+                </>
+              )}
+            </section>
             </div>
             </>
           )}
@@ -1520,7 +1566,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
-        allCourses={catalogCourses.length > 0 ? catalogCourses : SAMPLE_COURSES}
+        allCourses={catalogCourses}
         completedLessonIds={completedLessonIds}
         onSelectCourse={handleSelectCourseFromCatalog}
         onProfileUpdated={(updated) => setUserProfile(updated)}
