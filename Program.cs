@@ -160,6 +160,7 @@ builder.Services.AddScoped<IVideoProgressService, VideoProgressService>();
 builder.Services.AddScoped<IUserStreakService, UserStreakService>();
 builder.Services.AddScoped<IQuizMistakeVaultService, QuizMistakeVaultService>();
 builder.Services.AddScoped<IFavoriteSubjectService, FavoriteSubjectService>();
+builder.Services.AddScoped<IMediaBookmarkService, MediaBookmarkService>();
 builder.Services.AddScoped<IStudentProgressAnalyticsService, StudentProgressAnalyticsService>();
 
 // Sync, Device & Media Services (Tân)

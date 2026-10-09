@@ -88,16 +88,38 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     p.timeUpdateEventInterval = 1;
   });
 
-  // 3. Xử lý tua video tới mốc đánh dấu (Seek to bookmark timestamp)
+  // 3. Xử lý tua video tới mốc đánh dấu (Seek to bookmark timestamp chính xác)
   useEffect(() => {
-    if (player && typeof seekTimestamp === 'number' && seekTimestamp >= 0) {
+    if (!player || typeof seekTimestamp !== 'number' || seekTimestamp < 0) return;
+
+    let hasSeeked = false;
+    const performSeek = () => {
+      if (hasSeeked) return;
+      hasSeeked = true;
       try {
         player.currentTime = seekTimestamp;
         player.play();
       } catch (err) {
         console.warn('[HybridVideoPlayer] Seek timestamp error:', err);
       }
+    };
+
+    if (player.status === 'readyToPlay' || player.duration > 0) {
+      performSeek();
+      return;
     }
+
+    const statusSub = (player as any).addListener('statusChange', (payload: { status: string }) => {
+      if (payload?.status === 'readyToPlay') {
+        performSeek();
+      }
+    });
+
+    return () => {
+      if (statusSub && typeof statusSub.remove === 'function') {
+        statusSub.remove();
+      }
+    };
   }, [player, seekTimestamp]);
 
   // 4. Theo dõi tiến trình phát và ghi nhận tiến độ học tập liên tục
@@ -163,7 +185,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         style={styles.video}
         contentFit="contain"
         nativeControls={true}
-        allowsFullscreen={true}
+        fullscreenOptions={{ enable: true }}
         allowsPictureInPicture={true}
       />
 

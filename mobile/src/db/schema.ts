@@ -102,4 +102,19 @@ CREATE TABLE IF NOT EXISTS LocalQuizAttempts (
     answersJson TEXT NOT NULL,
     syncStatus TEXT DEFAULT 'PENDING'
 );
+
+CREATE TABLE IF NOT EXISTS LocalMediaBookmarks (
+    id TEXT PRIMARY KEY,
+    lessonId INTEGER NOT NULL,
+    mediaId INTEGER,
+    courseId INTEGER NOT NULL,
+    courseTitle TEXT,
+    lessonTitle TEXT,
+    timestamp REAL NOT NULL,
+    formattedTime TEXT NOT NULL,
+    title TEXT NOT NULL,
+    note TEXT,
+    createdAt TEXT NOT NULL,
+    syncStatus TEXT DEFAULT 'SYNCED'
+);
 `;

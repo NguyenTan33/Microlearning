@@ -15,10 +15,14 @@ function parseJwtPayload(token: string): Record<string, any> | null {
     const paddedBase64 = pad ? base64 + '='.repeat(4 - pad) : base64;
     
     // Polyfill atob if needed or use global atob
-    const jsonStr = globalThis.atob
+    const bufferHelper = (globalThis as unknown as { Buffer?: { from: (b: string, enc: string) => { toString: (e: string) => string } } }).Buffer;
+    const jsonStr = typeof globalThis.atob === 'function'
       ? globalThis.atob(paddedBase64)
-      : Buffer.from(paddedBase64, 'base64').toString('utf8');
+      : bufferHelper
+      ? bufferHelper.from(paddedBase64, 'base64').toString('utf8')
+      : '';
       
+    if (!jsonStr) return null;
     return JSON.parse(jsonStr);
   } catch {
     return null;
