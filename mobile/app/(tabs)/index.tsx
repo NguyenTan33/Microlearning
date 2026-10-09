@@ -6,10 +6,21 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { PlayCircle, CheckCircle2, Clock, Download, ChevronRight } from 'lucide-react-native';
+import {
+  PlayCircle,
+  CheckCircle2,
+  Clock,
+  Download,
+  ChevronRight,
+  Flame,
+  Trophy,
+  Sparkles,
+  BookOpen,
+} from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { OfflineBanner } from '../../src/components/common/OfflineBanner';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
@@ -24,7 +35,7 @@ import type { CourseDetail, Lesson } from '../../src/types/catalog.types';
 
 export default function StudyHomeScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
   const { downloadedLessonIds } = useDownloadStore();
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
@@ -32,7 +43,9 @@ export default function StudyHomeScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Điều hướng sang Auth nếu chưa đăng nhập
+  const [streakCount] = useState<number>(5);
+  const [userXp] = useState<number>(340);
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace('/(auth)/login');
@@ -41,7 +54,6 @@ export default function StudyHomeScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      // 1. Đọc từ SQLite trước (Cache-First)
       const cachedCourses = await catalogRepository.getAllCourses();
       let activeCourseId = cachedCourses.length > 0 ? cachedCourses[0].id : 1;
 
@@ -50,7 +62,6 @@ export default function StudyHomeScreen() {
         setCourse(detail);
       }
 
-      // 2. Nếu có mạng -> Gọi API cập nhật và lưu đè SQLite
       try {
         const apiCourses = await catalogApi.getAllCourses();
         if (apiCourses.length > 0) {
@@ -61,14 +72,13 @@ export default function StudyHomeScreen() {
           setCourse(detail);
         }
       } catch {
-        // Nếu mất mạng thì giữ nguyên dữ liệu từ SQLite
+        // Fallback SQLite when offline
       }
 
-      // 3. Đọc danh sách bài đã hoàn thành từ SQLite
       const completed = await progressRepository.getCompletedLessonIds();
       setCompletedIds(new Set(completed));
     } catch (err) {
-      console.warn('[StudyHome] Lỗi nạp dữ liệu:', err);
+      console.warn('[StudyHome] Data load error:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -88,56 +98,94 @@ export default function StudyHomeScreen() {
   };
 
   if (authLoading || loading) {
-    return <LoadingIndicator message="Đang nạp bài học của bạn..." />;
+    return <LoadingIndicator message="Đang nạp bài học & tiến độ..." />;
   }
 
-  // Tìm bài học tiếp theo cần học (bài chưa hoàn thành đầu tiên)
   let nextLesson: Lesson | null = null;
+  let totalLessonsCount = 0;
   if (course && course.subjects) {
     for (const sub of course.subjects) {
       if (sub.lessons) {
+        totalLessonsCount += sub.lessons.length;
         for (const les of sub.lessons) {
-          if (!completedIds.has(les.id)) {
+          if (!nextLesson && !completedIds.has(les.id)) {
             nextLesson = les;
-            break;
           }
         }
       }
-      if (nextLesson) break;
     }
-    // Nếu đã hoàn thành hết, lấy bài đầu tiên
     if (!nextLesson && course.subjects[0]?.lessons?.[0]) {
       nextLesson = course.subjects[0].lessons[0];
     }
   }
 
+  const completionRate =
+    totalLessonsCount > 0 ? Math.round((completedIds.size / totalLessonsCount) * 100) : 0;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Học tập" subtitle={course ? course.title : 'Microlearning'} />
+      <StatusBar barStyle="light-content" backgroundColor="#070B17" />
+      <AppHeader
+        title="Học tập"
+        subtitle={user?.fullName || 'Microlearning Student'}
+        streakCount={streakCount}
+        onProfilePress={() => router.push('/(tabs)/profile')}
+      />
       <OfflineBanner />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
         }
       >
-        {/* Banner Bài học tiếp theo */}
+        {/* Gamification Stats Row */}
+        <View style={styles.gamificationRow}>
+          <View style={[styles.statBox, styles.streakBox]}>
+            <Flame color="#F59E0B" size={22} fill="#F59E0B" />
+            <View>
+              <Text style={styles.statValue}>{streakCount} Ngày</Text>
+              <Text style={styles.statLabel}>Chuỗi học liên tiếp</Text>
+            </View>
+          </View>
+
+          <View style={[styles.statBox, styles.xpBox]}>
+            <Trophy color="#8B5CF6" size={22} />
+            <View>
+              <Text style={styles.statValue}>{userXp} XP</Text>
+              <Text style={styles.statLabel}>Điểm kinh nghiệm</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Overall Progress Card */}
+        <View style={styles.overallProgressCard}>
+          <View style={styles.progressHeaderRow}>
+            <View style={styles.courseTitleContainer}>
+              <BookOpen color="#818CF8" size={16} />
+              <Text style={styles.courseHeaderTitle} numberOfLines={1}>
+                {course?.title || 'Khóa học Microlearning'}
+              </Text>
+            </View>
+            <Text style={styles.progressPercentText}>{completionRate}%</Text>
+          </View>
+
+          <View style={styles.progressBarTrack}>
+            <View style={[styles.progressBarFill, { width: `${completionRate}%` }]} />
+          </View>
+          <Text style={styles.progressSubText}>
+            Đã hoàn thành {completedIds.size}/{totalLessonsCount} bài học
+          </Text>
+        </View>
+
+        {/* Next Lesson Hero Card */}
         {nextLesson && (
           <View style={styles.heroCard}>
-            <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>BÀI HỌC TIẾP THEO</Text>
-            </View>
-
-            <Text style={styles.heroTitle}>{nextLesson.title}</Text>
-            <Text style={styles.heroDesc} numberOfLines={2}>
-              {nextLesson.description || 'Xem video bài giảng ngắn và làm bài trắc nghiệm củng cố.'}
-            </Text>
-
-            <View style={styles.heroMetaRow}>
-              <View style={styles.metaItem}>
-                <Clock color="#94A3B8" size={14} />
-                <Text style={styles.metaText}>{formatDuration(nextLesson.durationSeconds)}</Text>
+            <View style={styles.heroBadgeRow}>
+              <View style={styles.heroBadge}>
+                <Sparkles color="#818CF8" size={12} />
+                <Text style={styles.heroBadgeText}>BÀI HỌC TIẾP THEO</Text>
               </View>
 
               {downloadedLessonIds.has(nextLesson.id) && (
@@ -148,18 +196,31 @@ export default function StudyHomeScreen() {
               )}
             </View>
 
+            <Text style={styles.heroTitle}>{nextLesson.title}</Text>
+            <Text style={styles.heroDesc} numberOfLines={2}>
+              {nextLesson.description ||
+                'Xem video ngắn 3-5 phút và hoàn thành bài trắc nghiệm củng cố kiến thức.'}
+            </Text>
+
+            <View style={styles.heroMetaRow}>
+              <View style={styles.metaItem}>
+                <Clock color="#94A3B8" size={14} />
+                <Text style={styles.metaText}>{formatDuration(nextLesson.durationSeconds)}</Text>
+              </View>
+            </View>
+
             <TouchableOpacity
               style={styles.continueButton}
               onPress={() => router.push(`/lesson/${nextLesson!.id}`)}
               activeOpacity={0.8}
             >
-              <PlayCircle color="#FFFFFF" size={18} />
-              <Text style={styles.continueButtonText}>Tiếp tục học ngay</Text>
+              <PlayCircle color="#FFFFFF" size={20} />
+              <Text style={styles.continueButtonText}>Học ngay bài tiếp theo</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Danh sách Môn học & Bài học trong Khóa học */}
+        {/* Curriculum Hierarchy */}
         <View style={styles.curriculumSection}>
           <Text style={styles.sectionTitle}>Lộ trình bài giảng</Text>
 
@@ -181,7 +242,7 @@ export default function StudyHomeScreen() {
                     >
                       <View style={styles.lessonLeft}>
                         {isDone ? (
-                          <CheckCircle2 color="#10B981" size={20} />
+                          <CheckCircle2 color="#10B981" size={22} />
                         ) : (
                           <View style={styles.lessonIndexCircle}>
                             <Text style={styles.lessonIndexText}>{les.sortOrder}</Text>
@@ -227,29 +288,127 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 36,
+  },
+  gamificationRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  statBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    gap: 12,
+  },
+  streakBox: {
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  xpBox: {
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  statValue: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  statLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  overallProgressCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 16,
+  },
+  progressHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  courseTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  courseHeaderTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  progressPercentText: {
+    color: '#818CF8',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: '#1E293B',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#6366F1',
+    borderRadius: 4,
+  },
+  progressSubText: {
+    color: '#64748B',
+    fontSize: 11,
   },
   heroCard: {
     backgroundColor: '#0F172A',
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1.5,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-    marginBottom: 24,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    marginBottom: 20,
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   heroBadge: {
-    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(99, 102, 241, 0.2)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    marginBottom: 10,
+    gap: 6,
   },
   heroBadgeText: {
     color: '#818CF8',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  offlineReadyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  offlineReadyText: {
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: '600',
   },
   heroTitle: {
     color: '#F8FAFC',
@@ -267,7 +426,6 @@ const styles = StyleSheet.create({
   heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     marginBottom: 16,
   },
   metaItem: {
@@ -280,36 +438,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  offlineReadyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 4,
-  },
-  offlineReadyText: {
-    color: '#10B981',
-    fontSize: 11,
-    fontWeight: '600',
-  },
   continueButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#6366F1',
     borderRadius: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 8,
   },
   continueButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   curriculumSection: {
-    marginTop: 8,
+    marginTop: 4,
   },
   sectionTitle: {
     color: '#F8FAFC',

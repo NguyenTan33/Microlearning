@@ -1,35 +1,19 @@
 import { create } from 'zustand';
-import { autoSyncEngine } from '../services/autoSyncEngine';
 
 interface SyncState {
-  isSyncing: boolean;
-  outboxCount: number;
-  lastSyncTime: string | null;
+  pendingCount: number;
   isOnline: boolean;
-  initSyncStore: () => () => void;
-  triggerManualSync: () => void;
+  isSyncing: boolean;
+  setPendingCount: (count: number) => void;
+  setOnline: (online: boolean) => void;
+  setSyncing: (syncing: boolean) => void;
 }
 
 export const useSyncStore = create<SyncState>((set) => ({
-  isSyncing: false,
-  outboxCount: 0,
-  lastSyncTime: null,
+  pendingCount: 0,
   isOnline: true,
-
-  initSyncStore: () => {
-    // Đăng ký nhận cập nhật từ autoSyncEngine
-    const unsubscribe = autoSyncEngine.subscribe((status) => {
-      set({
-        isSyncing: status.isSyncing,
-        outboxCount: status.outboxCount,
-        lastSyncTime: status.lastSyncTime,
-      });
-    });
-
-    return unsubscribe;
-  },
-
-  triggerManualSync: () => {
-    autoSyncEngine.triggerSyncWithDebounce(0);
-  },
+  isSyncing: false,
+  setPendingCount: (pendingCount) => set({ pendingCount }),
+  setOnline: (isOnline) => set({ isOnline }),
+  setSyncing: (isSyncing) => set({ isSyncing }),
 }));

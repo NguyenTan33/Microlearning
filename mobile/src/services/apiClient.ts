@@ -1,22 +1,36 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { tokenService } from './tokenService';
-
-const DEFAULT_API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
+import axios from 'axios';
+import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
+import { secureStorage } from '../utils/secureStorage';
 
 export const apiClient = axios.create({
-  baseURL: DEFAULT_API_URL,
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// 1. Request Interceptor: Tự động gắn Bearer Token
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}> = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  failedQueue.forEach((promise) => {
+    if (error) {
+      promise.reject(error);
+    } else if (token) {
+      promise.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+// Request Interceptor: Attach JWT Access Token
 apiClient.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    const token = await tokenService.getAccessToken();
+  async (config) => {
+    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -25,28 +39,11 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 2. Response Interceptor: Bắt lỗi 401 tự động Refresh Token
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value?: unknown) => void;
-  reject: (reason?: unknown) => void;
-}> = [];
-
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
-
+// Response Interceptor: Auto Refresh Token on 401
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+  async (error) => {
+    const originalRequest = error.config;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
@@ -54,9 +51,7 @@ apiClient.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         })
           .then((token) => {
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-            }
+            originalRequest.headers.Authorization = `Bearer ${token}`;
             return apiClient(originalRequest);
           })
           .catch((err) => Promise.reject(err));
@@ -66,29 +61,32 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = await tokenService.getRefreshToken();
+        const refreshToken = await secureStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
         if (!refreshToken) {
-          await tokenService.clearTokens();
-          return Promise.reject(error);
+          throw new Error('No refresh token available');
         }
 
-        const refreshRes = await axios.post<{ accessToken: string; refreshToken: string }>(
-          `${DEFAULT_API_URL}/auth/refresh`,
-          { refreshToken },
-          { headers: { 'Content-Type': 'application/json' } }
-        );
+        const res = await axios.post(`${API_BASE_URL}/api/auth/refresh-token`, {
+          refreshToken,
+        });
 
-        const { accessToken, refreshToken: newRefreshToken } = refreshRes.data;
-        await tokenService.saveTokens(accessToken, newRefreshToken);
+        const newAccessToken = res.data.accessToken;
+        const newRefreshToken = res.data.refreshToken;
 
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
+        if (newRefreshToken) {
+          await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
         }
-        processQueue(null, accessToken);
+
+        apiClient.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+        processQueue(null, newAccessToken);
         return apiClient(originalRequest);
       } catch (refreshErr) {
         processQueue(refreshErr, null);
-        await tokenService.clearTokens();
+        await secureStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        await secureStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;

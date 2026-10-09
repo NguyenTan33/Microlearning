@@ -5,58 +5,46 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   ScrollView,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ShieldCheck, CheckCircle2 } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 
 export default function VerifyOtpScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ phone?: string }>();
-  const phone = params.phone || '';
+  const { phone } = useLocalSearchParams<{ phone: string }>();
 
   const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleVerify = async () => {
-    if (!otpCode.trim() || otpCode.length < 4) {
-      Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ mã OTP.');
+    if (!otpCode || otpCode.length < 4) {
+      setErrorMsg('Vui lòng nhập mã OTP hợp lệ.');
       return;
     }
 
     setLoading(true);
+    setErrorMsg('');
+
     try {
-      const response = await authApi.verifyOtp({
-        phoneNumber: phone,
-        otpCode: otpCode.trim(),
+      const res = await authApi.verifyOtp({
+        phoneNumber: phone || '',
+        otpCode,
       });
 
-      if (response.isSuccess) {
-        Alert.alert(
-          'Xác thực thành công',
-          'Tài khoản của bạn đã được kích hoạt. Hãy đăng nhập để bắt đầu học tập.',
-          [
-            {
-              text: 'Đăng nhập ngay',
-              onPress: () => router.replace('/(auth)/login'),
-            },
-          ]
-        );
+      if (res.success) {
+        router.replace('/(auth)/login');
       } else {
-        Alert.alert('Xác thực thất bại', response.message || 'Mã OTP không hợp lệ.');
+        setErrorMsg(res.message || 'Mã OTP không đúng hoặc đã hết hạn.');
       }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string };
-      const msg = err.response?.data?.message || err.message || 'Xác thực OTP thất bại.';
-      Alert.alert('Lỗi', msg);
+    } catch {
+      setErrorMsg('Xác thực OTP thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -64,152 +52,73 @@ export default function VerifyOtpScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            <View style={styles.card}>
-              <View style={styles.iconBadge}>
-                <ShieldCheck color="#38BDF8" size={32} />
-              </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft color="#94A3B8" size={20} />
+            <Text style={styles.backText}>Quay lại</Text>
+          </TouchableOpacity>
 
-              <Text style={styles.cardTitle}>Xác thực mã OTP</Text>
-              <Text style={styles.cardSubtitle}>
-                Nhập mã xác thực đã gửi tới số điện thoại {phone ? `(${phone})` : ''}
-              </Text>
-
-              {/* Input OTP */}
-              <View style={styles.inputGroup}>
-                <TextInput
-                  style={styles.otpInput}
-                  placeholder="Nhập 6 chữ số OTP"
-                  placeholderTextColor="#64748B"
-                  value={otpCode}
-                  onChangeText={setOtpCode}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  textAlign="center"
-                  autoFocus
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.submitButton, loading && styles.buttonDisabled]}
-                onPress={handleVerify}
-                disabled={loading}
-                activeOpacity={0.8}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <CheckCircle2 color="#FFFFFF" size={18} />
-                    <Text style={styles.submitButtonText}>Xác nhận kích hoạt</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => router.replace('/(auth)/login')}
-              >
-                <Text style={styles.backButtonText}>Quay lại đăng nhập</Text>
-              </TouchableOpacity>
+          <View style={styles.card}>
+            <View style={styles.iconBox}>
+              <ShieldCheck color="#818CF8" size={32} />
             </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
+
+            <Text style={styles.cardTitle}>Xác thực OTP</Text>
+            <Text style={styles.cardSubtitle}>
+              Mã xác thực đã được gửi đến số điện thoại {phone || ''}
+            </Text>
+
+            {errorMsg ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMsg}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mã xác thực (OTP)</Text>
+              <TextInput
+                style={styles.otpInput}
+                placeholder="123456"
+                placeholderTextColor="#475569"
+                keyboardType="number-pad"
+                maxLength={6}
+                value={otpCode}
+                onChangeText={setOtpCode}
+              />
+            </View>
+
+            <TouchableOpacity style={styles.submitButton} onPress={handleVerify} disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.submitButtonText}>Xác nhận OTP</Text>
+                  <ArrowRight color="#FFFFFF" size={18} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#070B17',
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  iconBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 6,
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 18,
-  },
-  inputGroup: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  otpInput: {
-    backgroundColor: '#070B17',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#38BDF8',
-    height: 56,
-    color: '#F8FAFC',
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: 4,
-  },
-  submitButton: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 14,
-    height: 52,
-    gap: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  backButton: {
-    marginTop: 20,
-    padding: 6,
-  },
-  backButtonText: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  safeArea: { flex: 1, backgroundColor: '#070B17' },
+  scrollContent: { padding: 20, justifyContent: 'center', flexGrow: 1 },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 },
+  backText: { color: '#94A3B8', fontSize: 14, fontWeight: '500' },
+  card: { backgroundColor: '#0F172A', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#1E293B', alignItems: 'center' },
+  iconBox: { width: 60, height: 60, borderRadius: 20, backgroundColor: 'rgba(99, 102, 241, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  cardTitle: { color: '#F8FAFC', fontSize: 20, fontWeight: '700', marginBottom: 6 },
+  cardSubtitle: { color: '#94A3B8', fontSize: 13, textAlign: 'center', marginBottom: 20 },
+  errorBox: { backgroundColor: 'rgba(244, 63, 94, 0.15)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.3)', marginBottom: 14, width: '100%' },
+  errorText: { color: '#F43F5E', fontSize: 12, textAlign: 'center' },
+  inputGroup: { width: '100%', marginBottom: 20 },
+  inputLabel: { color: '#E2E8F0', fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  otpInput: { backgroundColor: '#070B17', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: '#F8FAFC', fontSize: 20, fontWeight: '700', textAlign: 'center', letterSpacing: 6, borderWidth: 1, borderColor: '#1E293B' },
+  submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366F1', borderRadius: 14, paddingVertical: 14, gap: 8, width: '100%' },
+  submitButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });

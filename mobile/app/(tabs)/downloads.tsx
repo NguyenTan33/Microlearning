@@ -1,336 +1,233 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
-  Alert,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { HardDrive, Trash2, Play, Pin, PinOff, Sparkles, RefreshCw } from 'lucide-react-native';
+import { Download, Trash2, Pin, Play, HardDrive, CheckCircle2 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
+import { OfflineBanner } from '../../src/components/common/OfflineBanner';
+import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { downloadRepository } from '../../src/db/repositories/downloadRepository';
-import { catalogRepository } from '../../src/db/repositories/catalogRepository';
+import { downloadManager } from '../../src/services/downloadManager';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
-import { mediaCleanupService } from '../../src/services/mediaCleanupService';
-import { formatBytes } from '../../src/utils/formatters';
-import type { DownloadedMediaRecord } from '../../src/types/offline.types';
-import type { Lesson } from '../../src/types/catalog.types';
-
-interface OfflineItem {
-  record: DownloadedMediaRecord;
-  lesson: Lesson | null;
-}
+import { formatBytes, formatDate } from '../../src/utils/formatters';
+import type { DownloadedMediaItem } from '../../src/types/sync.types';
 
 export default function DownloadsScreen() {
   const router = useRouter();
-  const { totalStorageBytes, deleteDownload, refreshStorageAndDownloads } = useDownloadStore();
+  const { refreshDownloads } = useDownloadStore();
 
-  const [items, setItems] = useState<OfflineItem[]>([]);
+  const [downloads, setDownloads] = useState<DownloadedMediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadOfflineMedia = useCallback(async () => {
+  const loadDownloads = useCallback(async () => {
     try {
-      const records = await downloadRepository.getAllDownloaded();
-      const loaded: OfflineItem[] = [];
-      const seenLessons = new Set<number>();
-
-      for (const rec of records) {
-        // Tránh trùng lặp đếm nếu 1 bài có nhiều tệp
-        if (!seenLessons.has(rec.lessonId)) {
-          seenLessons.add(rec.lessonId);
-          const les = await catalogRepository.getLessonById(rec.lessonId);
-          loaded.push({ record: rec, lesson: les });
-        }
-      }
-
-      setItems(loaded);
-      await refreshStorageAndDownloads();
+      const items = await downloadRepository.getAllDownloads();
+      setDownloads(items);
+    } catch (err) {
+      console.warn('[Downloads] Load error:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [refreshStorageAndDownloads]);
+  }, []);
 
   useEffect(() => {
-    loadOfflineMedia();
-  }, [loadOfflineMedia]);
+    loadDownloads();
+  }, [loadDownloads]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadOfflineMedia();
+    await loadDownloads();
   };
 
-  const handleDelete = (lessonId: number, title: string) => {
-    Alert.alert('Xác nhận xóa tệp', `Bạn có chắc chắn muốn xóa video "${title}" khỏi máy?`, [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa tệp',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteDownload(lessonId);
-          await loadOfflineMedia();
-        },
-      },
-    ]);
-  };
-
-  const handleTogglePin = async (lessonId: number, currentlyPinned: boolean) => {
-    await downloadRepository.togglePinned(lessonId, !currentlyPinned);
-    await loadOfflineMedia();
-  };
-
-  const handleRunCleanup7Days = async () => {
-    const deletedCount = await mediaCleanupService.runAutoCleanup7Days();
+  const handleDelete = (item: DownloadedMediaItem) => {
     Alert.alert(
-      'Dọn dẹp bộ nhớ 7 ngày',
-      deletedCount > 0
-        ? `Đã dọn dẹp ${deletedCount} video bài học đã học xong quá 7 ngày.`
-        : 'Bộ nhớ sạch sẽ! Không có video bài học nào thỏa điều kiện xóa.'
+      'Xóa bài học ngoại tuyến',
+      `Bạn có chắc muốn xóa video "${item.fileName}" khỏi bộ nhớ thiết bị?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa ngay',
+          style: 'destructive',
+          onPress: async () => {
+            await downloadManager.deleteDownloadedVideo(item.lessonId, item.localPath);
+            await refreshDownloads();
+            await loadDownloads();
+          },
+        },
+      ]
     );
-    await loadOfflineMedia();
   };
+
+  const handleTogglePin = async (item: DownloadedMediaItem) => {
+    const nextPinState = item.isPinned === 0;
+    await downloadRepository.togglePin(item.lessonId, nextPinState);
+    await loadDownloads();
+  };
+
+  if (loading) {
+    return <LoadingIndicator message="Đang kiểm tra thư viện ngoại tuyến..." />;
+  }
+
+  // Calculate total used storage space
+  const totalSizeBytes = downloads.reduce((acc, curr) => acc + (curr.fileSizeBytes || 0), 0);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader title="Kho Ngoại Tuyến & Dọn Dẹp" />
+      <AppHeader title="Kho Ngoại Tuyến" subtitle="Quản lý bài học đã tải về" />
+      <OfflineBanner />
 
-      <View style={styles.container}>
-        {/* Thống kê dung lượng */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />}
+      >
+        {/* Storage Quota Visualizer Bar */}
         <View style={styles.storageCard}>
-          <View style={styles.storageIconWrapper}>
-            <HardDrive color="#38BDF8" size={24} />
+          <View style={styles.storageHeaderRow}>
+            <View style={styles.storageTitleRow}>
+              <HardDrive color="#818CF8" size={18} />
+              <Text style={styles.storageTitle}>Dung lượng bộ nhớ</Text>
+            </View>
+            <Text style={styles.storageSizeText}>{formatBytes(totalSizeBytes)}</Text>
           </View>
-          <View style={styles.storageDetails}>
-            <Text style={styles.storageLabel}>Dung lượng đã sử dụng</Text>
-            <Text style={styles.storageValue}>{formatBytes(totalStorageBytes)}</Text>
+
+          <View style={styles.storageBarTrack}>
+            <View style={[styles.storageBarFill, { width: downloads.length > 0 ? '35%' : '0%' }]} />
           </View>
-          <View style={styles.storageCountBadge}>
-            <Text style={styles.storageCountText}>{items.length} bài học</Text>
+
+          <View style={styles.storageLegendRow}>
+            <View style={styles.legendItem}>
+              <View style={styles.legendDotVideo} />
+              <Text style={styles.legendText}>{downloads.length} Video bài học</Text>
+            </View>
+            <Text style={styles.cleanupPolicyText}>Tự động dọn dẹp sau 7 ngày</Text>
           </View>
         </View>
 
-        {/* Nút kích hoạt dọn dẹp 7 ngày */}
-        <TouchableOpacity style={styles.cleanupBannerBtn} onPress={handleRunCleanup7Days}>
-          <Sparkles color="#F59E0B" size={18} />
-          <Text style={styles.cleanupBannerText}>Dọn Dẹp Video Đã Học Xong ({'>'} 7 Ngày)</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Danh sách bài giảng ({downloads.length})</Text>
 
-        {/* Danh sách video tải về */}
-        <FlatList
-          data={items}
-          keyExtractor={(item) => `offline_${item.record.lessonId}_${item.record.mediaId}`}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#6366F1"
-              colors={['#6366F1']}
-            />
-          }
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const title = item.lesson?.title || `Bài học #${item.record.lessonId}`;
-            const isPinned = item.record.isPinned === 1;
+        {downloads.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Download color="#475569" size={40} />
+            <Text style={styles.emptyTitle}>Chưa có bài học ngoại tuyến</Text>
+            <Text style={styles.emptyDesc}>
+              Bấm biểu tượng tải xuống trong bất kỳ bài học nào để học tập khi không có Internet.
+            </Text>
+          </View>
+        ) : (
+          downloads.map((item) => (
+            <View key={item.lessonId} style={styles.downloadRow}>
+              <TouchableOpacity
+                style={styles.downloadLeft}
+                onPress={() => router.push(`/lesson/${item.lessonId}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.playIconBox}>
+                  <Play color="#6366F1" size={18} fill="#6366F1" />
+                </View>
 
-            return (
-              <View style={styles.itemCard}>
+                <View style={styles.downloadTextContainer}>
+                  <Text style={styles.downloadTitle} numberOfLines={1}>
+                    {item.fileName}
+                  </Text>
+                  <View style={styles.downloadSubMeta}>
+                    <Text style={styles.downloadMetaText}>{formatBytes(item.fileSizeBytes)}</Text>
+                    <Text style={styles.downloadMetaDot}>•</Text>
+                    <Text style={styles.downloadMetaText}>Tải ngày {formatDate(item.downloadedAt)}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              <View style={styles.actionButtonsRow}>
                 <TouchableOpacity
-                  style={styles.playButton}
-                  onPress={() => router.push(`/lesson/${item.record.lessonId}` as any)}
+                  style={[styles.pinBtn, item.isPinned === 1 && styles.pinBtnActive]}
+                  onPress={() => handleTogglePin(item)}
                 >
-                  <Play color="#FFFFFF" size={18} fill="#FFFFFF" />
+                  <Pin color={item.isPinned === 1 ? '#F59E0B' : '#64748B'} size={16} />
                 </TouchableOpacity>
 
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemTitle} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  <Text style={styles.itemMeta}>
-                    {formatBytes(item.record.fileSizeBytes)} • Tải ngày{' '}
-                    {new Date(item.record.downloadedAt).toLocaleDateString('vi-VN')}
-                  </Text>
-                </View>
-
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.pinBtn}
-                    onPress={() => handleTogglePin(item.record.lessonId, isPinned)}
-                  >
-                    {isPinned ? (
-                      <Pin color="#F59E0B" size={18} fill="#F59E0B" />
-                    ) : (
-                      <PinOff color="#64748B" size={18} />
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.deleteBtn}
-                    onPress={() => handleDelete(item.record.lessonId, title)}
-                  >
-                    <Trash2 color="#EF4444" size={18} />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)}>
+                  <Trash2 color="#F43F5E" size={16} />
+                </TouchableOpacity>
               </View>
-            );
-          }}
-          ListEmptyComponent={
-            !loading ? (
-              <View style={styles.emptyContainer}>
-                <HardDrive color="#475569" size={48} />
-                <Text style={styles.emptyTitle}>Chưa có bài học nào được tải về</Text>
-                <Text style={styles.emptySub}>
-                  Bấm nút "Tải bài học" trong màn hình học để xem video ngoại tuyến khi không có kết nối Internet.
-                </Text>
-              </View>
-            ) : null
-          }
-        />
-      </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
+  safeArea: { flex: 1, backgroundColor: '#070B17' },
+  scrollContent: { padding: 16, paddingBottom: 32 },
   storageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
+    backgroundColor: '#0F172A',
     borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 20,
   },
-  storageIconWrapper: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+  storageHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  storageTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storageTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '700' },
+  storageSizeText: { color: '#818CF8', fontSize: 15, fontWeight: '700' },
+  storageBarTrack: { height: 10, backgroundColor: '#1E293B', borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
+  storageBarFill: { height: '100%', backgroundColor: '#6366F1', borderRadius: 5 },
+  storageLegendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDotVideo: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#6366F1' },
+  legendText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
+  cleanupPolicyText: { color: '#64748B', fontSize: 11 },
+  sectionTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  emptyCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
-  storageDetails: {
-    flex: 1,
-  },
-  storageLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  storageValue: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  storageCountBadge: {
-    backgroundColor: '#38BDF8',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  storageCountText: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  cleanupBannerBtn: {
+  emptyTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginTop: 14, marginBottom: 6 },
+  emptyDesc: { color: '#94A3B8', fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  downloadRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
-    marginBottom: 16,
-  },
-  cleanupBannerText: {
-    color: '#F59E0B',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 24,
-  },
-  itemCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    padding: 14,
     borderRadius: 16,
-    padding: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
     marginBottom: 10,
   },
-  playButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#6366F1',
+  downloadLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
+  playIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  itemInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
-  itemTitle: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  itemMeta: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pinBtn: {
-    padding: 8,
-  },
-  deleteBtn: {
-    padding: 8,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 16,
-  },
-  emptySub: {
-    color: '#94A3B8',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 30,
-    lineHeight: 18,
-  },
+  downloadTextContainer: { marginLeft: 12, flex: 1 },
+  downloadTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '600', marginBottom: 3 },
+  downloadSubMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  downloadMetaText: { color: '#64748B', fontSize: 11 },
+  downloadMetaDot: { color: '#475569', fontSize: 10 },
+  actionButtonsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pinBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#070B17', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#1E293B' },
+  pinBtnActive: { borderColor: 'rgba(245, 158, 11, 0.4)', backgroundColor: 'rgba(245, 158, 11, 0.15)' },
+  deleteBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(244, 63, 94, 0.15)', alignItems: 'center', justifyContent: 'center' },
 });

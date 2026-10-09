@@ -1,374 +1,275 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { HelpCircle, CheckCircle2, Lock, Bookmark, Heart } from 'lucide-react-native';
-import { AppHeader } from '../../src/components/common/AppHeader';
-import { OfflineBanner } from '../../src/components/common/OfflineBanner';
+import {
+  ArrowLeft,
+  Download,
+  CheckCircle2,
+  FileQuestion,
+  Headphones,
+  Flame,
+  Bookmark,
+  Sparkles,
+} from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
-import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
-import { DownloadButton } from '../../src/components/download/DownloadButton';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
-import { progressRepository } from '../../src/db/repositories/progressRepository';
 import { catalogApi } from '../../src/services/catalogApi';
-import { favoriteSubjectApi } from '../../src/services/favoriteSubjectApi';
-import { mediaBookmarkService } from '../../src/services/mediaBookmarkService';
+import { progressRepository } from '../../src/db/repositories/progressRepository';
+import { downloadManager } from '../../src/services/downloadManager';
+import { downloadRepository } from '../../src/db/repositories/downloadRepository';
+import { outboxRepository } from '../../src/db/repositories/outboxRepository';
+import { useDownloadStore } from '../../src/store/useDownloadStore';
+import { generateGuid } from '../../src/utils/guidHelper';
+import { formatDuration } from '../../src/utils/formatters';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
-  const lessonId = parseInt(params.id || '1', 10);
+  const lessonId = Number(id);
+
+  const { downloadedLessonIds, refreshDownloads } = useDownloadStore();
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
-  const [onlineStreamUrl, setOnlineStreamUrl] = useState<string | undefined>(undefined);
-  const [isCompleted, setIsCompleted] = useState<boolean>(false);
-  const [watchedPercent, setWatchedPercent] = useState<number>(0);
-  const [isFavorited, setIsFavorited] = useState<boolean>(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const loadLessonData = useCallback(async () => {
+  const isOfflineReady = downloadedLessonIds.has(lessonId);
+
+  const loadLesson = useCallback(async () => {
     try {
-      // 1. Đọc từ SQLite trước
-      const local = await catalogRepository.getLessonById(lessonId);
-      if (local) {
-        setLesson(local);
+      // 1. SQLite First
+      let item = await catalogRepository.getLessonById(lessonId);
+      if (item) {
+        setLesson(item);
       }
 
-      // 2. Kéo tiến độ bài học từ SQLite
-      const prog = await progressRepository.getProgress(lessonId);
-      if (prog) {
-        setWatchedPercent(prog.percent || 0);
-        if (prog.isCompleted) {
-          setIsCompleted(true);
-        }
-      }
-
-      // 3. Tra cứu nguồn video chuẩn từ Azure Storage (Direct URL hoặc HTTP 206 Stream)
+      // 2. API fetch if online
       try {
-        const mediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
-        if (mediaInfo.sourceType === 'direct_url' && mediaInfo.externalUrl) {
-          setOnlineStreamUrl(mediaInfo.externalUrl);
-        } else if (mediaInfo.streamUrl) {
-          setOnlineStreamUrl(mediaInfo.streamUrl);
-        } else {
-          const apiBase =
-            process.env.EXPO_PUBLIC_API_URL ||
-            'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
-          setOnlineStreamUrl(`${apiBase}/media/lesson/${lessonId}/stream`);
-        }
+        item = await catalogApi.getLessonById(lessonId);
+        setLesson(item);
       } catch {
-        const apiBase =
-          process.env.EXPO_PUBLIC_API_URL ||
-          'https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api';
-        setOnlineStreamUrl(`${apiBase}/media/lesson/${lessonId}/stream`);
+        // Fallback SQLite
       }
 
-      // 4. Nếu đang online và chưa có mediaAssets, gọi package để nạp đề trắc nghiệm
-      try {
-        const pkg = await catalogApi.getLessonPackage(lessonId);
-        if (pkg) {
-          setLesson({
-            id: pkg.lessonId,
-            subjectId: pkg.subjectId,
-            title: pkg.title,
-            description: pkg.description,
-            durationSeconds: pkg.durationSeconds,
-            sortOrder: pkg.sortOrder,
-            version: pkg.version,
-            isPublished: true,
-            hasQuiz: Boolean(pkg.quiz),
-            mediaAssetCount: pkg.mediaAssets?.length || 0,
-            mediaAssets: pkg.mediaAssets,
-          });
-        }
-      } catch {
-        // Fallback giữ nguyên local
-      }
+      // Check completion status
+      const completedList = await progressRepository.getCompletedLessonIds();
+      setIsCompleted(completedList.includes(lessonId));
+    } catch (err) {
+      console.warn('[Lesson] Load error:', err);
     } finally {
       setLoading(false);
     }
   }, [lessonId]);
 
   useEffect(() => {
-    loadLessonData();
-  }, [loadLessonData]);
+    loadLesson();
+  }, [loadLesson]);
 
-  const handleLessonCompleted = () => {
-    setIsCompleted(true);
-    setWatchedPercent(100);
-  };
-
-  const handleToggleFavorite = async () => {
-    if (!lesson) return;
+  const handleCompleteLesson = async () => {
     try {
-      if (isFavorited) {
-        await favoriteSubjectApi.removeFavoriteSubject(lesson.subjectId);
-        setIsFavorited(false);
-        Alert.alert('Thành công', 'Đã xóa khỏi danh sách yêu thích.');
-      } else {
-        await favoriteSubjectApi.addFavoriteSubject(lesson.subjectId);
-        setIsFavorited(true);
-        Alert.alert('Thành công', 'Đã thêm môn học vào danh sách yêu thích!');
-      }
-    } catch {
-      Alert.alert('Lỗi', 'Không thể thực hiện thao tác.');
+      setIsCompleted(true);
+
+      // Save to SQLite
+      await progressRepository.saveProgress(lessonId, lesson?.durationSeconds || 180, 100.0, true);
+
+      // Add to Outbox Queue for auto sync
+      await outboxRepository.addOutboxItem({
+        clientOperationId: generateGuid(),
+        operationType: 'LESSON_PROGRESS',
+        entityType: 'Lesson',
+        entityId: lessonId,
+        payloadJson: JSON.stringify({
+          lessonId,
+          watchedSeconds: lesson?.durationSeconds || 180,
+          percent: 100.0,
+        }),
+        createdAt: new Date().toISOString(),
+      });
+
+      Alert.alert('Chúc mừng! 🔥', 'Bạn đã hoàn thành bài học và tăng 1 ngày Streak!');
+    } catch (err) {
+      console.warn('[Lesson] Complete error:', err);
     }
   };
 
-  const handleAddBookmark = async () => {
-    if (!lesson) return;
-    try {
-      await mediaBookmarkService.addBookmark(lesson.id, 0, `Đánh dấu bài: ${lesson.title}`);
-      Alert.alert('Đã đánh dấu', 'Đã lưu mốc thời gian bài học vào Thư viện Đánh dấu!');
-    } catch {
-      Alert.alert('Lỗi', 'Không thể đánh dấu bài học.');
-    }
-  };
-
-  const handleQuizPress = () => {
-    if (!isCompleted && watchedPercent < 60) {
-      Alert.alert(
-        '🔒 Bài trắc nghiệm bị khóa',
-        `Bạn cần xem tối thiểu 60% thời lượng video (Hiện tại: ${Math.round(
-          watchedPercent
-        )}%) để mở khóa bài thi trắc nghiệm này.`
-      );
+  const handleDownload = async () => {
+    if (!lesson || !lesson.videoUrl) {
+      Alert.alert('Thông báo', 'Bài học này chưa hỗ trợ video ngoại tuyến.');
       return;
     }
-    router.push(`/quiz/${lessonId}` as any);
+
+    setDownloading(true);
+    setDownloadProgress(0);
+
+    const localUri = await downloadManager.downloadLessonVideo(
+      lessonId,
+      lesson.videoUrl,
+      lesson.title,
+      (pct) => setDownloadProgress(pct)
+    );
+
+    setDownloading(false);
+    if (localUri) {
+      await refreshDownloads();
+      Alert.alert('Thành công! 💾', 'Đã tải bài học về bộ nhớ offline.');
+    } else {
+      Alert.alert('Lỗi', 'Không thể tải bài học. Vui lòng thử lại.');
+    }
   };
 
   if (loading) {
-    return <LoadingIndicator message="Đang chuẩn bị bài giảng..." />;
+    return <LoadingIndicator message="Đang nạp video bài giảng..." />;
   }
 
   if (!lesson) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <AppHeader showBack title="Bài học" />
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Không tìm thấy bài học này.</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Bài học không tồn tại</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Text style={styles.backBtnText}>Quay lại</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  const isQuizUnlocked = isCompleted || watchedPercent >= 60;
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppHeader showBack title={`Bài ${lesson.sortOrder}: ${lesson.title}`} />
-      <OfflineBanner />
+      {/* Top Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerBackBtn} onPress={() => router.back()}>
+          <ArrowLeft color="#F8FAFC" size={20} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {lesson.title}
+        </Text>
+      </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Trình phát Video Hybrid (Tự động resolve Offline / Online Range Stream) */}
-        <HybridVideoPlayer
-          lessonId={lesson.id}
-          onlineStreamUrl={onlineStreamUrl}
-          durationSeconds={lesson.durationSeconds}
-          onCompleted={handleLessonCompleted}
-        />
-
-        {/* Thông tin bài học & Thanh công cụ */}
-        <View style={styles.lessonMetaCard}>
-          <View style={styles.titleRow}>
-            <Text style={styles.lessonTitle}>{lesson.title}</Text>
-            {isCompleted && (
-              <View style={styles.completedBadge}>
-                <CheckCircle2 color="#10B981" size={14} />
-                <Text style={styles.completedText}>Đã hoàn thành</Text>
-              </View>
-            )}
+        {/* Mock Video Container */}
+        <View style={styles.videoPlayerBox}>
+          <View style={styles.videoPlaceholderContent}>
+            <Sparkles color="#818CF8" size={36} />
+            <Text style={styles.videoPlaceholderTitle}>{lesson.title}</Text>
+            <Text style={styles.videoPlaceholderTime}>Thời lượng: {formatDuration(lesson.durationSeconds)}</Text>
           </View>
+        </View>
 
-          <View style={styles.actionRow}>
-            {/* Nút Tải ngoại tuyến */}
-            <DownloadButton lessonId={lesson.id} />
+        {/* Lesson Metadata & Action Buttons */}
+        <View style={styles.lessonMetaSection}>
+          <Text style={styles.lessonTitle}>{lesson.title}</Text>
+          <Text style={styles.lessonDesc}>{lesson.description || 'Xem video ngắn và làm bài trắc nghiệm.'}</Text>
 
-            {/* Nút Đánh dấu Mốc bài học */}
-            <TouchableOpacity style={styles.iconActionBtn} onPress={handleAddBookmark}>
-              <Bookmark color="#38BDF8" size={18} />
-            </TouchableOpacity>
-
-            {/* Nút Yêu thích môn học */}
-            <TouchableOpacity style={styles.iconActionBtn} onPress={handleToggleFavorite}>
-              <Heart
-                color={isFavorited ? '#EF4444' : '#94A3B8'}
-                fill={isFavorited ? '#EF4444' : 'transparent'}
-                size={18}
-              />
-            </TouchableOpacity>
-
-            {/* Nút Làm bài thi trắc nghiệm Quiz (Strict 60% Coverage Lock) */}
+          <View style={styles.actionsRow}>
             <TouchableOpacity
-              style={[
-                styles.quizButton,
-                !isQuizUnlocked && styles.quizButtonLocked,
-              ]}
-              onPress={handleQuizPress}
+              style={[styles.completeBtn, isCompleted && styles.completeBtnDone]}
+              onPress={handleCompleteLesson}
               activeOpacity={0.8}
             >
-              {isQuizUnlocked ? (
-                <HelpCircle color="#FFFFFF" size={16} />
-              ) : (
-                <Lock color="#94A3B8" size={16} />
-              )}
-              <Text
-                style={[
-                  styles.quizButtonText,
-                  !isQuizUnlocked && styles.quizButtonTextLocked,
-                ]}
-              >
-                {isQuizUnlocked ? 'Trắc nghiệm' : `Khóa (${Math.round(watchedPercent)}%)`}
+              <CheckCircle2 color={isCompleted ? '#10B981' : '#FFFFFF'} size={18} />
+              <Text style={[styles.completeBtnText, isCompleted && styles.completeBtnTextDone]}>
+                {isCompleted ? 'Đã hoàn thành' : 'Đánh dấu hoàn thành (+1 🔥)'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.downloadActionBtn, isOfflineReady && styles.downloadActionBtnDone]}
+              onPress={handleDownload}
+              disabled={downloading}
+            >
+              <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
+              <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
+                {downloading
+                  ? `${downloadProgress}%`
+                  : isOfflineReady
+                  ? 'Đã tải'
+                  : 'Tải offline'}
               </Text>
             </TouchableOpacity>
           </View>
-
-          {!isQuizUnlocked && (
-            <View style={styles.lockWarningBanner}>
-              <Lock color="#F59E0B" size={14} />
-              <Text style={styles.lockWarningText}>
-                Xem tối thiểu 60% video để mở khóa bài trắc nghiệm.
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.divider} />
-
-          <Text style={styles.descTitle}>Giới thiệu bài học</Text>
-          <Text style={styles.descContent}>
-            {lesson.description ||
-              'Bài giảng tập trung giải thích các khái niệm cốt lõi theo phương pháp microlearning ngắn gọn, súc tích. Sau khi xem xong video, hãy hoàn thành bài trắc nghiệm để củng cố kiến thức.'}
-          </Text>
         </View>
+
+        {/* Audio TTS Section */}
+        {lesson.audioTtsUrl ? (
+          <View style={styles.ttsCard}>
+            <Headphones color="#8B5CF6" size={20} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ttsTitle}>Nghe bài giảng giọng đọc AI (Audio TTS)</Text>
+              <Text style={styles.ttsSubText}>Học tập thụ động khi di chuyển hoặc đọc tài liệu</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Quiz CTA Card */}
+        {lesson.hasQuiz ? (
+          <View style={styles.quizCtaCard}>
+            <View style={styles.quizIconBox}>
+              <FileQuestion color="#F59E0B" size={24} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.quizCtaTitle}>Bài thi trắc nghiệm củng cố</Text>
+              <Text style={styles.quizCtaSub}>Kiểm tra ngay kiến thức vừa học</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.startQuizBtn}
+              onPress={() => router.push(`/quiz/${lessonId}`)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.startQuizText}>Làm bài thi</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#070B17',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  lessonMetaCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginTop: 16,
-  },
-  titleRow: {
-    marginBottom: 14,
-  },
-  lessonTitle: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 24,
-    marginBottom: 6,
-  },
-  completedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 4,
-    alignSelf: 'flex-start',
-  },
-  completedText: {
-    color: '#10B981',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  iconActionBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quizButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    height: 40,
-    borderRadius: 12,
-    gap: 6,
-  },
-  quizButtonLocked: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-  },
-  quizButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  quizButtonTextLocked: {
-    color: '#94A3B8',
-  },
-  lockWarningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 14,
-  },
-  lockWarningText: {
-    color: '#F59E0B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#1E293B',
-    marginBottom: 14,
-  },
-  descTitle: {
-    color: '#E2E8F0',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  descContent: {
-    color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  emptyText: {
-    color: '#64748B',
-    fontSize: 14,
-  },
+  safeArea: { flex: 1, backgroundColor: '#070B17' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1E293B', gap: 12 },
+  headerBackBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 36 },
+  videoPlayerBox: { width: '100%', height: 210, backgroundColor: '#0F172A', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(99, 102, 241, 0.3)', overflow: 'hidden', marginBottom: 20 },
+  videoPlaceholderContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  videoPlaceholderTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', marginTop: 10, textAlign: 'center' },
+  videoPlaceholderTime: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
+  lessonMetaSection: { backgroundColor: '#0F172A', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#1E293B', marginBottom: 16 },
+  lessonTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '700', marginBottom: 6 },
+  lessonDesc: { color: '#94A3B8', fontSize: 13, lineHeight: 18, marginBottom: 16 },
+  actionsRow: { flexDirection: 'row', gap: 10 },
+  completeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 12, gap: 6 },
+  completeBtnDone: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
+  completeBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  completeBtnTextDone: { color: '#10B981' },
+  downloadActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(99, 102, 241, 0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, gap: 6, borderWidth: 1, borderColor: 'rgba(99, 102, 241, 0.3)' },
+  downloadActionBtnDone: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+  downloadActionText: { color: '#818CF8', fontSize: 13, fontWeight: '700' },
+  downloadActionTextDone: { color: '#10B981' },
+  ttsCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#1E293B', gap: 12, marginBottom: 16 },
+  ttsTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '600' },
+  ttsSubText: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
+  quizCtaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F172A', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)', gap: 12 },
+  quizIconBox: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(245, 158, 11, 0.15)', alignItems: 'center', justifyContent: 'center' },
+  quizCtaTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
+  quizCtaSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
+  startQuizBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  startQuizText: { color: '#070B17', fontSize: 12, fontWeight: '800' },
+  errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  errorTitle: { color: '#F43F5E', fontSize: 16, fontWeight: '700', marginBottom: 14 },
+  backBtn: { backgroundColor: '#6366F1', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  backBtnText: { color: '#FFFFFF', fontWeight: '700' },
 });

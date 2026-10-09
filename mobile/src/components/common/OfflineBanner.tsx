@@ -1,18 +1,25 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { WifiOff } from 'lucide-react-native';
-import { useSyncStore } from '../../store/useSyncStore';
 
 export const OfflineBanner: React.FC = () => {
-  const { isOnline } = useSyncStore();
+  const [isOffline, setIsOffline] = useState(false);
 
-  if (isOnline) return null;
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOffline(!state.isConnected || !state.isInternetReachable);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (!isOffline) return null;
 
   return (
     <View style={styles.banner}>
-      <WifiOff color="#F59E0B" size={15} />
-      <Text style={styles.text}>
-        Đang ở chế độ ngoại tuyến. Bài học và tiến độ sẽ tự động đồng bộ khi có mạng lại.
+      <WifiOff color="#F59E0B" size={14} />
+      <Text style={styles.bannerText}>
+        Bạn đang học ở chế độ Offline. Tiến độ sẽ tự động lưu và đồng bộ khi có mạng.
       </Text>
     </View>
   );
@@ -20,19 +27,19 @@ export const OfflineBanner: React.FC = () => {
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: '#78350F',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     gap: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#B45309',
+    borderBottomColor: 'rgba(245, 158, 11, 0.25)',
   },
-  text: {
-    color: '#FEF3C7',
-    fontSize: 12,
-    fontWeight: '500',
+  bannerText: {
+    color: '#F59E0B',
+    fontSize: 11,
+    fontWeight: '600',
     flex: 1,
   },
 });

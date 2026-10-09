@@ -1,42 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  User,
-  Settings,
+  User as UserIcon,
   LogOut,
-  BookOpen,
-  Users,
-  Heart,
-  AlertTriangle,
-  Bookmark,
+  Wifi,
+  Smartphone,
+  RefreshCw,
+  Flame,
+  Trophy,
+  ShieldCheck,
   ChevronRight,
-  Shield,
-  Crown,
+  BookOpen,
 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
+import { OfflineBanner } from '../../src/components/common/OfflineBanner';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { UserProfileModal } from '../../src/components/profile/UserProfileModal';
-import { CourseManagementModal } from '../../src/components/management/CourseManagementModal';
-import { AdminUserManagementModal } from '../../src/components/management/AdminUserManagementModal';
-import { FavoriteSubjectsModal } from '../../src/components/common/FavoriteSubjectsModal';
-import { MistakeVaultModal } from '../../src/components/quiz/MistakeVaultModal';
-import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLibraryModal';
-import { SyncCenterModal } from '../../src/components/sync/SyncCenterModal';
+import { outboxRepository } from '../../src/db/repositories/outboxRepository';
+import { autoSyncEngine } from '../../src/services/autoSyncEngine';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout, isAdmin, isTeacher } = useAuthStore();
+  const { user, logout } = useAuthStore();
 
-  // Modals state
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showCourseManagement, setShowCourseManagement] = useState(false);
-  const [showUserManagement, setShowUserManagement] = useState(false);
-  const [showFavorites, setShowFavorites] = useState(false);
-  const [showMistakes, setShowMistakes] = useState(false);
-  const [showBookmarks, setShowBookmarks] = useState(false);
-  const [showSyncCenter, setShowSyncCenter] = useState(false);
+  const [wifiOnly, setWifiOnly] = useState(true);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    outboxRepository.getPendingCount().then(setPendingOutboxCount);
+  }, []);
+
+  const handleManualSync = async () => {
+    setSyncing(true);
+    await autoSyncEngine.runSyncProcess();
+    const count = await outboxRepository.getPendingCount();
+    setPendingOutboxCount(count);
+    setSyncing(false);
+    Alert.alert('Đồng bộ thành công', 'Toàn bộ dữ liệu học tập đã được cập nhật với Server.');
+  };
 
   const handleLogout = () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
@@ -54,317 +65,184 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerRow}>
-        <AppHeader title="Hồ sơ & Quản trị" />
-        <TouchableOpacity style={styles.settingsIconBtn} onPress={() => setShowSyncCenter(true)}>
-          <Settings color="#38BDF8" size={22} />
-        </TouchableOpacity>
-      </View>
+      <AppHeader title="Hồ sơ cá nhân" subtitle="Cài đặt & Trạng thái tài khoản" />
+      <OfflineBanner />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Card Thông tin cá nhân (Bấm vào mở Profile Modal) */}
-        <TouchableOpacity
-          style={styles.userCard}
-          onPress={() => setShowProfileModal(true)}
-          activeOpacity={0.8}
-        >
-          <View style={styles.avatarWrapper}>
-            <Text style={styles.avatarText}>{(user?.fullName || 'H').charAt(0).toUpperCase()}</Text>
+        {/* User Profile Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarCircle}>
+            <UserIcon color="#818CF8" size={32} />
           </View>
-          <View style={styles.userDetails}>
-            <Text style={styles.userName}>{user?.fullName || 'Học viên Microlearning'}</Text>
-            <Text style={styles.userPhone}>{user?.phoneNumber || 'Chưa cập nhật SĐT'}</Text>
 
-            <View style={styles.roleBadgeRow}>
-              {isAdmin && (
-                <View style={[styles.roleBadge, styles.adminBadge]}>
-                  <Crown color="#F59E0B" size={12} />
-                  <Text style={styles.adminRoleText}>Quản trị viên</Text>
-                </View>
-              )}
-              {isTeacher && !isAdmin && (
-                <View style={[styles.roleBadge, styles.teacherBadge]}>
-                  <Shield color="#38BDF8" size={12} />
-                  <Text style={styles.teacherRoleText}>Giáo viên</Text>
-                </View>
-              )}
-              {!isAdmin && !isTeacher && (
-                <View style={[styles.roleBadge, styles.studentBadge]}>
-                  <Text style={styles.studentRoleText}>Học viên tích cực</Text>
-                </View>
-              )}
+          <Text style={styles.userName}>{user?.fullName || 'Học viên Microlearning'}</Text>
+          <Text style={styles.userPhone}>{user?.phoneNumber || '09xxxxxx'}</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statBadge}>
+              <Flame color="#F59E0B" size={16} fill="#F59E0B" />
+              <Text style={styles.statText}>5 Ngày Streak</Text>
+            </View>
+
+            <View style={styles.statBadge}>
+              <Trophy color="#8B5CF6" size={16} />
+              <Text style={styles.statText}>340 XP</Text>
             </View>
           </View>
-          <ChevronRight color="#64748B" size={20} />
-        </TouchableOpacity>
+        </View>
 
-        {/* SECTION 1: CÔNG CỤ QUẢN TRỊ (ADMIN & TEACHER ONLY) */}
-        {(isAdmin || isTeacher) && (
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Studio Quản Trị Hệ Thống</Text>
+        {/* Sync Center Status Card */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Trạng thái Đồng bộ CSDL</Text>
 
-            {/* Studio Đăng tải Khóa học */}
+          <View style={styles.syncRow}>
+            <View style={styles.syncLeft}>
+              <RefreshCw color="#6366F1" size={20} />
+              <View>
+                <Text style={styles.syncTitle}>Hàng đợi chờ đẩy (Outbox)</Text>
+                <Text style={styles.syncSubText}>
+                  {pendingOutboxCount === 0
+                    ? 'Tất cả dữ liệu đã được đồng bộ an toàn'
+                    : `Còn ${pendingOutboxCount} bản ghi chưa đẩy lên Server`}
+                </Text>
+              </View>
+            </View>
+
             <TouchableOpacity
-              style={styles.menuRow}
-              onPress={() => setShowCourseManagement(true)}
+              style={styles.syncButton}
+              onPress={handleManualSync}
+              disabled={syncing}
             >
-              <View style={[styles.menuIconBg, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
-                <BookOpen color="#6366F1" size={20} />
-              </View>
-              <View style={styles.menuTextWrapper}>
-                <Text style={styles.menuTitle}>Studio Đăng Tải Khóa Học</Text>
-                <Text style={styles.menuSub}>Tạo khóa học mới, sửa bài giảng & mật khẩu riêng tư</Text>
-              </View>
-              <ChevronRight color="#64748B" size={18} />
+              <Text style={styles.syncButtonText}>{syncing ? '...' : 'Ép đồng bộ'}</Text>
             </TouchableOpacity>
-
-            {/* Quản lý Người dùng (Admin Only) */}
-            {isAdmin && (
-              <TouchableOpacity
-                style={styles.menuRow}
-                onPress={() => setShowUserManagement(true)}
-              >
-                <View style={[styles.menuIconBg, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
-                  <Users color="#38BDF8" size={20} />
-                </View>
-                <View style={styles.menuTextWrapper}>
-                  <Text style={styles.menuTitle}>Quản Lý Người Dùng (Admin)</Text>
-                  <Text style={styles.menuSub}>Xem danh sách toàn bộ học viên, phân quyền & khóa tài khoản</Text>
-                </View>
-                <ChevronRight color="#64748B" size={18} />
-              </TouchableOpacity>
-            )}
           </View>
-        )}
+        </View>
 
-        {/* SECTION 2: CÔNG CỤ HỌC TẬP CÁ NHÂN (STUDENT TOOLS) */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Góc Học Tập Cá Nhân</Text>
+        {/* App Settings Section */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Cài đặt ứng dụng</Text>
 
-          {/* Môn học Yêu thích */}
-          <TouchableOpacity style={styles.menuRow} onPress={() => setShowFavorites(true)}>
-            <View style={[styles.menuIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-              <Heart color="#EF4444" size={20} fill="#EF4444" />
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Wifi color="#818CF8" size={20} />
+              <View>
+                <Text style={styles.settingTitle}>Chỉ đồng bộ qua Wi-Fi</Text>
+                <Text style={styles.settingSubText}>Tiết kiệm dung lượng mạng di động 4G/5G</Text>
+              </View>
             </View>
-            <View style={styles.menuTextWrapper}>
-              <Text style={styles.menuTitle}>Môn Học Yêu Thích</Text>
-              <Text style={styles.menuSub}>Danh sách các môn học bạn đã lưu để truy cập nhanh</Text>
-            </View>
-            <ChevronRight color="#64748B" size={18} />
-          </TouchableOpacity>
 
-          {/* Kho Ôn lại Bài sai */}
-          <TouchableOpacity style={styles.menuRow} onPress={() => setShowMistakes(true)}>
-            <View style={[styles.menuIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-              <AlertTriangle color="#F59E0B" size={20} />
-            </View>
-            <View style={styles.menuTextWrapper}>
-              <Text style={styles.menuTitle}>Kho Ôn Lại Bài Thi Sai</Text>
-              <Text style={styles.menuSub}>Tự động tổng hợp các câu hỏi trắc nghiệm bạn làm sai</Text>
-            </View>
-            <ChevronRight color="#64748B" size={18} />
-          </TouchableOpacity>
+            <Switch
+              value={wifiOnly}
+              onValueChange={setWifiOnly}
+              trackColor={{ false: '#1E293B', true: '#6366F1' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
 
-          {/* Thư viện Đánh dấu */}
-          <TouchableOpacity style={styles.menuRow} onPress={() => setShowBookmarks(true)}>
-            <View style={[styles.menuIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-              <Bookmark color="#10B981" size={20} />
+          <TouchableOpacity style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Smartphone color="#818CF8" size={20} />
+              <View>
+                <Text style={styles.settingTitle}>Thiết bị đã đăng ký</Text>
+                <Text style={styles.settingSubText}>Quản lý hardware device ID an toàn</Text>
+              </View>
             </View>
-            <View style={styles.menuTextWrapper}>
-              <Text style={styles.menuTitle}>Thư Viện Đánh Dấu Bài Học</Text>
-              <Text style={styles.menuSub}>Các mốc thời gian video & ghi chú bài học đã lưu</Text>
-            </View>
-            <ChevronRight color="#64748B" size={18} />
+            <ChevronRight color="#475569" size={18} />
           </TouchableOpacity>
         </View>
 
-        {/* Nút Đăng xuất */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <LogOut color="#EF4444" size={20} />
-          <Text style={styles.logoutText}>Đăng Xuất Tài Khoản</Text>
+        {/* Logout Button */}
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
+          <LogOut color="#F43F5E" size={18} />
+          <Text style={styles.logoutText}>Đăng xuất tài khoản</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      {/* ALL MODALS */}
-      <UserProfileModal visible={showProfileModal} onClose={() => setShowProfileModal(false)} />
-
-      <CourseManagementModal
-        visible={showCourseManagement}
-        onClose={() => setShowCourseManagement(false)}
-      />
-
-      <AdminUserManagementModal
-        visible={showUserManagement}
-        onClose={() => setShowUserManagement(false)}
-      />
-
-      <FavoriteSubjectsModal visible={showFavorites} onClose={() => setShowFavorites(false)} />
-
-      <MistakeVaultModal visible={showMistakes} onClose={() => setShowMistakes(false)} />
-
-      <BookmarkLibraryModal visible={showBookmarks} onClose={() => setShowBookmarks(false)} />
-
-      <SyncCenterModal visible={showSyncCenter} onClose={() => setShowSyncCenter(false)} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
+  safeArea: { flex: 1, backgroundColor: '#070B17' },
+  scrollContent: { padding: 16, paddingBottom: 32 },
+  profileCard: {
     backgroundColor: '#0F172A',
-  },
-  headerRow: {
-    position: 'relative',
-  },
-  settingsIconBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 16,
-    zIndex: 10,
-    padding: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 12,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
     borderRadius: 24,
-    padding: 18,
-    marginBottom: 20,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 16,
   },
-  avatarWrapper: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#6366F1',
+  avatarCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  userDetails: {
-    flex: 1,
-  },
-  userName: {
-    color: '#F8FAFC',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  userPhone: {
-    color: '#94A3B8',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  roleBadgeRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  adminBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    borderWidth: 1,
-  },
-  adminRoleText: {
-    color: '#F59E0B',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  teacherBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    borderWidth: 1,
-  },
-  teacherRoleText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  studentBadge: {
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-  },
-  studentRoleText: {
-    color: '#818CF8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  sectionContainer: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    color: '#38BDF8',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
     marginBottom: 12,
   },
-  menuRow: {
+  userName: { color: '#F8FAFC', fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  userPhone: { color: '#94A3B8', fontSize: 13, marginBottom: 14 },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#070B17',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  statText: { color: '#E2E8F0', fontSize: 12, fontWeight: '600' },
+  sectionCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 16,
+  },
+  sectionTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '700', marginBottom: 14 },
+  syncRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  syncLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 10 },
+  syncTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '600' },
+  syncSubText: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
+  syncButton: {
+    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+  },
+  syncButtonText: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#0F172A',
+    borderBottomColor: '#1E293B',
   },
-  menuIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  menuTextWrapper: {
-    flex: 1,
-    marginRight: 8,
-  },
-  menuTitle: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  menuSub: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 2,
-  },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  settingTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '600' },
+  settingSubText: { color: '#64748B', fontSize: 11, marginTop: 2 },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    gap: 8,
     borderWidth: 1,
-    borderRadius: 16,
-    height: 52,
-    gap: 10,
+    borderColor: 'rgba(244, 63, 94, 0.3)',
+    marginTop: 8,
   },
-  logoutText: {
-    color: '#EF4444',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  logoutText: { color: '#F43F5E', fontSize: 15, fontWeight: '700' },
 });

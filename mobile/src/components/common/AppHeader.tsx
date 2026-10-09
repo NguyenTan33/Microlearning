@@ -1,151 +1,111 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, WifiOff, RefreshCw } from 'lucide-react-native';
-import { useSyncStore } from '../../store/useSyncStore';
+import { Flame, Sparkles, User as UserIcon } from 'lucide-react-native';
 
 interface AppHeaderProps {
-  title?: string;
+  title: string;
   subtitle?: string;
-  showBack?: boolean;
-  rightAction?: React.ReactNode;
+  streakCount?: number;
+  onProfilePress?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
-  title = 'MicroLearn',
+  title,
   subtitle,
-  showBack = false,
-  rightAction,
+  streakCount = 5,
+  onProfilePress,
 }) => {
-  const router = useRouter();
-  const { isSyncing, outboxCount, isOnline } = useSyncStore();
-
   return (
-    <View style={styles.container}>
-      <View style={styles.leftContainer}>
-        {showBack && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <ArrowLeft color="#E2E8F0" size={22} />
-          </TouchableOpacity>
-        )}
+    <View style={styles.headerContainer}>
+      <View style={styles.leftSection}>
+        <View style={styles.logoBadge}>
+          <Sparkles color="#6366F1" size={16} />
+        </View>
         <View>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <Text style={styles.titleText}>{title}</Text>
+          {subtitle && <Text style={styles.subtitleText}>{subtitle}</Text>}
         </View>
       </View>
 
-      <View style={styles.rightContainer}>
-        {!isOnline && (
-          <View style={styles.offlinePill}>
-            <WifiOff color="#F59E0B" size={13} />
-            <Text style={styles.offlineText}>Offline</Text>
-          </View>
-        )}
+      <View style={styles.rightSection}>
+        <View style={styles.streakBadge}>
+          <Flame color="#F59E0B" size={16} fill="#F59E0B" />
+          <Text style={styles.streakText}>{streakCount}</Text>
+        </View>
 
-        {isSyncing && (
-          <View style={styles.syncingPill}>
-            <RefreshCw color="#38BDF8" size={13} />
-            <Text style={styles.syncingText}>Đồng bộ...</Text>
-          </View>
-        )}
-
-        {outboxCount > 0 && !isSyncing && (
-          <View style={styles.pendingPill}>
-            <Text style={styles.pendingText}>{outboxCount} chờ</Text>
-          </View>
-        )}
-
-        {rightAction}
+        <TouchableOpacity style={styles.avatarButton} onPress={onProfilePress} activeOpacity={0.8}>
+          <UserIcon color="#94A3B8" size={18} />
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    height: 56,
+  headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#070B17',
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
-  leftContainer: {
+  leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
+    gap: 10,
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#0F172A',
+  logoBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
   },
-  title: {
+  titleText: {
     color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: -0.3,
   },
-  subtitle: {
+  subtitleText: {
     color: '#94A3B8',
     fontSize: 11,
-    marginTop: 1,
+    fontWeight: '500',
   },
-  rightContainer: {
+  rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  offlinePill: {
+  streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
   },
-  offlineText: {
+  streakText: {
     color: '#F59E0B',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  syncingPill: {
-    flexDirection: 'row',
+  avatarButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#0F172A',
     alignItems: 'center',
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  syncingText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  pendingPill: {
-    backgroundColor: '#334155',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  pendingText: {
-    color: '#CBD5E1',
-    fontSize: 11,
-    fontWeight: '500',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
 });

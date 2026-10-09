@@ -1,40 +1,33 @@
 {
   "expo": {
-    "name": "MicroLearn",
+    "name": "MicroLearning Mobile",
     "slug": "microlearning-mobile",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "microlearning",
     "userInterfaceStyle": "dark",
-    "scheme": "microlearn",
     "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#070B17"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.microlearning.app"
+      "bundleIdentifier": "com.microlearning.mobile"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#070B17"
       },
-      "package": "com.microlearning.app",
-      "usesCleartextTraffic": true,
-      "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-      ]
+      "package": "com.microlearning.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router",
-      "expo-secure-store",
-      "expo-sqlite",
-      "expo-asset",
-      "expo-font"
-    ],
-    "experiments": {
-      "typedRoutes": true
-    }
+      "expo-router"
+    ]
   }
 }

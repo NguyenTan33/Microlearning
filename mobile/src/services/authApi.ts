@@ -1,45 +1,30 @@
 import { apiClient } from './apiClient';
 import type {
+  AuthTokenResponse,
   LoginRequest,
-  LoginResponse,
   RegisterRequest,
-  RegisterResponse,
-  VerifyOtpRequest,
-  VerifyOtpResponse,
-  RegisterDeviceRequest,
-  DeviceResponse,
+  OtpVerifyRequest,
+  DeviceRegisterRequest,
 } from '../types/auth.types';
 
 export const authApi = {
-  /**
-   * Đăng nhập học viên
-   */
-  async login(request: LoginRequest): Promise<LoginResponse> {
-    const response = await apiClient.post<LoginResponse>('/auth/login', request);
-    return response.data;
+  async login(data: LoginRequest): Promise<AuthTokenResponse> {
+    const res = await apiClient.post<AuthTokenResponse>('/api/auth/login', data);
+    return res.data;
   },
 
-  /**
-   * Đăng ký tài khoản học viên mới
-   */
-  async register(request: RegisterRequest): Promise<RegisterResponse> {
-    const response = await apiClient.post<RegisterResponse>('/auth/register', request);
-    return response.data;
+  async register(data: RegisterRequest): Promise<AuthTokenResponse> {
+    const res = await apiClient.post<AuthTokenResponse>('/api/auth/register', data);
+    return res.data;
   },
 
-  /**
-   * Xác thực mã OTP sau khi đăng ký
-   */
-  async verifyOtp(request: VerifyOtpRequest): Promise<VerifyOtpResponse> {
-    const response = await apiClient.post<VerifyOtpResponse>('/auth/verify-otp', request);
-    return response.data;
+  async verifyOtp(data: OtpVerifyRequest): Promise<{ success: boolean; message: string }> {
+    const res = await apiClient.post<{ success: boolean; message: string }>('/api/auth/verify-otp', data);
+    return res.data;
   },
 
-  /**
-   * Đăng ký mã phần cứng thiết bị vào tài khoản học viên
-   */
-  async registerDevice(request: RegisterDeviceRequest): Promise<DeviceResponse> {
-    const response = await apiClient.post<DeviceResponse>('/devices/register', request);
-    return response.data;
+  async registerDevice(data: DeviceRegisterRequest): Promise<{ success: boolean }> {
+    const res = await apiClient.post<{ success: boolean }>('/api/devices/register', data);
+    return res.data;
   },
 };

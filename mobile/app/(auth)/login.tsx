@@ -5,78 +5,46 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   ScrollView,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { GraduationCap, Eye, EyeOff, Phone, Lock, ArrowRight, ShieldCheck } from 'lucide-react-native';
+import { Sparkles, Phone, Lock, ArrowRight } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { getOrCreateDeviceId, getDeviceInfo } from '../../src/utils/deviceHelper';
-import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
-import { ForgotPasswordModal } from '../../src/components/auth/ForgotPasswordModal';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const loginSuccess = useAuthStore((state) => state.loginSuccess);
+  const { setAuth } = useAuthStore();
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showForgotModal, setShowForgotModal] = useState(false);
-
-  const fillQuickAccount = (phone: string, pass: string) => {
-    setPhoneNumber(phone);
-    setPassword(pass);
-  };
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleLogin = async () => {
-    if (!phoneNumber.trim() || !password.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ số điện thoại và mật khẩu.');
+    if (!phoneNumber || !password) {
+      setErrorMsg('Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu.');
       return;
     }
 
     setLoading(true);
+    setErrorMsg('');
+
     try {
-      // 1. Gọi API đăng nhập
-      const response = await authApi.login({
-        phoneNumber: phoneNumber.trim(),
-        password: password.trim(),
+      const res = await authApi.login({
+        phoneNumber,
+        passwordHash: password,
       });
 
-      // 2. Lưu token & tự động giải mã Role từ JWT
-      await loginSuccess(response.accessToken, response.refreshToken, {
-        phoneNumber: phoneNumber.trim(),
-      });
-
-      // 3. Đăng ký thiết bị tự động ngầm
-      try {
-        const deviceId = await getOrCreateDeviceId();
-        const info = getDeviceInfo();
-        await authApi.registerDevice({
-          deviceIdentifier: deviceId,
-          deviceModel: info.deviceModel,
-          osVersion: info.osVersion,
-          appVersion: info.appVersion,
-        });
-      } catch (devErr) {
-        console.warn('[Login] Lỗi đăng ký thiết bị ngầm:', devErr);
-      }
-
-      // 4. Chuyển vào thẳng Tab chính
+      await setAuth(res.user, res.accessToken, res.refreshToken);
       router.replace('/(tabs)');
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string };
-      const msg =
-        err.response?.data?.message || err.message || 'Số điện thoại hoặc mật khẩu không chính xác.';
-      Alert.alert('Đăng nhập thất bại', msg);
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -85,136 +53,83 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Header Thương hiệu tinh gọn */}
-            <View style={styles.header}>
-              <View style={styles.logoBadge}>
-                <GraduationCap color="#38BDF8" size={32} />
-              </View>
-              <Text style={styles.appName}>MicroLearn</Text>
-              <Text style={styles.appTagline}>Nền tảng học ngắn thông minh (Offline-First)</Text>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoBadge}>
+              <Sparkles color="#6366F1" size={32} />
             </View>
+            <Text style={styles.appTitle}>MicroLearning</Text>
+            <Text style={styles.appSubtitle}>Học tập thông minh theo micro-lesson mọi lúc mọi nơi</Text>
+          </View>
 
-            {/* Quick Demo Accounts Helper */}
-            <View style={styles.quickAccountBox}>
-              <View style={styles.quickTitleRow}>
-                <ShieldCheck color="#38BDF8" size={16} />
-                <Text style={styles.quickTitle}>Tài khoản Thử nghiệm Nhanh:</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Đăng nhập</Text>
+
+            {errorMsg ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMsg}</Text>
               </View>
-              <View style={styles.chipsRow}>
-                <TouchableOpacity
-                  style={styles.chipButton}
-                  onPress={() => fillQuickAccount('+84999999999', 'Admin@123456')}
-                >
-                  <Text style={styles.chipText}>👑 Admin (+84999999999)</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.chipButton}
-                  onPress={() => fillQuickAccount('+84888888888', 'Teacher@123456')}
-                >
-                  <Text style={styles.chipText}>👨‍🏫 Teacher (+84888888888)</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            ) : null}
 
-            {/* Form Đăng nhập trực diện */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Đăng Nhập</Text>
-              <Text style={styles.cardSubtitle}>Chào mừng bạn quay trở lại với MicroLearn!</Text>
-
-              {/* Ô số điện thoại */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Số Điện Thoại</Text>
-                <View style={styles.inputWrapper}>
-                  <Phone color="#94A3B8" size={20} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="VD: 0999999999 hoặc +84..."
-                    placeholderTextColor="#64748B"
-                    keyboardType="phone-pad"
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
-              {/* Ô mật khẩu */}
-              <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.inputLabel}>Mật Khẩu</Text>
-                  <TouchableOpacity onPress={() => setShowForgotModal(true)}>
-                    <Text style={styles.forgotText}>Quên mật khẩu?</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Lock color="#94A3B8" size={20} />
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Nhập mật khẩu..."
-                    placeholderTextColor="#64748B"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeButton}
-                  >
-                    {showPassword ? (
-                      <EyeOff color="#94A3B8" size={20} />
-                    ) : (
-                      <Eye color="#94A3B8" size={20} />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Nút Đăng nhập */}
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.8}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Text style={styles.submitText}>Đăng Nhập</Text>
-                    <ArrowRight color="#FFFFFF" size={20} style={{ marginLeft: 8 }} />
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {/* Đăng nhập bằng Google / Facebook */}
-              <SocialAuthButtons loading={loading} />
-
-              {/* Nút chuyển sang Đăng ký */}
-              <View style={styles.footerRow}>
-                <Text style={styles.footerText}>Chưa có tài khoản?</Text>
-                <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-                  <Text style={styles.registerLink}> Đăng ký ngay</Text>
-                </TouchableOpacity>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Số điện thoại</Text>
+              <View style={styles.inputContainer}>
+                <Phone color="#64748B" size={18} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="0912345678"
+                  placeholderTextColor="#475569"
+                  keyboardType="phone-pad"
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  autoCapitalize="none"
+                />
               </View>
             </View>
 
-            {/* Modal Quên mật khẩu */}
-            <ForgotPasswordModal
-              visible={showForgotModal}
-              onClose={() => setShowForgotModal(false)}
-              initialPhoneNumber={phoneNumber}
-            />
-          </ScrollView>
-        </TouchableWithoutFeedback>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mật khẩu</Text>
+              <View style={styles.inputContainer}>
+                <Lock color="#64748B" size={18} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="••••••••"
+                  placeholderTextColor="#475569"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.submitButtonText}>Đăng nhập ngay</Text>
+                  <ArrowRight color="#FFFFFF" size={18} />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchRow}
+              onPress={() => router.push('/(auth)/register')}
+            >
+              <Text style={styles.switchText}>Chưa có tài khoản? </Text>
+              <Text style={styles.switchHighlight}>Đăng ký ngay</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -223,164 +138,116 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  keyboardView: {
-    flex: 1,
+    backgroundColor: '#070B17',
   },
   scrollContent: {
-    flexGrow: 1,
+    padding: 20,
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    flexGrow: 1,
   },
-  header: {
+  logoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 28,
   },
   logoBadge: {
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderColor: 'rgba(56, 189, 248, 0.3)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
     marginBottom: 12,
   },
-  appName: {
-    fontSize: 28,
-    fontWeight: '800',
+  appTitle: {
     color: '#F8FAFC',
-    letterSpacing: 0.5,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 6,
   },
-  appTagline: {
-    fontSize: 13,
+  appSubtitle: {
     color: '#94A3B8',
-    marginTop: 4,
+    fontSize: 13,
     textAlign: 'center',
   },
-  quickAccountBox: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 20,
-  },
-  quickTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  quickTitle: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chipButton: {
-    backgroundColor: '#0F172A',
-    borderColor: '#334155',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  chipText: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   card: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#0F172A',
     borderRadius: 24,
-    borderColor: '#334155',
-    borderWidth: 1,
     padding: 24,
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
   cardTitle: {
-    fontSize: 22,
-    fontWeight: '700',
     color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 18,
   },
-  cardSubtitle: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 4,
-    marginBottom: 20,
+  errorBox: {
+    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.3)',
+    marginBottom: 14,
+  },
+  errorText: {
+    color: '#F43F5E',
+    fontSize: 12,
   },
   inputGroup: {
     marginBottom: 16,
   },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
     color: '#E2E8F0',
-  },
-  forgotText: {
     fontSize: 13,
-    color: '#38BDF8',
     fontWeight: '600',
+    marginBottom: 6,
   },
-  inputWrapper: {
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderColor: '#334155',
-    borderWidth: 1,
+    backgroundColor: '#070B17',
     borderRadius: 14,
-    paddingHorizontal: 16,
-    height: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    gap: 10,
   },
   textInput: {
     flex: 1,
     color: '#F8FAFC',
-    fontSize: 15,
-    marginLeft: 12,
-  },
-  eyeButton: {
-    padding: 4,
+    fontSize: 14,
   },
   submitButton: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#6366F1',
     borderRadius: 14,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
     marginTop: 8,
   },
-  submitText: {
+  submitButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
-  footerRow: {
+  switchRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
     marginTop: 20,
   },
-  footerText: {
+  switchText: {
     color: '#94A3B8',
-    fontSize: 14,
+    fontSize: 13,
   },
-  registerLink: {
-    color: '#38BDF8',
-    fontSize: 14,
+  switchHighlight: {
+    color: '#818CF8',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

@@ -5,66 +5,48 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   ScrollView,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { User, Phone, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
+import { User as UserIcon, Phone, Lock, ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { authApi } from '../../src/services/authApi';
+import { useAuthStore } from '../../src/store/useAuthStore';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { setAuth } = useAuthStore();
 
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleRegister = async () => {
-    if (!fullName.trim() || !phoneNumber.trim() || !password.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng điền đầy đủ họ tên, số điện thoại và mật khẩu.');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Thông báo', 'Mật khẩu phải có độ dài tối thiểu 6 ký tự.');
+    if (!fullName || !phoneNumber || !password) {
+      setErrorMsg('Vui lòng điền đầy đủ Họ tên, Số điện thoại và Mật khẩu.');
       return;
     }
 
     setLoading(true);
+    setErrorMsg('');
+
     try {
-      await authApi.register({
-        fullName: fullName.trim(),
-        phoneNumber: phoneNumber.trim(),
-        password: password.trim(),
+      const res = await authApi.register({
+        fullName,
+        phoneNumber,
+        passwordHash: password,
       });
 
-      Alert.alert(
-        'Đăng ký thành công',
-        'Vui lòng nhập mã OTP để kích hoạt tài khoản học viên.',
-        [
-          {
-            text: 'Tiếp tục',
-            onPress: () => {
-              router.push({
-                pathname: '/(auth)/verify-otp',
-                params: { phone: phoneNumber.trim() },
-              });
-            },
-          },
-        ]
-      );
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string };
-      const msg = err.response?.data?.message || err.message || 'Đăng ký tài khoản không thành công.';
-      Alert.alert('Đăng ký thất bại', msg);
+      await setAuth(res.user, res.accessToken, res.refreshToken);
+      router.replace('/(tabs)');
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Đăng ký thất bại. Vui lòng thử lại.';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -72,197 +54,104 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Tạo tài khoản mới</Text>
-              <Text style={styles.cardSubtitle}>
-                Bắt đầu hành trình học tập ngắn và thông minh ngay hôm nay
-              </Text>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <ArrowLeft color="#94A3B8" size={20} />
+            <Text style={styles.backText}>Quay lại</Text>
+          </TouchableOpacity>
 
-              {/* Input Họ tên */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Họ và tên</Text>
-                <View style={styles.inputWrapper}>
-                  <User color="#94A3B8" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ví dụ: Nguyễn Văn A"
-                    placeholderTextColor="#64748B"
-                    value={fullName}
-                    onChangeText={setFullName}
-                  />
-                </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Tạo tài khoản mới</Text>
+
+            {errorMsg ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMsg}</Text>
               </View>
+            ) : null}
 
-              {/* Input Số điện thoại */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Số điện thoại</Text>
-                <View style={styles.inputWrapper}>
-                  <Phone color="#94A3B8" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ví dụ: 0912345678"
-                    placeholderTextColor="#64748B"
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    keyboardType="phone-pad"
-                  />
-                </View>
-              </View>
-
-              {/* Input Mật khẩu */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Mật khẩu</Text>
-                <View style={styles.inputWrapper}>
-                  <Lock color="#94A3B8" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Tối thiểu 6 ký tự"
-                    placeholderTextColor="#64748B"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    {showPassword ? (
-                      <EyeOff color="#94A3B8" size={18} />
-                    ) : (
-                      <Eye color="#94A3B8" size={18} />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Nút Đăng ký */}
-              <TouchableOpacity
-                style={[styles.submitButton, loading && styles.buttonDisabled]}
-                onPress={handleRegister}
-                disabled={loading}
-                activeOpacity={0.8}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.submitButtonText}>Đăng ký tài khoản</Text>
-                    <ArrowRight color="#FFFFFF" size={18} />
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {/* Trở lại Đăng nhập */}
-              <View style={styles.footerLinkContainer}>
-                <Text style={styles.footerLinkText}>Đã có tài khoản? </Text>
-                <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
-                  <Text style={styles.loginLink}>Đăng nhập ngay</Text>
-                </TouchableOpacity>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Họ và tên</Text>
+              <View style={styles.inputContainer}>
+                <UserIcon color="#64748B" size={18} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Nguyễn Văn A"
+                  placeholderTextColor="#475569"
+                  value={fullName}
+                  onChangeText={setFullName}
+                />
               </View>
             </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Số điện thoại</Text>
+              <View style={styles.inputContainer}>
+                <Phone color="#64748B" size={18} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="0912345678"
+                  placeholderTextColor="#475569"
+                  keyboardType="phone-pad"
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mật khẩu</Text>
+              <View style={styles.inputContainer}>
+                <Lock color="#64748B" size={18} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Mật khẩu tối thiểu 6 ký tự"
+                  placeholderTextColor="#475569"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.submitButton} onPress={handleRegister} disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.submitButtonText}>Tạo tài khoản</Text>
+                  <ArrowRight color="#FFFFFF" size={18} />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.switchRow} onPress={() => router.push('/(auth)/login')}>
+              <Text style={styles.switchText}>Đã có tài khoản? </Text>
+              <Text style={styles.switchHighlight}>Đăng nhập</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#070B17',
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 6,
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginBottom: 20,
-    lineHeight: 18,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#070B17',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#1E293B',
-    paddingHorizontal: 14,
-    height: 50,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    color: '#F8FAFC',
-    fontSize: 14,
-  },
-  submitButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 14,
-    height: 52,
-    marginTop: 8,
-    gap: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  footerLinkContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  footerLinkText: {
-    color: '#94A3B8',
-    fontSize: 13,
-  },
-  loginLink: {
-    color: '#38BDF8',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  safeArea: { flex: 1, backgroundColor: '#070B17' },
+  scrollContent: { padding: 20, justifyContent: 'center', flexGrow: 1 },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 20 },
+  backText: { color: '#94A3B8', fontSize: 14, fontWeight: '500' },
+  card: { backgroundColor: '#0F172A', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#1E293B' },
+  cardTitle: { color: '#F8FAFC', fontSize: 20, fontWeight: '700', marginBottom: 18 },
+  errorBox: { backgroundColor: 'rgba(244, 63, 94, 0.15)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.3)', marginBottom: 14 },
+  errorText: { color: '#F43F5E', fontSize: 12 },
+  inputGroup: { marginBottom: 16 },
+  inputLabel: { color: '#E2E8F0', fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#070B17', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#1E293B', gap: 10 },
+  textInput: { flex: 1, color: '#F8FAFC', fontSize: 14 },
+  submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6366F1', borderRadius: 14, paddingVertical: 14, gap: 8, marginTop: 8 },
+  submitButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  switchText: { color: '#94A3B8', fontSize: 13 },
+  switchHighlight: { color: '#818CF8', fontSize: 13, fontWeight: '700' },
 });

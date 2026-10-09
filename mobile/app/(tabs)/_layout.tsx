@@ -2,21 +2,20 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { BookOpen, Compass, Download, User } from 'lucide-react-native';
 
-export default function TabsLayout() {
+export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarActiveTintColor: '#818CF8',
+        tabBarInactiveTintColor: '#64748B',
         tabBarStyle: {
           backgroundColor: '#070B17',
           borderTopColor: '#1E293B',
-          borderTopWidth: 1,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#6366F1',
-        tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
@@ -47,7 +46,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Cá nhân',
+          title: 'Hồ sơ',
           tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
         }}
       />

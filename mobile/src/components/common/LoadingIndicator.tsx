@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 interface LoadingIndicatorProps {
   message?: string;
 }
 
-export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message = 'Đang tải dữ liệu...' }) => {
+export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
+  message = 'Đang tải...',
+}) => {
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color="#6366F1" />
@@ -17,15 +19,15 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message = '�
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#070B17',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#070B17',
     padding: 24,
   },
   text: {
-    marginTop: 12,
     color: '#94A3B8',
     fontSize: 14,
+    marginTop: 12,
     fontWeight: '500',
   },
 });

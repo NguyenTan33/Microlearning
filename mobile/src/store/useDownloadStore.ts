@@ -1,71 +1,34 @@
 import { create } from 'zustand';
 import { downloadRepository } from '../db/repositories/downloadRepository';
-import { downloadManager } from '../services/downloadManager';
 
 interface DownloadState {
-  downloadingProgress: Record<number, number>; // lessonId -> % (0 - 100)
   downloadedLessonIds: Set<number>;
-  totalStorageBytes: number;
-  refreshStorageAndDownloads: () => Promise<void>;
-  startDownload: (lessonId: number) => Promise<boolean>;
-  deleteDownload: (lessonId: number) => Promise<void>;
+  activeDownloads: Record<number, number>; // lessonId -> percentage
+  refreshDownloads: () => Promise<void>;
+  setDownloadProgress: (lessonId: number, progress: number) => void;
+  removeDownloadProgress: (lessonId: number) => void;
 }
 
-export const useDownloadStore = create<DownloadState>((set, get) => ({
-  downloadingProgress: {},
-  downloadedLessonIds: new Set(),
-  totalStorageBytes: 0,
+export const useDownloadStore = create<DownloadState>((set) => ({
+  downloadedLessonIds: new Set<number>(),
+  activeDownloads: {},
 
-  refreshStorageAndDownloads: async () => {
-    try {
-      const records = await downloadRepository.getAllDownloaded();
-      const bytes = await downloadRepository.getTotalStorageUsedBytes();
-      const ids = new Set(records.map((r) => r.lessonId));
-      set({ downloadedLessonIds: ids, totalStorageBytes: bytes });
-    } catch (e) {
-      console.warn('[useDownloadStore] Lỗi đọc danh sách tải:', e);
-    }
+  refreshDownloads: async () => {
+    const ids = await downloadRepository.getDownloadedLessonIds();
+    set({ downloadedLessonIds: new Set(ids) });
   },
 
-  startDownload: async (lessonId: number) => {
-    // Đánh dấu bắt đầu tải 0%
+  setDownloadProgress: (lessonId, progress) => {
     set((state) => ({
-      downloadingProgress: { ...state.downloadingProgress, [lessonId]: 0 },
+      activeDownloads: { ...state.activeDownloads, [lessonId]: progress },
     }));
-
-    try {
-      const success = await downloadManager.downloadLessonPackage(lessonId, (id, percent) => {
-        set((state) => ({
-          downloadingProgress: { ...state.downloadingProgress, [id]: percent },
-        }));
-      });
-
-      // Xóa khỏi progress, thêm vào downloaded
-      set((state) => {
-        const nextProgress = { ...state.downloadingProgress };
-        delete nextProgress[lessonId];
-        const nextIds = new Set(state.downloadedLessonIds);
-        nextIds.add(lessonId);
-        return {
-          downloadingProgress: nextProgress,
-          downloadedLessonIds: nextIds,
-        };
-      });
-
-      await get().refreshStorageAndDownloads();
-      return success;
-    } catch (error) {
-      set((state) => {
-        const nextProgress = { ...state.downloadingProgress };
-        delete nextProgress[lessonId];
-        return { downloadingProgress: nextProgress };
-      });
-      throw error;
-    }
   },
 
-  deleteDownload: async (lessonId: number) => {
-    await downloadManager.deleteOfflineVideo(lessonId);
-    await get().refreshStorageAndDownloads();
+  removeDownloadProgress: (lessonId) => {
+    set((state) => {
+      const next = { ...state.activeDownloads };
+      delete next[lessonId];
+      return { activeDownloads: next };
+    });
   },
 }));
