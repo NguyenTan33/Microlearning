@@ -57,7 +57,10 @@ export const BookmarkLibraryModal: React.FC<BookmarkLibraryModalProps> = ({
     if (onSelectBookmark) {
       onSelectBookmark(bm);
     } else {
-      router.push(`/lesson/${bm.lessonId}`);
+      router.push({
+        pathname: `/lesson/${bm.lessonId}`,
+        params: { seekTimestamp: String(bm.timestamp) },
+      } as any);
     }
   };
 
