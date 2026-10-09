@@ -71,8 +71,14 @@ export const catalogRepository = {
 
     const subjects = await db.getAllAsync<Subject>(`SELECT * FROM LocalSubjects WHERE courseId = ? ORDER BY sortOrder ASC`, [courseId]);
     for (const sub of subjects) {
-      const lessons = await db.getAllAsync<Lesson>(`SELECT * FROM LocalLessons WHERE subjectId = ? ORDER BY sortOrder ASC`, [sub.id]);
-      sub.lessons = lessons;
+      const rawLessons = await db.getAllAsync<any>(`SELECT * FROM LocalLessons WHERE subjectId = ? ORDER BY sortOrder ASC`, [sub.id]);
+      sub.lessons = rawLessons.map((l) => ({
+        ...l,
+        videoUrl: l.videoUrl || l.videoRemoteUrl || undefined,
+        hasQuiz: Boolean(l.hasQuiz),
+        isPublished: Boolean(l.isPublished),
+      }));
+      sub.totalLessons = sub.lessons.length;
     }
 
     return {

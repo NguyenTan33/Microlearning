@@ -9,15 +9,19 @@ import { catalogApi } from '../../services/catalogApi';
 interface HybridVideoPlayerProps {
   lessonId: number;
   onlineStreamUrl?: string;
+  videoUrl?: string;
   durationSeconds?: number;
   onCompleted?: () => void;
+  onProgress?: (currentTime: number, duration: number) => void;
 }
 
 export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   lessonId,
   onlineStreamUrl,
+  videoUrl,
   durationSeconds = 120,
   onCompleted,
+  onProgress,
 }) => {
   const [sourceUri, setSourceUri] = useState<string | null>(null);
   const [isOfflineSource, setIsOfflineSource] = useState<boolean>(false);
@@ -34,7 +38,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
 
     const resolveStream = async () => {
       try {
-        let streamTargetUrl = onlineStreamUrl;
+        let streamTargetUrl = onlineStreamUrl || videoUrl;
 
         // Nếu chưa có streamUrl, truy vấn trực tiếp /api/media/lesson/{id}/info từ Azure API
         if (!streamTargetUrl) {
@@ -46,6 +50,11 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
           } catch {
             // Không lấy được online media info
           }
+        }
+
+        // Tự động phân giải endpoint stream Azure chuẩn nếu chưa có URL
+        if (!streamTargetUrl) {
+          streamTargetUrl = `https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net/api/media/lesson/${lessonId}/stream`;
         }
 
         const resolved = await downloadManager.resolvePlayableVideoUri(lessonId, streamTargetUrl);
@@ -71,7 +80,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [lessonId, onlineStreamUrl]);
+  }, [lessonId, onlineStreamUrl, videoUrl]);
 
   // 2. Khởi tạo player với expo-video
   const player = useVideoPlayer(sourceUri || '', (p) => {
@@ -92,6 +101,10 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
       const cur = Math.round(player.currentTime);
       const dur = player.duration > 0 ? Math.round(player.duration) : durationSeconds;
 
+      if (onProgress) {
+        onProgress(cur, dur);
+      }
+
       if (cur > 0 && Math.abs(cur - lastRecordedTimeRef.current) >= 5) {
         lastRecordedTimeRef.current = cur;
         autoSyncEngine.recordLessonProgress(lessonId, cur, dur).catch(() => {});
@@ -102,7 +115,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
       playToEndSub.remove();
       statusSub.remove();
     };
-  }, [player, lessonId, durationSeconds, onCompleted]);
+  }, [player, lessonId, durationSeconds, onCompleted, onProgress]);
 
   const handleToggleFullscreen = () => {
     if (videoViewRef.current) {
