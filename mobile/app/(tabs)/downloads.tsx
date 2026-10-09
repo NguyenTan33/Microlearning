@@ -17,12 +17,28 @@ import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { downloadManager } from '../../src/services/downloadManager';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
+import { useAuthStore } from '../../src/store/useAuthStore';
 import { formatBytes, formatDate } from '../../src/utils/formatters';
 import type { DownloadedMediaItem } from '../../src/types/sync.types';
 
 export default function DownloadsScreen() {
   const router = useRouter();
   const { refreshDownloads } = useDownloadStore();
+  const { logout } = useAuthStore();
+
+  const handleLogout = () => {
+    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Đăng xuất',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   const [downloads, setDownloads] = useState<DownloadedMediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +103,7 @@ export default function DownloadsScreen() {
         title="Kho Ngoại Tuyến"
         subtitle="Quản lý bài học đã tải về"
         onProfilePress={() => router.push('/(tabs)/profile')}
+        onLogoutPress={handleLogout}
       />
       <OfflineBanner />
 

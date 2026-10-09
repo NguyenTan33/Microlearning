@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,6 +23,7 @@ import {
   ShieldAlert,
   Layers,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { AppHeader } from '../../src/components/common/AppHeader';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
@@ -29,11 +31,26 @@ import { catalogApi } from '../../src/services/catalogApi';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { CourseManagementModal } from '../../src/components/management/CourseManagementModal';
+import { AdminUserManagementModal } from '../../src/components/management/AdminUserManagementModal';
 import type { Course } from '../../src/types/catalog.types';
 
 export default function CatalogScreen() {
   const router = useRouter();
-  const { isTeacher, isAdmin } = useAuthStore();
+  const { isTeacher, isAdmin, logout } = useAuthStore();
+
+  const handleLogout = () => {
+    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi tài khoản?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Đăng xuất',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +60,7 @@ export default function CatalogScreen() {
 
   // Studio Modal State (Dành cho Giáo viên & Admin)
   const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [isAdminUsersOpen, setIsAdminUsersOpen] = useState(false);
 
   // Unlock Modal State
   const [unlockCourseId, setUnlockCourseId] = useState<number | null>(null);
@@ -128,6 +146,7 @@ export default function CatalogScreen() {
         title="Khám phá"
         subtitle="Khóa học Microlearning chuẩn thực chiến"
         onProfilePress={() => router.push('/(tabs)/profile')}
+        onLogoutPress={handleLogout}
       />
 
       {/* Banner Studio Dành cho Giáo viên & Admin */}
@@ -149,6 +168,25 @@ export default function CatalogScreen() {
             </View>
             <ChevronRight color="#818CF8" size={18} />
           </TouchableOpacity>
+
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.studioBannerBtn, { marginTop: 8, borderColor: 'rgba(239, 68, 68, 0.4)' }]}
+              onPress={() => setIsAdminUsersOpen(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.studioBannerLeft}>
+                <View style={[styles.studioIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                  <ShieldCheck color="#EF4444" size={18} />
+                </View>
+                <View>
+                  <Text style={styles.studioBannerTitle}>Quản Trị Người Dùng (Admin)</Text>
+                  <Text style={styles.studioBannerSub}>Phân quyền, khóa/mở khóa & đổi mật khẩu</Text>
+                </View>
+              </View>
+              <ChevronRight color="#EF4444" size={18} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -304,6 +342,11 @@ export default function CatalogScreen() {
         visible={isStudioOpen}
         onClose={() => setIsStudioOpen(false)}
         onCourseUpdated={fetchCourses}
+      />
+
+      <AdminUserManagementModal
+        visible={isAdminUsersOpen}
+        onClose={() => setIsAdminUsersOpen(false)}
       />
     </SafeAreaView>
   );
