@@ -31,10 +31,14 @@ import {
   FileQuestion,
   Sparkles,
   Volume2,
+  FileText,
+  Download,
+  HardDrive,
 } from 'lucide-react-native';
 import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
 import { CourseStudentProgressModal } from '../../src/components/management/CourseStudentProgressModal';
 import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLibraryModal';
+import { LessonAttachmentsModal } from '../../src/components/common/LessonAttachmentsModal';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
 import { catalogApi } from '../../src/services/catalogApi';
@@ -51,7 +55,7 @@ export default function CourseDetailScreen() {
   const router = useRouter();
   const courseId = Number(id);
   const { isTeacher, isAdmin } = useAuthStore();
-  const { downloadedLessonIds } = useDownloadStore();
+  const { downloadedLessonIds, activeDownloads, startDownload, deleteDownload } = useDownloadStore();
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -63,12 +67,15 @@ export default function CourseDetailScreen() {
   // Modals
   const [showStudentProgressModal, setShowStudentProgressModal] = useState(false);
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
   const [flagTitle, setFlagTitle] = useState('');
   const [flagNote, setFlagNote] = useState('');
 
-  // Video current time for bookmarking
+  // Video current time & seeking state
   const currentVideoSecondsRef = useRef<number>(0);
+  const [seekTimestamp, setSeekTimestamp] = useState<number | undefined>(undefined);
+  const [watchedSeconds, setWatchedSeconds] = useState<number>(0);
 
   const loadCourse = useCallback(async () => {
     try {
@@ -158,6 +165,62 @@ export default function CourseDetailScreen() {
 
   const handleSelectLesson = (lesson: Lesson) => {
     setActiveLesson(lesson);
+    setSeekTimestamp(undefined);
+    currentVideoSecondsRef.current = 0;
+    setWatchedSeconds(completedIds.has(lesson.id) ? (lesson.durationSeconds || 180) : 0);
+  };
+
+  const handleToggleDownload = async () => {
+    if (!activeLesson) return;
+    const isDownloaded = downloadedLessonIds.has(activeLesson.id);
+
+    if (isDownloaded) {
+      Alert.alert(
+        'Quản lý video tải về',
+        `Bài học "${activeLesson.title}" đã được lưu trên máy. Bạn có muốn xóa bản offline này?`,
+        [
+          { text: 'Giữ lại', style: 'cancel' },
+          {
+            text: 'Xóa bản tải',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteDownload(activeLesson.id);
+              Alert.alert('Thành công', 'Đã xóa video offline khỏi thiết bị.');
+            },
+          },
+        ]
+      );
+    } else {
+      try {
+        Alert.alert('Tải bài giảng', `Bắt đầu tải video "${activeLesson.title}" về máy để học offline...`);
+        await startDownload(activeLesson.id, activeLesson.videoUrl, activeLesson.title);
+      } catch {
+        Alert.alert('Lỗi', 'Không thể bắt đầu tải video bài học.');
+      }
+    }
+  };
+
+  const handleQuizPress = () => {
+    if (!activeLesson) return;
+
+    if (!activeLesson.hasQuiz) {
+      Alert.alert('Thông báo', 'Bài học này chưa có câu hỏi trắc nghiệm.');
+      return;
+    }
+
+    const duration = activeLesson.durationSeconds || 180;
+    const watchedPercent = duration > 0 ? Math.round((watchedSeconds / duration) * 100) : 0;
+    const isCompleted = completedIds.has(activeLesson.id);
+
+    if (!isCompleted && watchedPercent < 60) {
+      Alert.alert(
+        'Chưa mở khóa trắc nghiệm',
+        `Bạn cần học ít nhất 60% thời lượng bài học để mở khóa bài trắc nghiệm củng cố (Hiện tại đã xem: ${watchedPercent}%). Hãy tiếp tục xem bài giảng nhé!`
+      );
+      return;
+    }
+
+    router.push(`/quiz/${activeLesson.id}`);
   };
 
   const handleMarkCompleted = async () => {
@@ -287,13 +350,17 @@ export default function CourseDetailScreen() {
               lessonId={activeLesson.id}
               onlineStreamUrl={activeLesson.videoUrl}
               durationSeconds={activeLesson.durationSeconds || 180}
-              onProgress={(currentSec: number) => {
+              seekTimestamp={seekTimestamp}
+              onProgress={(currentSec: number, totalDur: number) => {
                 currentVideoSecondsRef.current = currentSec;
+                if (totalDur > 0) {
+                  setWatchedSeconds((prev) => Math.max(prev, currentSec));
+                }
               }}
               onCompleted={handleMarkCompleted}
             />
 
-            {/* Thanh điều khiển bài giảng: Tiêu đề + Nút Đánh Dấu + Cụm Chuyển bài */}
+            {/* Thanh điều khiển bài giảng: Tiêu đề + Cụm Action Nhanh + Chuyển bài */}
             <View style={styles.playerControlsBody}>
               <View style={styles.lessonMetaHeaderRow}>
                 <View style={{ flex: 1 }}>
@@ -302,16 +369,6 @@ export default function CourseDetailScreen() {
                     {activeLesson.title}
                   </Text>
                 </View>
-
-                {/* Nút Cắm Cờ / Đánh Dấu Mốc Video */}
-                <TouchableOpacity
-                  style={styles.flagBtn}
-                  onPress={() => setIsFlagModalOpen(true)}
-                  activeOpacity={0.8}
-                >
-                  <Bookmark color="#F59E0B" size={16} fill="#F59E0B" />
-                  <Text style={styles.flagBtnText}>Lưu mốc</Text>
-                </TouchableOpacity>
               </View>
 
               {activeLesson.description ? (
@@ -320,7 +377,59 @@ export default function CourseDetailScreen() {
                 </Text>
               ) : null}
 
-              {/* Nút Điều Hướng Chuyển Bài (Bài trước / Hoàn thành / Bài sau) */}
+              {/* Hàng nút chức năng nhanh: Tài liệu (luôn hiện), Tải offline, Lưu mốc */}
+              <View style={styles.quickActionRow}>
+                {/* 1. Nút Tài liệu bài giảng - Luôn hiển thị kể cả khi bài không có tài liệu */}
+                <TouchableOpacity
+                  style={styles.quickActionPill}
+                  onPress={() => setShowAttachmentsModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <FileText color="#38BDF8" size={15} />
+                  <Text style={styles.quickActionPillText}>Tài liệu</Text>
+                </TouchableOpacity>
+
+                {/* 2. Nút Tải bài giảng về học offline */}
+                <TouchableOpacity
+                  style={[
+                    styles.quickActionPill,
+                    downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
+                  ]}
+                  onPress={handleToggleDownload}
+                  activeOpacity={0.8}
+                >
+                  {activeDownloads[activeLesson.id] !== undefined ? (
+                    <>
+                      <ActivityIndicator size="small" color="#38BDF8" />
+                      <Text style={styles.quickActionPillText}>
+                        Đang tải {activeDownloads[activeLesson.id]}%
+                      </Text>
+                    </>
+                  ) : downloadedLessonIds.has(activeLesson.id) ? (
+                    <>
+                      <HardDrive color="#10B981" size={15} />
+                      <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Download color="#818CF8" size={15} />
+                      <Text style={styles.quickActionPillText}>Tải offline</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* 3. Nút Lưu mốc video */}
+                <TouchableOpacity
+                  style={styles.quickActionPill}
+                  onPress={() => setIsFlagModalOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Bookmark color="#F59E0B" size={15} fill="#F59E0B" />
+                  <Text style={styles.quickActionPillText}>Lưu mốc</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Nút Điều Hướng Chuyển Bài (Chỉ còn Bài trước và Bài tiếp, bỏ nút đã hoàn thành ở giữa) */}
               <View style={styles.navigationRow}>
                 <TouchableOpacity
                   style={[styles.navBtn, !prevLesson && styles.navBtnDisabled]}
@@ -331,20 +440,6 @@ export default function CourseDetailScreen() {
                   <ChevronLeft color={prevLesson ? '#818CF8' : '#475569'} size={18} />
                   <Text style={[styles.navBtnText, !prevLesson && styles.navBtnTextDisabled]}>
                     Bài trước
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.completeLessonBtn,
-                    completedIds.has(activeLesson.id) && styles.completeLessonBtnDone,
-                  ]}
-                  onPress={handleMarkCompleted}
-                  activeOpacity={0.8}
-                >
-                  <CheckCircle2 color="#FFFFFF" size={16} />
-                  <Text style={styles.completeLessonBtnText}>
-                    {completedIds.has(activeLesson.id) ? 'Đã hoàn thành' : 'Đánh dấu xong'}
                   </Text>
                 </TouchableOpacity>
 
@@ -361,18 +456,57 @@ export default function CourseDetailScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Lối tắt làm Quiz trắc nghiệm củng cố nếu bài có Quiz */}
-              {activeLesson.hasQuiz ? (
-                <TouchableOpacity
-                  style={styles.quizShortcutBtn}
-                  onPress={() => router.push(`/quiz/${activeLesson.id}`)}
-                  activeOpacity={0.8}
-                >
-                  <FileQuestion color="#F59E0B" size={18} />
-                  <Text style={styles.quizShortcutText}>Làm bài trắc nghiệm củng cố bài này</Text>
-                  <ChevronRight color="#F59E0B" size={16} />
-                </TouchableOpacity>
-              ) : null}
+              {/* Lối tắt làm Quiz trắc nghiệm củng cố - Luôn hiển thị, khóa khi chưa học đủ 60% */}
+              {(() => {
+                const isLessonDone = completedIds.has(activeLesson.id);
+                const dur = activeLesson.durationSeconds || 180;
+                const watchedPct = dur > 0 ? Math.round((watchedSeconds / dur) * 100) : 0;
+                const isUnlocked = isLessonDone || watchedPct >= 60;
+
+                if (!activeLesson.hasQuiz) {
+                  return (
+                    <TouchableOpacity
+                      style={styles.quizShortcutBtnNoQuiz}
+                      onPress={handleQuizPress}
+                      activeOpacity={0.8}
+                    >
+                      <FileQuestion color="#64748B" size={18} />
+                      <Text style={styles.quizShortcutTextNoQuiz}>
+                        Làm bài trắc nghiệm củng cố (Chưa có đề)
+                      </Text>
+                      <ChevronRight color="#64748B" size={16} />
+                    </TouchableOpacity>
+                  );
+                }
+
+                if (!isUnlocked) {
+                  return (
+                    <TouchableOpacity
+                      style={styles.quizShortcutBtnLocked}
+                      onPress={handleQuizPress}
+                      activeOpacity={0.8}
+                    >
+                      <Lock color="#94A3B8" size={18} />
+                      <Text style={styles.quizShortcutTextLocked}>
+                        Làm bài trắc nghiệm (Khóa - Cần học ≥ 60% • Hiện tại: {watchedPct}%)
+                      </Text>
+                      <ChevronRight color="#94A3B8" size={16} />
+                    </TouchableOpacity>
+                  );
+                }
+
+                return (
+                  <TouchableOpacity
+                    style={styles.quizShortcutBtn}
+                    onPress={handleQuizPress}
+                    activeOpacity={0.8}
+                  >
+                    <FileQuestion color="#F59E0B" size={18} />
+                    <Text style={styles.quizShortcutText}>Làm bài trắc nghiệm củng cố bài này</Text>
+                    <ChevronRight color="#F59E0B" size={16} />
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
           </View>
         ) : (
@@ -589,6 +723,15 @@ export default function CourseDetailScreen() {
         </View>
       </Modal>
 
+      {/* Modal Tài Liệu Đính Kèm Bài Giảng */}
+      <LessonAttachmentsModal
+        visible={showAttachmentsModal}
+        lessonId={activeLesson?.id || 0}
+        lessonTitle={activeLesson?.title || ''}
+        canManage={isTeacher || isAdmin}
+        onClose={() => setShowAttachmentsModal(false)}
+      />
+
       {/* Modal Thư Viện Đánh Dấu */}
       <BookmarkLibraryModal
         visible={showBookmarkModal}
@@ -598,6 +741,7 @@ export default function CourseDetailScreen() {
           if (found) {
             setActiveLesson(found);
           }
+          setSeekTimestamp(bm.timestamp);
         }}
       />
 
@@ -681,41 +825,59 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 12,
     lineHeight: 17,
-    marginBottom: 14,
+    marginBottom: 12,
+  },
+  quickActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  quickActionPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  quickActionPillSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  quickActionPillText: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: '600',
   },
   navigationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 12,
     marginTop: 4,
   },
   navBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#070B17',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  navBtnDisabled: { opacity: 0.4 },
-  navBtnText: { color: '#818CF8', fontSize: 12, fontWeight: '600' },
-  navBtnTextDisabled: { color: '#64748B' },
-  completeLessonBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#6366F1',
-    paddingVertical: 9,
+    backgroundColor: '#070B17',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderRadius: 10,
   },
-  completeLessonBtnDone: { backgroundColor: '#10B981' },
-  completeLessonBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  navBtnDisabled: { opacity: 0.35 },
+  navBtnText: { color: '#818CF8', fontSize: 13, fontWeight: '600' },
+  navBtnTextDisabled: { color: '#64748B' },
   quizShortcutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -725,10 +887,37 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245, 158, 11, 0.3)',
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
     marginTop: 12,
   },
   quizShortcutText: { color: '#F59E0B', fontSize: 12, fontWeight: '700', flex: 1, marginLeft: 8 },
+  quizShortcutBtnNoQuiz: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: 12,
+    opacity: 0.75,
+  },
+  quizShortcutTextNoQuiz: { color: '#94A3B8', fontSize: 12, fontWeight: '600', flex: 1, marginLeft: 8 },
+  quizShortcutBtnLocked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(51, 65, 85, 0.5)',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginTop: 12,
+  },
+  quizShortcutTextLocked: { color: '#94A3B8', fontSize: 12, fontWeight: '600', flex: 1, marginLeft: 8 },
   heroThumbnailContainer: {
     width: '100%',
     height: 180,
