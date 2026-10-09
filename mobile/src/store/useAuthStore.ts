@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { User } from '../types/auth.types';
 import { secureStorage } from '../utils/secureStorage';
 import { STORAGE_KEYS } from '../utils/constants';
+import { getCurrentUserFromToken } from '../utils/tokenHelper';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -24,14 +25,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isTeacher: false,
 
   setAuth: async (user, accessToken, refreshToken) => {
-    const roles = user.roles || (user.role ? [user.role] : ['Student']);
-    const isAdmin = roles.includes('Admin');
-    const isTeacher = isAdmin || roles.includes('Teacher');
+    // 1. Phân tích Claims trực tiếp từ JWT Access Token để đảm bảo quyền Admin/Teacher chính xác 100%
+    const tokenPayload = getCurrentUserFromToken(accessToken);
+
+    const roles = tokenPayload?.roles?.length
+      ? tokenPayload.roles
+      : user.roles || (user.role ? [user.role] : ['Student']);
+
+    const isAdmin = Boolean(tokenPayload?.isAdmin || roles.some((r) => r.toLowerCase() === 'admin'));
+    const isTeacher = Boolean(isAdmin || tokenPayload?.isTeacher || roles.some((r) => r.toLowerCase() === 'teacher'));
+
+    const effectiveUser: User = {
+      ...user,
+      id: tokenPayload?.userId || user.id,
+      fullName: tokenPayload?.fullName || user.fullName || 'Học viên',
+      phoneNumber: tokenPayload?.phoneNumber || user.phoneNumber || '',
+      email: tokenPayload?.email || user.email,
+      roles,
+      role: isAdmin ? 'Admin' : isTeacher ? 'Teacher' : 'Student',
+    };
 
     await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
     await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-    await secureStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(user));
-    set({ isAuthenticated: true, user, isAdmin, isTeacher, isLoading: false });
+    await secureStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(effectiveUser));
+
+    set({ isAuthenticated: true, user: effectiveUser, isAdmin, isTeacher, isLoading: false });
   },
 
   logout: async () => {
@@ -45,13 +63,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       const userJson = await secureStorage.getItem(STORAGE_KEYS.USER_INFO);
-      if (token && userJson) {
-        const user = JSON.parse(userJson) as User;
-        const roles = user.roles || (user.role ? [user.role] : ['Student']);
-        const isAdmin = roles.includes('Admin');
-        const isTeacher = isAdmin || roles.includes('Teacher');
 
-        set({ isAuthenticated: true, user, isAdmin, isTeacher, isLoading: false });
+      if (token) {
+        const tokenPayload = getCurrentUserFromToken(token);
+        let user: User | null = null;
+        if (userJson) {
+          try {
+            user = JSON.parse(userJson) as User;
+          } catch {
+            // ignore
+          }
+        }
+
+        const roles = tokenPayload?.roles?.length
+          ? tokenPayload.roles
+          : user?.roles || (user?.role ? [user.role] : ['Student']);
+
+        const isAdmin = Boolean(tokenPayload?.isAdmin || roles.some((r) => r.toLowerCase() === 'admin'));
+        const isTeacher = Boolean(isAdmin || tokenPayload?.isTeacher || roles.some((r) => r.toLowerCase() === 'teacher'));
+
+        const effectiveUser: User = {
+          id: tokenPayload?.userId || user?.id || 'user-1',
+          fullName: tokenPayload?.fullName || user?.fullName || 'Học viên',
+          phoneNumber: tokenPayload?.phoneNumber || user?.phoneNumber || '',
+          email: tokenPayload?.email || user?.email,
+          roles,
+          role: isAdmin ? 'Admin' : isTeacher ? 'Teacher' : 'Student',
+        };
+
+        set({ isAuthenticated: true, user: effectiveUser, isAdmin, isTeacher, isLoading: false });
       } else {
         set({ isAuthenticated: false, user: null, isAdmin: false, isTeacher: false, isLoading: false });
       }
@@ -70,8 +110,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const updatedUser = { ...currentUser, ...partialUser };
     await secureStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(updatedUser));
     const roles = updatedUser.roles || (updatedUser.role ? [updatedUser.role] : ['Student']);
-    const isAdmin = roles.includes('Admin');
-    const isTeacher = isAdmin || roles.includes('Teacher');
+    const isAdmin = roles.some((r) => r.toLowerCase() === 'admin');
+    const isTeacher = isAdmin || roles.some((r) => r.toLowerCase() === 'teacher');
     set({ user: updatedUser, isAdmin, isTeacher });
   },
 }));
