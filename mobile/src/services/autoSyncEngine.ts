@@ -6,6 +6,7 @@ import { syncMetaRepository } from '../db/repositories/syncMetaRepository';
 import { catalogRepository } from '../db/repositories/catalogRepository';
 import { syncApi } from './syncApi';
 import { catalogApi } from './catalogApi';
+import { progressApi } from './progressApi';
 import { streakApi } from './streakApi';
 import { guidHelper } from '../utils/guidHelper';
 import { secureStorage } from '../utils/secureStorage';
@@ -110,6 +111,19 @@ export const autoSyncEngine = {
               await catalogRepository.saveCourses(apiCourses);
             }
           }
+        }
+
+        // BƯỚC 3: ĐỒNG BỘ TIẾN ĐỘ TỪ WEB/SERVER VỀ SQLITE (Chống lệch tiến độ Web & Mobile)
+        try {
+          const completedIds = await progressApi.getCompletedLessonIds();
+          if (Array.isArray(completedIds) && completedIds.length > 0) {
+            for (const cId of completedIds) {
+              await progressRepository.saveProgress(cId, 180, 100, true);
+              await progressRepository.markClean(cId);
+            }
+          }
+        } catch {
+          // ignore progress pull error
         }
       } catch (pullErr) {
         console.warn('[AutoSyncEngine] Lỗi pull delta:', pullErr);

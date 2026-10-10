@@ -37,6 +37,7 @@ import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { generateGuid } from '../../src/utils/guidHelper';
 import { streakApi } from '../../src/services/streakApi';
 import { quizApi } from '../../src/services/quizApi';
+import { progressApi } from '../../src/services/progressApi';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -97,15 +98,36 @@ export default function LessonScreen() {
             setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
           }
         }
+
+        // Đồng bộ tiến độ từ Server / Web (khôi phục trạng thái hoàn thành ngay cả khi vừa đăng nhập mobile)
+        try {
+          const serverProgress = await progressApi.getLessonProgress(lessonId);
+          if (serverProgress && (serverProgress.isCompleted || serverProgress.percent > 0)) {
+            await progressRepository.saveProgress(
+              lessonId,
+              serverProgress.watchedSeconds || 0,
+              serverProgress.percent || 0,
+              Boolean(serverProgress.isCompleted)
+            );
+            if (serverProgress.isCompleted) {
+              setIsCompleted(true);
+              setWatchedPercent(100);
+            } else if (serverProgress.percent > 0) {
+              setWatchedPercent((prev) => Math.max(prev, serverProgress.percent));
+            }
+          }
+        } catch {
+          // ignore server progress check error
+        }
       } catch {
         // Fallback SQLite
       }
 
-      // 3. Kiểm tra tiến độ học
+      // 3. Kiểm tra tiến độ học từ SQLite
       const progress = await progressRepository.getByLessonId(lessonId);
       if (progress) {
-        setIsCompleted(progress.isCompleted === 1);
-        setWatchedPercent(progress.percent || 0);
+        setIsCompleted((prev) => prev || progress.isCompleted === 1);
+        setWatchedPercent((prev) => Math.max(prev, progress.percent || 0));
       }
     } catch (err) {
       console.warn('[Lesson] Load error:', err);
