@@ -1,8 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  Dimensions,
+  LayoutChangeEvent,
+  Linking,
+} from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { Maximize2, AlertCircle, PictureInPicture, Youtube } from 'lucide-react-native';
+import YoutubePlayer, { YoutubeIframeRef, PLAYER_STATES } from 'react-native-youtube-iframe';
+import { Maximize2, AlertCircle, PictureInPicture, Youtube, ExternalLink } from 'lucide-react-native';
 import { downloadManager } from '../../services/downloadManager';
 import { autoSyncEngine } from '../../services/autoSyncEngine';
 import { catalogApi } from '../../services/catalogApi';
@@ -20,100 +29,6 @@ interface HybridVideoPlayerProps {
 
 type PlayerMode = 'native' | 'youtube';
 
-function generateYouTubeHtml(videoId: string, startSeconds: number = 0, initialDuration: number = 180): string {
-  const safeStart = Math.max(0, Math.floor(startSeconds));
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
-    #player { width: 100vw; height: 100vh; }
-  </style>
-</head>
-<body>
-  <div id="player"></div>
-  <script>
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-    var player = null;
-    var progressTimer = null;
-
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        width: '100%',
-        height: '100%',
-        videoId: '${videoId}',
-        playerVars: {
-          autoplay: 1,
-          playsinline: 1,
-          rel: 0,
-          modestbranding: 1,
-          controls: 1,
-          fs: 1,
-          start: ${safeStart}
-        },
-        events: {
-          'onReady': onPlayerReady,
-          'onStateChange': onPlayerStateChange
-        }
-      });
-    }
-
-    function onPlayerReady(event) {
-      if (${safeStart} > 0 && player && typeof player.seekTo === 'function') {
-        player.seekTo(${safeStart}, true);
-      }
-      if (player && typeof player.playVideo === 'function') {
-        player.playVideo();
-      }
-    }
-
-    function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.PLAYING) {
-        if (!progressTimer) {
-          progressTimer = setInterval(function() {
-            if (player && typeof player.getCurrentTime === 'function') {
-              var cur = Math.round(player.getCurrentTime());
-              var dur = (typeof player.getDuration === 'function' ? Math.round(player.getDuration()) : 0) || ${initialDuration};
-              if (window.ReactNativeWebView) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                  type: 'timeUpdate',
-                  currentTime: cur,
-                  duration: dur
-                }));
-              }
-            }
-          }, 1000);
-        }
-      } else {
-        if (progressTimer) {
-          clearInterval(progressTimer);
-          progressTimer = null;
-        }
-      }
-
-      if (event.data === YT.PlayerState.ENDED) {
-        var endDur = (player && typeof player.getDuration === 'function' ? Math.round(player.getDuration()) : 0) || ${initialDuration};
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'playToEnd',
-            currentTime: endDur,
-            duration: endDur
-          }));
-        }
-      }
-    }
-  </script>
-</body>
-</html>`;
-}
-
 export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   lessonId,
   onlineStreamUrl,
@@ -125,18 +40,43 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
 }) => {
   const [playerMode, setPlayerMode] = useState<PlayerMode>('native');
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+  const [ytError, setYtError] = useState<string | null>(null);
+  const [isYtPlaying, setIsYtPlaying] = useState<boolean>(true);
   const [sourceUri, setSourceUri] = useState<string | null>(null);
   const [isLoadingSource, setIsLoadingSource] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
   const lastRecordedTimeRef = useRef<number>(0);
   const videoViewRef = useRef<VideoView | null>(null);
-  const webViewRef = useRef<WebView | null>(null);
+  const ytPlayerRef = useRef<YoutubeIframeRef | null>(null);
+  const ytProgressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Kích thước chuẩn 16:9 của container
+  const screenWidth = Dimensions.get('window').width;
+  const initialWidth = Math.max(280, screenWidth - 32);
+  const initialHeight = Math.round((initialWidth * 9) / 16);
+
+  const [playerDimensions, setPlayerDimensions] = useState<{ width: number; height: number }>({
+    width: initialWidth,
+    height: initialHeight,
+  });
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const layoutWidth = Math.round(event.nativeEvent.layout.width);
+    if (layoutWidth > 0 && Math.abs(layoutWidth - playerDimensions.width) > 5) {
+      setPlayerDimensions({
+        width: layoutWidth,
+        height: Math.round((layoutWidth * 9) / 16),
+      });
+    }
+  };
 
   // 1. Phân giải nguồn phát: Ưu tiên file offline -> YouTube link -> Azure Media Stream
   useEffect(() => {
     let isMounted = true;
     setIsLoadingSource(true);
     setLoadError(null);
+    setYtError(null);
 
     const resolveStream = async () => {
       try {
@@ -178,22 +118,14 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         }
 
         if (mediaInfoResult) {
-          // Kiểm tra sourceType từ Media Info
-          if (mediaInfoResult.sourceType === 'youtube') {
-            const ytUrl = mediaInfoResult.externalUrl || mediaInfoResult.streamUrl || streamTargetUrl;
-            const parsed = ytUrl ? parseVideoUrl(ytUrl) : null;
-            const resolvedId = parsed?.videoId || mediaInfoResult.embedUrl?.split('embed/')?.[1]?.split('?')?.[0];
-            if (resolvedId && isMounted) {
-              setPlayerMode('youtube');
-              setYoutubeVideoId(resolvedId);
-              setSourceUri(null);
-              setIsLoadingSource(false);
-              return;
-            }
-          }
-
           // Quét tất cả URL liên quan xem có link YouTube không
-          const testUrls = [mediaInfoResult.externalUrl, mediaInfoResult.streamUrl, streamTargetUrl].filter(Boolean) as string[];
+          const testUrls = [
+            streamTargetUrl,
+            mediaInfoResult.externalUrl,
+            mediaInfoResult.streamUrl,
+            mediaInfoResult.embedUrl,
+          ].filter(Boolean) as string[];
+
           for (const testUrl of testUrls) {
             const parsed = parseVideoUrl(testUrl);
             if (parsed.sourceType === 'youtube' && parsed.videoId) {
@@ -203,6 +135,19 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
                 setSourceUri(null);
                 setIsLoadingSource(false);
               }
+              return;
+            }
+          }
+
+          if (mediaInfoResult.sourceType === 'youtube') {
+            const ytId =
+              mediaInfoResult.embedUrl?.split('embed/')?.[1]?.split('?')?.[0] ||
+              mediaInfoResult.externalUrl?.split('v=')?.[1]?.substring(0, 11);
+            if (ytId && isMounted) {
+              setPlayerMode('youtube');
+              setYoutubeVideoId(ytId);
+              setSourceUri(null);
+              setIsLoadingSource(false);
               return;
             }
           }
@@ -250,7 +195,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     p.timeUpdateEventInterval = 1;
   });
 
-  // 3. Xử lý tua video tới mốc đánh dấu cho Native Video (Seek to bookmark timestamp chính xác)
+  // 3. Xử lý tua video tới mốc đánh dấu cho Native Video
   useEffect(() => {
     if (playerMode !== 'native' || !player || typeof seekTimestamp !== 'number' || seekTimestamp < 0) return;
 
@@ -284,17 +229,14 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     };
   }, [playerMode, player, seekTimestamp]);
 
-  // 4. Xử lý tua video cho YouTube WebView
+  // 4. Xử lý tua video cho YouTube
   useEffect(() => {
-    if (playerMode !== 'youtube' || !webViewRef.current || typeof seekTimestamp !== 'number' || seekTimestamp < 0) return;
-    const safeSeek = Math.floor(seekTimestamp);
-    webViewRef.current.injectJavaScript(`
-      if (typeof player !== 'undefined' && player && typeof player.seekTo === 'function') {
-        player.seekTo(${safeSeek}, true);
-        player.playVideo();
-      }
-      true;
-    `);
+    if (playerMode !== 'youtube' || !ytPlayerRef.current || typeof seekTimestamp !== 'number' || seekTimestamp < 0) return;
+    try {
+      ytPlayerRef.current.seekTo(Math.floor(seekTimestamp), true);
+    } catch (err) {
+      console.warn('[YouTube] Seek error:', err);
+    }
   }, [playerMode, seekTimestamp]);
 
   // 5. Theo dõi tiến trình phát cho Native Player
@@ -307,7 +249,6 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
       if (onCompleted) onCompleted();
     });
 
-    // Lắng nghe cập nhật thời gian phát liên tục mỗi giây
     const timeUpdateSub = (player as unknown as { addListener: (event: string, callback: (payload: { currentTime: number }) => void) => { remove: () => void } }).addListener('timeUpdate', (payload: { currentTime: number }) => {
       const cur = Math.round(payload.currentTime);
       const dur = player.duration > 0 ? Math.round(player.duration) : durationSeconds;
@@ -328,29 +269,83 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     };
   }, [playerMode, player, lessonId, durationSeconds, onCompleted, onProgress]);
 
-  // 6. Xử lý sự kiện từ YouTube WebView bridge
-  const handleWebViewMessage = (event: WebViewMessageEvent) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'timeUpdate') {
-        const cur = Number(data.currentTime) || 0;
-        const dur = Number(data.duration) || durationSeconds;
-        if (onProgress) {
-          onProgress(cur, dur);
+  // 6. Quản lý trạng thái và đồng bộ tiến độ cho YouTube Player
+  const handleYoutubeStateChange = useCallback(
+    (state: PLAYER_STATES) => {
+      if (state === PLAYER_STATES.PLAYING) {
+        if (!ytProgressTimerRef.current) {
+          ytProgressTimerRef.current = setInterval(async () => {
+            if (ytPlayerRef.current) {
+              try {
+                const cur = Math.round(await ytPlayerRef.current.getCurrentTime());
+                const durRaw = await ytPlayerRef.current.getDuration();
+                const dur = Math.round(durRaw) || durationSeconds;
+
+                if (onProgress) {
+                  onProgress(cur, dur);
+                }
+
+                if (cur > 0 && Math.abs(cur - lastRecordedTimeRef.current) >= 5) {
+                  lastRecordedTimeRef.current = cur;
+                  autoSyncEngine.recordLessonProgress(lessonId, cur, dur).catch(() => {});
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }, 1000);
         }
-        if (cur > 0 && Math.abs(cur - lastRecordedTimeRef.current) >= 5) {
-          lastRecordedTimeRef.current = cur;
-          autoSyncEngine.recordLessonProgress(lessonId, cur, dur).catch(() => {});
+      } else {
+        if (ytProgressTimerRef.current) {
+          clearInterval(ytProgressTimerRef.current);
+          ytProgressTimerRef.current = null;
         }
-      } else if (data.type === 'playToEnd') {
-        const totalDur = Number(data.duration) || durationSeconds;
-        autoSyncEngine.recordLessonProgress(lessonId, totalDur, totalDur).catch(() => {});
+      }
+
+      if (state === PLAYER_STATES.ENDED) {
+        if (ytProgressTimerRef.current) {
+          clearInterval(ytProgressTimerRef.current);
+          ytProgressTimerRef.current = null;
+        }
+        const dur = durationSeconds;
+        autoSyncEngine.recordLessonProgress(lessonId, dur, dur).catch(() => {});
         if (onCompleted) {
           onCompleted();
         }
       }
-    } catch {
-      // ignore JSON parse error
+    },
+    [lessonId, durationSeconds, onCompleted, onProgress]
+  );
+
+  const handleYoutubeReady = useCallback(() => {
+    if (typeof seekTimestamp === 'number' && seekTimestamp > 0 && ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(Math.floor(seekTimestamp), true);
+    }
+  }, [seekTimestamp]);
+
+  useEffect(() => {
+    return () => {
+      if (ytProgressTimerRef.current) {
+        clearInterval(ytProgressTimerRef.current);
+        ytProgressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleOpenYoutubeApp = () => {
+    if (youtubeVideoId) {
+      const url = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+      Linking.canOpenURL(url)
+        .then((supported) => {
+          if (supported) {
+            Linking.openURL(url);
+          } else {
+            Linking.openURL(`https://m.youtube.com/watch?v=${youtubeVideoId}`);
+          }
+        })
+        .catch(() => {
+          Linking.openURL(`https://m.youtube.com/watch?v=${youtubeVideoId}`);
+        });
     }
   };
 
@@ -359,6 +354,8 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
       videoViewRef.current.enterFullscreen();
     }
   };
+
+  const safeStart = typeof seekTimestamp === 'number' && seekTimestamp > 0 ? Math.floor(seekTimestamp) : 0;
 
   if (isLoadingSource) {
     return (
@@ -379,28 +376,64 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   }
 
   return (
-    <View style={styles.videoContainer}>
+    <View style={styles.videoContainer} onLayout={handleLayout}>
       {playerMode === 'youtube' && youtubeVideoId ? (
-        <View style={styles.webViewWrapper}>
-          <WebView
-            ref={webViewRef}
-            style={styles.webView}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            allowsInlineMediaPlayback={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsFullscreenVideo={true}
-            originWhitelist={['*']}
-            source={{
-              html: generateYouTubeHtml(youtubeVideoId, seekTimestamp, durationSeconds),
-              baseUrl: 'https://www.youtube.com',
-            }}
-            onMessage={handleWebViewMessage}
-          />
-          <View style={styles.platformBadge}>
-            <Youtube color="#EF4444" size={14} />
-            <Text style={styles.platformBadgeText}>YouTube</Text>
-          </View>
+        <View style={styles.ytWrapper}>
+          {ytError ? (
+            <View style={styles.errorOverlay}>
+              <AlertCircle color="#F59E0B" size={28} />
+              <Text style={styles.errorOverlayText}>
+                Video này có giới hạn phát nhúng từ chủ sở hữu.
+              </Text>
+              <TouchableOpacity
+                style={styles.openYtBtn}
+                onPress={handleOpenYoutubeApp}
+                activeOpacity={0.8}
+              >
+                <Youtube color="#EF4444" size={16} />
+                <Text style={styles.openYtBtnText}>Mở xem trên ứng dụng YouTube</Text>
+                <ExternalLink color="#94A3B8" size={14} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <YoutubePlayer
+                ref={ytPlayerRef}
+                width={playerDimensions.width}
+                height={playerDimensions.height}
+                videoId={youtubeVideoId}
+                play={isYtPlaying}
+                initialPlayerParams={{
+                  controls: true,
+                  rel: false,
+                  start: safeStart,
+                  preventFullScreen: false,
+                }}
+                forceAndroidAutoplay={true}
+                onChangeState={handleYoutubeStateChange}
+                onReady={handleYoutubeReady}
+                onError={(err: string) => {
+                  console.warn('[YouTube] Player error:', err);
+                  setYtError(err);
+                }}
+                webViewProps={{
+                  androidLayerType: 'hardware',
+                  allowsInlineMediaPlayback: true,
+                  mediaPlaybackRequiresUserAction: false,
+                }}
+              />
+
+              <TouchableOpacity
+                style={styles.platformBadge}
+                onPress={handleOpenYoutubeApp}
+                activeOpacity={0.7}
+              >
+                <Youtube color="#EF4444" size={14} />
+                <Text style={styles.platformBadgeText}>YouTube</Text>
+                <ExternalLink color="#94A3B8" size={11} />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       ) : (
         <>
@@ -462,30 +495,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E293B',
   },
-  webViewWrapper: {
+  ytWrapper: {
     width: '100%',
     height: '100%',
     position: 'relative',
-  },
-  webView: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   platformBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 8,
+    right: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
-    pointerEvents: 'none',
+    zIndex: 20,
   },
   platformBadgeText: {
     color: '#F8FAFC',
@@ -508,6 +538,38 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  errorOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#0F172A',
+    width: '100%',
+  },
+  errorOverlayText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  openYtBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  openYtBtnText: {
+    color: '#38BDF8',
+    fontSize: 13,
+    fontWeight: '600',
   },
   controlsRow: {
     position: 'absolute',

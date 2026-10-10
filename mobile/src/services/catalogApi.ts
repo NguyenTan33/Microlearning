@@ -76,31 +76,34 @@ export const catalogApi = {
     const deletedIds = await getDeletedCourseIds();
     const locallyCreated = await getLocallyCreatedCourses();
 
-    let serverCourses: Course[] = [];
+    let serverCourses: Course[] | null = null;
     try {
       const res = await apiClient.get<Course[]>(`/api/courses${query}`);
-      serverCourses = Array.isArray(res.data) ? res.data : [];
-    } catch {
-      serverCourses = await catalogRepository.getAllCourses();
-    }
-
-    serverCourses = serverCourses.filter((c) => !deletedIds.has(c.id));
-
-    // Hợp nhất các khóa học tạo cục bộ chưa kịp đồng bộ hoặc tồn tại trên máy
-    const existingIds = new Set(serverCourses.map((c) => c.id));
-    const mergedCourses = [...serverCourses];
-    locallyCreated.forEach((lc) => {
-      if (!existingIds.has(lc.id) && !deletedIds.has(lc.id)) {
-        if (includeUnpublished || lc.isPublished) {
-          mergedCourses.unshift(lc);
+      if (Array.isArray(res.data)) {
+        serverCourses = res.data;
+        // Server là nguồn dữ liệu chuẩn (Single Source of Truth) khi có mạng:
+        // Tự động dọn dẹp các khóa học trong locallyCreated mà Web đã xóa
+        const serverIdSet = new Set(serverCourses.map((c) => c.id));
+        const updatedLocally = locallyCreated.filter((lc) => serverIdSet.has(lc.id));
+        if (updatedLocally.length !== locallyCreated.length) {
+          await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(updatedLocally));
         }
       }
-    });
+    } catch {
+      // Khi mất kết nối mạng mới fallback đọc từ SQLite
+      serverCourses = null;
+    }
 
-    // Lưu vào SQLite phục vụ chế độ Offline-First
-    catalogRepository.saveCourses(mergedCourses).catch(() => {});
+    if (serverCourses !== null) {
+      // Khi có mạng: Dữ liệu chính xác 100% từ Server
+      const coursesToKeep = serverCourses.filter((c) => !deletedIds.has(c.id));
+      await catalogRepository.saveCourses(coursesToKeep).catch(() => {});
+      return coursesToKeep;
+    }
 
-    return mergedCourses;
+    // Khi offline: Trả về từ SQLite
+    const cached = await catalogRepository.getAllCourses();
+    return cached.filter((c) => !deletedIds.has(c.id));
   },
 
   /**
@@ -273,6 +276,8 @@ export const catalogApi = {
 
   async deleteCourse(id: number): Promise<{ message: string }> {
     await saveDeletedCourseId(id);
+    const locally = (await getLocallyCreatedCourses()).filter((c) => c.id !== id);
+    await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(locally));
     await catalogRepository.deleteCourse(id);
     const res = await apiClient.delete<{ message: string }>(`/api/courses/${id}`);
     return res.data;
