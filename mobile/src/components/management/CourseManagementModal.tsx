@@ -36,6 +36,7 @@ import {
   FileUp,
 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { CourseStudentProgressModal } from './CourseStudentProgressModal';
@@ -148,8 +149,49 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
-  // Xử lý chọn tệp video (.mp4) từ thiết bị
-  const handlePickVideoFile = async () => {
+  // Chọn video từ Thư viện / Album
+  const handlePickVideoFromGallery = async () => {
+    try {
+      try {
+        const permission = await ImagePicker.getMediaLibraryPermissionsAsync();
+        if (!permission.granted && permission.canAskAgain) {
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        }
+      } catch {
+        // Tiếp tục dùng system photo picker nếu không yêu cầu permission trước
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let fileName = asset.fileName || '';
+        if (!fileName) {
+          const ext = asset.mimeType?.includes('quicktime') ? 'mov' : 'mp4';
+          fileName = `video_${Date.now()}.${ext}`;
+        } else if (!fileName.includes('.')) {
+          fileName = `${fileName}.mp4`;
+        }
+
+        setSelectedVideoFile({
+          uri: asset.uri,
+          name: fileName,
+          size: asset.fileSize,
+          mimeType: asset.mimeType || 'video/mp4',
+        });
+      }
+    } catch (err) {
+      console.warn('[Video] Gallery pick error:', err);
+      Alert.alert('Lỗi', 'Không thể mở thư viện video trên thiết bị. Bạn có thể chọn mục "Tệp trên máy" để thay thế.');
+    }
+  };
+
+  // Chọn video từ Tệp trên thiết bị
+  const handlePickVideoFromFileSystem = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['video/mp4', 'video/*'],
@@ -177,12 +219,34 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
+  // Hộp thoại hỏi người dùng muốn chọn từ Album hay Tệp
+  const handleChooseVideoSource = () => {
+    Alert.alert(
+      'Chọn nguồn video',
+      'Bạn muốn chọn video từ Thư viện / Album hay Quản lý tệp?',
+      [
+        {
+          text: 'Thư viện / Album 🎬',
+          onPress: handlePickVideoFromGallery,
+        },
+        {
+          text: 'Tệp trên máy 📁',
+          onPress: handlePickVideoFromFileSystem,
+        },
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
   const handleSaveVideo = async () => {
     if (!videoModalLesson) return;
 
     if (videoMode === 'FILE') {
       if (!selectedVideoFile) {
-        Alert.alert('Chưa chọn video', 'Vui lòng bấm chọn tệp video (.mp4) từ điện thoại.');
+        Alert.alert('Chưa chọn video', 'Vui lòng bấm chọn tệp video (.mp4, .mov, .webm) từ điện thoại.');
         return;
       }
 
@@ -201,9 +265,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         setSelectedVideoFile(null);
         if (selectedCourse) await loadCourseDetail(selectedCourse.id);
         if (onCourseUpdated) onCourseUpdated();
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[Video] Upload error:', err);
-        Alert.alert('Lỗi tải video', 'Quá trình tải lên tệp video gặp sự cố. Vui lòng thử lại.');
+        Alert.alert('Lỗi tải video', err?.message || err?.response?.data?.message || 'Quá trình tải lên tệp video gặp sự cố. Vui lòng thử lại.');
       } finally {
         setSavingVideoLink(false);
       }
@@ -214,17 +278,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       }
       setSavingVideoLink(true);
       try {
+        let cleanUrl = videoUrlInput.trim();
+        if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+          cleanUrl = `https://${cleanUrl}`;
+        }
         await catalogApi.linkExternalLessonVideo({
           lessonId: videoModalLesson.id,
-          url: videoUrlInput.trim(),
+          url: cleanUrl,
           title: videoModalLesson.title,
         });
         Alert.alert('Thành công', 'Đã lưu liên kết luồng video cho bài học!');
         setVideoModalLesson(null);
         if (selectedCourse) await loadCourseDetail(selectedCourse.id);
         if (onCourseUpdated) onCourseUpdated();
-      } catch {
-        Alert.alert('Lỗi', 'Không thể liên kết video bài học.');
+      } catch (err: any) {
+        Alert.alert('Lỗi liên kết video', err?.response?.data?.message || err?.message || 'Không thể liên kết video bài học.');
       } finally {
         setSavingVideoLink(false);
       }
@@ -237,7 +305,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       const result = await DocumentPicker.getDocumentAsync({
         type: [
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
           'text/plain',
+          '*/*',
         ],
         copyToCacheDirectory: true,
       });
@@ -270,14 +340,14 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             'Nhập thành công 🎉',
             `Đã nhận diện thành công ${parsed.questions.length} câu hỏi trắc nghiệm từ tệp "${asset.name}"!`
           );
-        } catch (err) {
+        } catch (err: any) {
           console.warn('[Quiz] Parse word error:', err);
-          Alert.alert('Lỗi đọc tệp', 'Không thể trích xuất nội dung từ tệp Word. Hãy kiểm tra định dạng .docx.');
+          Alert.alert('Lỗi đọc tệp', err?.message || 'Không thể trích xuất nội dung từ tệp Word. Hãy kiểm tra định dạng .docx.');
         } finally {
           setIsParsingWord(false);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[Quiz] Pick word error:', err);
       Alert.alert('Lỗi', 'Không thể mở trình chọn tệp trên thiết bị.');
     }
@@ -297,18 +367,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         await catalogApi.createQuiz(quizModalLesson.id, {
           title: quizTitle.trim() || `Trắc nghiệm: ${quizModalLesson.title}`,
           passScore: Number(quizPassScore) || 80,
-          questions: importedQuizQuestions.map((q, idx) => ({
-            content: q.content,
-            explanation: q.explanation,
-            points: q.points || Math.max(1, Math.round(100 / importedQuizQuestions.length)),
-            sortOrder: idx + 1,
-            questionType: 1,
-            options: q.options.map((opt, oIdx) => ({
-              optionText: opt.optionText,
-              isCorrect: opt.isCorrect,
-              sortOrder: oIdx + 1,
-            })),
-          })),
+          questions: importedQuizQuestions.map((q, idx) => {
+            const hasCorrect = q.options.some((opt) => opt.isCorrect);
+            return {
+              content: q.content,
+              explanation: q.explanation,
+              points: q.points || Math.max(1, Math.round(100 / importedQuizQuestions.length)),
+              sortOrder: idx + 1,
+              questionType: 1,
+              options: q.options.map((opt, oIdx) => ({
+                optionText: opt.optionText,
+                isCorrect: hasCorrect ? opt.isCorrect : oIdx === 0,
+                sortOrder: oIdx + 1,
+              })),
+            };
+          }),
         });
 
         Alert.alert('Thành công', `Đã lưu thành công bộ đề gồm ${importedQuizQuestions.length} câu hỏi!`);
@@ -316,8 +389,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         setImportedQuizQuestions([]);
         if (selectedCourse) await loadCourseDetail(selectedCourse.id);
         if (onCourseUpdated) onCourseUpdated();
-      } catch {
-        Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
+      } catch (err: any) {
+        console.warn('[Quiz] Save error:', err);
+        Alert.alert('Lỗi lưu Quiz', err?.response?.data?.message || err?.message || 'Không thể lưu câu hỏi trắc nghiệm.');
       } finally {
         setSavingQuiz(false);
       }
@@ -336,6 +410,10 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       }
       if (quizOptionD.trim()) {
         options.push({ optionText: quizOptionD.trim(), isCorrect: quizCorrectIndex === 3, sortOrder: 4 });
+      }
+
+      if (!options.some((o) => o.isCorrect)) {
+        options[0].isCorrect = true;
       }
 
       setSavingQuiz(true);
@@ -357,8 +435,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         setQuizModalLesson(null);
         if (selectedCourse) await loadCourseDetail(selectedCourse.id);
         if (onCourseUpdated) onCourseUpdated();
-      } catch {
-        Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
+      } catch (err: any) {
+        console.warn('[Quiz] Save error:', err);
+        Alert.alert('Lỗi lưu Quiz', err?.response?.data?.message || err?.message || 'Không thể lưu câu hỏi trắc nghiệm.');
       } finally {
         setSavingQuiz(false);
       }
@@ -573,7 +652,14 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
 
   // ==================== LESSON ACTIONS ====================
   const handleSaveLesson = async () => {
-    if (!targetSubjectId || !lessonTitle.trim()) return;
+    if (!lessonTitle.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập tiêu đề bài giảng.');
+      return;
+    }
+    if (!targetSubjectId) {
+      Alert.alert('Thông báo', 'Không xác định được môn học trực thuộc. Vui lòng chọn lại.');
+      return;
+    }
     setSavingLesson(true);
     try {
       let savedId: number | null = null;
@@ -601,21 +687,26 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       // Gắn link video nếu có
       if (savedId && lessonVideoUrl.trim()) {
         try {
+          let cleanVideoUrl = lessonVideoUrl.trim();
+          if (!cleanVideoUrl.startsWith('http://') && !cleanVideoUrl.startsWith('https://')) {
+            cleanVideoUrl = `https://${cleanVideoUrl}`;
+          }
           await catalogApi.linkExternalLessonVideo({
             lessonId: savedId,
-            url: lessonVideoUrl.trim(),
+            url: cleanVideoUrl,
             title: lessonTitle.trim(),
           });
-        } catch {
-          // ignore link error
+        } catch (linkErr) {
+          console.warn('[Lesson] Link video error:', linkErr);
         }
       }
 
       setIsLessonFormOpen(false);
       if (selectedCourse) await loadCourseDetail(selectedCourse.id);
       if (onCourseUpdated) onCourseUpdated();
-    } catch {
-      Alert.alert('Lỗi', 'Không thể lưu bài giảng.');
+    } catch (err: any) {
+      console.warn('[Lesson] Save error:', err);
+      Alert.alert('Lỗi lưu bài học', err?.response?.data?.message || err?.message || 'Không thể lưu bài giảng.');
     } finally {
       setSavingLesson(false);
     }
@@ -883,7 +974,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                       <Text style={styles.quizMiniBadgeText}>Quiz ✓</Text>
                                     </View>
                                   ) : null}
-                                  {les.videoUrl ? (
+                                  {(les.videoUrl || (les.mediaAssetCount && les.mediaAssetCount > 0)) ? (
                                     <View style={styles.videoMiniBadge}>
                                       <Text style={styles.videoMiniBadgeText}>Video ✓</Text>
                                     </View>
@@ -904,13 +995,26 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                                 {/* 2. Gắn / Tải video cho bài học */}
                                 <TouchableOpacity
                                   style={styles.iconBtn}
-                                  onPress={() => {
+                                  onPress={async () => {
                                     setVideoModalLesson(les);
                                     setVideoUrlInput(les.videoUrl || '');
+                                    if (!les.videoUrl && les.mediaAssetCount && les.mediaAssetCount > 0) {
+                                      try {
+                                        const info = await catalogApi.getLessonMediaInfo(les.id);
+                                        if (info?.externalUrl || info?.streamUrl) {
+                                          setVideoUrlInput(info.externalUrl || info.streamUrl);
+                                        }
+                                      } catch {
+                                        // ignore
+                                      }
+                                    }
                                   }}
                                   activeOpacity={0.8}
                                 >
-                                  <Video color={les.videoUrl ? '#10B981' : '#818CF8'} size={14} />
+                                  <Video
+                                    color={(les.videoUrl || (les.mediaAssetCount && les.mediaAssetCount > 0)) ? '#10B981' : '#818CF8'}
+                                    size={14}
+                                  />
                                 </TouchableOpacity>
 
                                 {/* 3. Soạn đề câu hỏi Quiz trắc nghiệm */}
@@ -1096,6 +1200,15 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                 />
 
                 <TextInput
+                  style={[styles.innerInput, { height: 60 }]}
+                  placeholder="Mô tả tóm tắt bài giảng (tùy chọn)..."
+                  placeholderTextColor="#64748B"
+                  multiline
+                  value={lessonDesc}
+                  onChangeText={setLessonDesc}
+                />
+
+                <TextInput
                   style={styles.innerInput}
                   placeholder="Thời lượng tính bằng giây (VD: 180)"
                   placeholderTextColor="#64748B"
@@ -1163,13 +1276,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   <View style={{ marginVertical: 8 }}>
                     <TouchableOpacity
                       style={styles.filePickerBtn}
-                      onPress={handlePickVideoFile}
+                      onPress={handleChooseVideoSource}
                       activeOpacity={0.8}
                     >
                       <Upload color="#38BDF8" size={22} />
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={styles.filePickerBtnTitle}>
-                          {selectedVideoFile ? selectedVideoFile.name : 'Chạm để chọn video (.mp4) từ điện thoại'}
+                          {selectedVideoFile ? selectedVideoFile.name : 'Chạm để chọn video (Album / Tệp)'}
                         </Text>
                         <Text style={styles.filePickerBtnSub}>
                           {selectedVideoFile

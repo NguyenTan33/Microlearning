@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Flame,
+  Sparkles,
 } from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
@@ -31,6 +32,7 @@ import { DuolingoStreakCelebrationModal } from '../../src/components/common/Duol
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
+import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { downloadManager } from '../../src/services/downloadManager';
 import { outboxRepository } from '../../src/db/repositories/outboxRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
@@ -38,6 +40,7 @@ import { generateGuid } from '../../src/utils/guidHelper';
 import { streakApi } from '../../src/services/streakApi';
 import { quizApi } from '../../src/services/quizApi';
 import { progressApi } from '../../src/services/progressApi';
+import { parseVideoUrl, extractYoutubeVideoId, LessonMediaInfo } from '../../src/types/media.types';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -75,52 +78,80 @@ export default function LessonScreen() {
 
       // 2. Tải trực tiếp từ Azure API
       try {
-        item = await catalogApi.getLessonById(lessonId);
-        setLesson(item);
-        if (item.hasQuiz) {
-          setHasQuizAvailable(true);
-        } else {
-          // Kiểm tra xem bài thi có tồn tại trên server không
-          quizApi.getQuizPackageByLessonId(lessonId)
-            .then((pkg) => {
-              if (pkg && pkg.questions && pkg.questions.length > 0) {
-                setHasQuizAvailable(true);
-                setLesson((prev) => (prev ? { ...prev, hasQuiz: true } : prev));
-              }
-            })
-            .catch(() => {});
-        }
+        const remoteItem = await catalogApi.getLessonById(lessonId);
+        if (remoteItem) {
+          item = remoteItem;
+          setLesson(remoteItem);
+          await catalogRepository.saveLesson(remoteItem);
 
-        // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
-        if (item.subjectId) {
-          const siblings = await catalogApi.getLessonsBySubject(item.subjectId);
-          if (Array.isArray(siblings)) {
-            setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
+          if (remoteItem.hasQuiz) {
+            setHasQuizAvailable(true);
+          } else {
+            // Kiểm tra xem bài thi có tồn tại trên server không
+            quizApi.getQuizPackageByLessonId(lessonId)
+              .then((pkg) => {
+                if (pkg && pkg.questions && pkg.questions.length > 0) {
+                  setHasQuizAvailable(true);
+                  setLesson((prev) => (prev ? { ...prev, hasQuiz: true } : prev));
+                }
+              })
+              .catch(() => {});
           }
-        }
 
-        // Đồng bộ tiến độ từ Server / Web (khôi phục trạng thái hoàn thành ngay cả khi vừa đăng nhập mobile)
-        try {
-          const serverProgress = await progressApi.getLessonProgress(lessonId);
-          if (serverProgress && (serverProgress.isCompleted || serverProgress.percent > 0)) {
-            await progressRepository.saveProgress(
-              lessonId,
-              serverProgress.watchedSeconds || 0,
-              serverProgress.percent || 0,
-              Boolean(serverProgress.isCompleted)
-            );
-            if (serverProgress.isCompleted) {
-              setIsCompleted(true);
-              setWatchedPercent(100);
-            } else if (serverProgress.percent > 0) {
-              setWatchedPercent((prev) => Math.max(prev, serverProgress.percent));
+          // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
+          if (remoteItem.subjectId) {
+            const siblings = await catalogApi.getLessonsBySubject(remoteItem.subjectId);
+            if (Array.isArray(siblings)) {
+              setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
             }
           }
-        } catch {
-          // ignore server progress check error
+
+          // Đồng bộ tiến độ từ Server / Web (khôi phục trạng thái hoàn thành ngay cả khi vừa đăng nhập mobile)
+          try {
+            const serverProgress = await progressApi.getLessonProgress(lessonId);
+            if (serverProgress && (serverProgress.isCompleted || serverProgress.percent > 0)) {
+              await progressRepository.saveProgress(
+                lessonId,
+                serverProgress.watchedSeconds || 0,
+                serverProgress.percent || 0,
+                Boolean(serverProgress.isCompleted)
+              );
+              if (serverProgress.isCompleted) {
+                setIsCompleted(true);
+                setWatchedPercent(100);
+              } else if (serverProgress.percent > 0) {
+                setWatchedPercent((prev) => Math.max(prev, serverProgress.percent));
+              }
+            }
+          } catch {
+            // ignore server progress check error
+          }
         }
       } catch {
-        // Fallback SQLite
+        // Fallback SQLite khi không có Internet
+      }
+
+      // 3. Fallback: Nếu không tải được online và SQLite chưa có lesson, kiểm tra kho ngoại tuyến DownloadedMedia
+      if (!item) {
+        const downloaded = await downloadRepository.getByLessonId(lessonId);
+        if (downloaded) {
+          const offlineLesson: Lesson = {
+            id: lessonId,
+            subjectId: 0,
+            title: downloaded.fileName || `Bài học #${lessonId}`,
+            description: 'Bài học đã tải về bộ nhớ ngoại tuyến.',
+            durationSeconds: 180,
+            sortOrder: 1,
+            version: 1,
+            mediaAssetCount: 1,
+            hasQuiz: false,
+            isPublished: true,
+            videoUrl: downloaded.localPath,
+          };
+          item = offlineLesson;
+          setLesson(offlineLesson);
+          await catalogRepository.saveLesson(offlineLesson);
+        }
       }
 
       // 3. Kiểm tra tiến độ học từ SQLite
@@ -181,8 +212,68 @@ export default function LessonScreen() {
     }
   };
 
+  const [lessonMediaInfo, setLessonMediaInfo] = useState<LessonMediaInfo | null>(null);
+  const [lessonIsYoutube, setLessonIsYoutube] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!lessonId) {
+      setLessonMediaInfo(null);
+      setLessonIsYoutube(false);
+      return;
+    }
+
+    if (lesson?.videoUrl && (parseVideoUrl(lesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(lesson.videoUrl))) {
+      setLessonIsYoutube(true);
+    }
+
+    let isCancelled = false;
+    catalogApi.getLessonMediaInfo(lessonId)
+      .then((mediaInfo) => {
+        if (isCancelled || !mediaInfo) return;
+        setLessonMediaInfo(mediaInfo);
+        const isYt =
+          mediaInfo.sourceType === 'youtube' ||
+          Boolean(mediaInfo.streamUrl && (parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.streamUrl))) ||
+          Boolean(mediaInfo.externalUrl && (parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.externalUrl))) ||
+          Boolean(mediaInfo.embedUrl && (parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.embedUrl)));
+        
+        setLessonIsYoutube(isYt);
+
+        // Tự động dọn dẹp nếu bài học là YouTube nhưng máy lại lưu nhầm file offline test.mp4 trước đó
+        if (isYt && downloadedLessonIds.has(lessonId)) {
+          downloadRepository.deleteDownloadByLessonId(lessonId).then(() => {
+            refreshDownloads();
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLessonIsYoutube(false);
+          setLessonMediaInfo(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [lessonId, lesson?.videoUrl]);
+
+  const isYoutubeVideo = Boolean(
+    lessonIsYoutube ||
+      (lesson?.videoUrl && (parseVideoUrl(lesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(lesson.videoUrl))) ||
+      (lessonMediaInfo?.sourceType === 'youtube')
+  );
+
   const handleDownload = async () => {
     if (!lesson) return;
+
+    if (isYoutubeVideo) {
+      Alert.alert(
+        'Không hỗ trợ tải',
+        'Video bài học này được liên kết từ YouTube nên không hỗ trợ tải về máy để xem ngoại tuyến. Chỉ video tải lên hệ thống Azure mới hỗ trợ tải offline.'
+      );
+      return;
+    }
 
     setDownloading(true);
     setDownloadProgress(0);
@@ -208,6 +299,10 @@ export default function LessonScreen() {
       );
 
       if (localUri) {
+        await catalogRepository.saveLesson({
+          ...lesson,
+          videoUrl: localUri,
+        });
         await refreshDownloads();
         Alert.alert('Thành công! 💾', 'Đã tải bài học về bộ nhớ ngoại tuyến.');
       } else {
@@ -255,7 +350,13 @@ export default function LessonScreen() {
         {/* Trình phát Video Hybrid kết nối Azure Media Stream */}
         <HybridVideoPlayer
           lessonId={lessonId}
-          onlineStreamUrl={lesson.videoUrl}
+          onlineStreamUrl={
+            lesson.videoUrl ||
+            lessonMediaInfo?.externalUrl ||
+            lessonMediaInfo?.embedUrl ||
+            lessonMediaInfo?.streamUrl
+          }
+          mediaInfo={lessonMediaInfo}
           durationSeconds={lesson.durationSeconds}
           seekTimestamp={seekTimestamp ? Number(seekTimestamp) : undefined}
           onCompleted={handleCompleteLesson}
@@ -298,7 +399,7 @@ export default function LessonScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Quick Toolbar: Attachments & Notebook */}
+        {/* Quick Toolbar: Attachments & Notebook & Sổ tay AI */}
         <View style={styles.toolBarRow}>
           <TouchableOpacity
             style={styles.toolBtn}
@@ -306,7 +407,7 @@ export default function LessonScreen() {
             activeOpacity={0.7}
           >
             <Paperclip color="#38BDF8" size={16} />
-            <Text style={styles.toolBtnText}>Tài liệu đính kèm</Text>
+            <Text style={styles.toolBtnText}>Tài liệu</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -315,7 +416,24 @@ export default function LessonScreen() {
             activeOpacity={0.7}
           >
             <BookOpen color="#818CF8" size={16} />
-            <Text style={styles.toolBtnText}>Sổ ghi chú</Text>
+            <Text style={styles.toolBtnText}>Ghi chú</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.toolBtn, styles.toolBtnAi]}
+            onPress={() => {
+              router.push({
+                pathname: '/(tabs)/ai',
+                params: {
+                  lessonId: String(lesson.id),
+                  lessonTitle: lesson.title,
+                },
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Sparkles color="#C084FC" size={16} />
+            <Text style={[styles.toolBtnText, { color: '#C084FC' }]}>Sổ tay AI</Text>
           </TouchableOpacity>
         </View>
 
@@ -338,20 +456,27 @@ export default function LessonScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.downloadActionBtn, isOfflineReady && styles.downloadActionBtnDone]}
-              onPress={handleDownload}
-              disabled={downloading}
-            >
-              <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
-              <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
-                {downloading
-                  ? `${downloadProgress}%`
-                  : isOfflineReady
-                  ? 'Đã tải'
-                  : 'Tải offline'}
-              </Text>
-            </TouchableOpacity>
+            {/* Nút tải về bài học - ẨN HOÀN TOÀN NẾU LÀ VIDEO YOUTUBE */}
+            {!isYoutubeVideo && (
+              <TouchableOpacity
+                style={[
+                  styles.downloadActionBtn,
+                  isOfflineReady && styles.downloadActionBtnDone,
+                ]}
+                onPress={handleDownload}
+                disabled={downloading}
+                activeOpacity={0.8}
+              >
+                <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
+                <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
+                  {isOfflineReady
+                    ? 'Đã tải'
+                    : downloading
+                    ? `${downloadProgress}%`
+                    : 'Tải offline'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -522,6 +647,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  toolBtnAi: {
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderColor: 'rgba(192, 132, 252, 0.35)',
+  },
   lessonMetaSection: {
     backgroundColor: '#0F172A',
     borderRadius: 20,
@@ -565,6 +694,11 @@ const styles = StyleSheet.create({
   downloadActionBtnDone: {
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  downloadActionBtnDisabled: {
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.55,
   },
   downloadActionText: { color: '#E2E8F0', fontSize: 13, fontWeight: '600' },
   downloadActionTextDone: { color: '#10B981' },

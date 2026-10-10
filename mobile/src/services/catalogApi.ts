@@ -1,4 +1,6 @@
-import { apiClient } from './apiClient';
+import * as FileSystem from 'expo-file-system/legacy';
+import { apiClient, getApiBaseUrl } from './apiClient';
+import { STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
 import { catalogRepository } from '../db/repositories/catalogRepository';
 import type { Course, CourseDetail, Subject, Lesson } from '../types/catalog.types';
@@ -75,31 +77,34 @@ export const catalogApi = {
     const deletedIds = await getDeletedCourseIds();
     const locallyCreated = await getLocallyCreatedCourses();
 
-    let serverCourses: Course[] = [];
+    let serverCourses: Course[] | null = null;
     try {
       const res = await apiClient.get<Course[]>(`/api/courses${query}`);
-      serverCourses = Array.isArray(res.data) ? res.data : [];
-    } catch {
-      serverCourses = await catalogRepository.getAllCourses();
-    }
-
-    serverCourses = serverCourses.filter((c) => !deletedIds.has(c.id));
-
-    // Hợp nhất các khóa học tạo cục bộ chưa kịp đồng bộ hoặc tồn tại trên máy
-    const existingIds = new Set(serverCourses.map((c) => c.id));
-    const mergedCourses = [...serverCourses];
-    locallyCreated.forEach((lc) => {
-      if (!existingIds.has(lc.id) && !deletedIds.has(lc.id)) {
-        if (includeUnpublished || lc.isPublished) {
-          mergedCourses.unshift(lc);
+      if (Array.isArray(res.data)) {
+        serverCourses = res.data;
+        // Server là nguồn dữ liệu chuẩn (Single Source of Truth) khi có mạng:
+        // Tự động dọn dẹp các khóa học trong locallyCreated mà Web đã xóa
+        const serverIdSet = new Set(serverCourses.map((c) => c.id));
+        const updatedLocally = locallyCreated.filter((lc) => serverIdSet.has(lc.id));
+        if (updatedLocally.length !== locallyCreated.length) {
+          await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(updatedLocally));
         }
       }
-    });
+    } catch {
+      // Khi mất kết nối mạng mới fallback đọc từ SQLite
+      serverCourses = null;
+    }
 
-    // Lưu vào SQLite phục vụ chế độ Offline-First
-    catalogRepository.saveCourses(mergedCourses).catch(() => {});
+    if (serverCourses !== null) {
+      // Khi có mạng: Dữ liệu chính xác 100% từ Server
+      const coursesToKeep = serverCourses.filter((c) => !deletedIds.has(c.id));
+      await catalogRepository.saveCourses(coursesToKeep).catch(() => {});
+      return coursesToKeep;
+    }
 
-    return mergedCourses;
+    // Khi offline: Trả về từ SQLite
+    const cached = await catalogRepository.getAllCourses();
+    return cached.filter((c) => !deletedIds.has(c.id));
   },
 
   /**
@@ -272,6 +277,8 @@ export const catalogApi = {
 
   async deleteCourse(id: number): Promise<{ message: string }> {
     await saveDeletedCourseId(id);
+    const locally = (await getLocallyCreatedCourses()).filter((c) => c.id !== id);
+    await secureStorage.setItem(CREATED_COURSES_KEY, JSON.stringify(locally));
     await catalogRepository.deleteCourse(id);
     const res = await apiClient.delete<{ message: string }>(`/api/courses/${id}`);
     return res.data;
@@ -302,6 +309,7 @@ export const catalogApi = {
     sortOrder: number;
   }): Promise<Lesson> {
     const res = await apiClient.post<Lesson>('/api/lessons', data);
+    catalogRepository.saveLesson(res.data).catch(() => {});
     return res.data;
   },
 
@@ -315,6 +323,7 @@ export const catalogApi = {
     }
   ): Promise<Lesson> {
     const res = await apiClient.put<Lesson>(`/api/lessons/${id}`, data);
+    catalogRepository.saveLesson(res.data).catch(() => {});
     return res.data;
   },
 
@@ -339,6 +348,61 @@ export const catalogApi = {
     sizeBytes: number;
     lessonId?: number;
   }> {
+    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // 1. Thử tải lên bằng FileSystem.uploadAsync (Native stream, hỗ trợ video lớn, tương thích Album & Tệp)
+    try {
+      const uploadRes = await FileSystem.uploadAsync(
+        `${baseUrl}/api/media/upload`,
+        file.uri,
+        {
+          fieldName: 'file',
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          parameters: {
+            lessonId: String(lessonId),
+          },
+          headers,
+        }
+      );
+
+      if (uploadRes.status >= 200 && uploadRes.status < 300) {
+        const result = JSON.parse(uploadRes.body);
+
+        try {
+          const existingLesson = await catalogRepository.getLessonById(lessonId);
+          if (existingLesson) {
+            await catalogRepository.saveLesson({
+              ...existingLesson,
+              mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+              videoUrl: result.streamUrl || existingLesson.videoUrl,
+            });
+          }
+        } catch {
+          // ignore cache write error
+        }
+
+        return result;
+      } else {
+        let errorMsg = `Tải lên thất bại với mã lỗi HTTP ${uploadRes.status}`;
+        try {
+          const errData = JSON.parse(uploadRes.body);
+          errorMsg = errData.message || errData.error || errorMsg;
+        } catch {
+          if (uploadRes.body) errorMsg = uploadRes.body;
+        }
+        throw new Error(errorMsg);
+      }
+    } catch (nativeErr: any) {
+      console.warn('[CatalogApi] FileSystem.uploadAsync failed, falling back to fetch FormData:', nativeErr?.message);
+    }
+
+    // 2. Fallback sang fetch FormData chuẩn nếu uploadAsync gặp sự cố môi trường
     const formData = new FormData();
     formData.append('file', {
       uri: file.uri,
@@ -347,23 +411,64 @@ export const catalogApi = {
     } as unknown as Blob);
     formData.append('lessonId', String(lessonId));
 
-    const res = await apiClient.post<{
-      id: number;
-      fileName: string;
-      blobKey: string;
-      streamUrl: string;
-      sizeBytes: number;
-      lessonId?: number;
-    }>('/api/media/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return res.data;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/media/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        let errorMsg = `Tải lên thất bại với mã lỗi HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          errorMsg = errData.message || errData.error || errorMsg;
+        } catch {
+          const raw = await res.text();
+          if (raw) errorMsg = raw;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await res.json();
+
+      try {
+        const existingLesson = await catalogRepository.getLessonById(lessonId);
+        if (existingLesson) {
+          await catalogRepository.saveLesson({
+            ...existingLesson,
+            mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+            videoUrl: result.streamUrl || existingLesson.videoUrl,
+          });
+        }
+      } catch {
+        // ignore cache write error
+      }
+
+      return result;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   async linkExternalLessonVideo(data: LinkExternalMediaRequest): Promise<LessonMediaInfo> {
     const res = await apiClient.post<LessonMediaInfo>('/api/media/link-external', data);
+    try {
+      const existingLesson = await catalogRepository.getLessonById(data.lessonId);
+      if (existingLesson) {
+        await catalogRepository.saveLesson({
+          ...existingLesson,
+          mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+          videoUrl: data.url,
+        });
+      }
+    } catch {
+      // ignore cache write error
+    }
     return res.data;
   },
 
@@ -387,6 +492,17 @@ export const catalogApi = {
     }
   ): Promise<{ id: number; title: string }> {
     const res = await apiClient.post<{ id: number; title: string }>(`/api/quizzes/lesson/${lessonId}`, data);
+    try {
+      const existing = await catalogRepository.getLessonById(lessonId);
+      if (existing) {
+        await catalogRepository.saveLesson({
+          ...existing,
+          hasQuiz: true,
+        });
+      }
+    } catch {
+      // ignore
+    }
     return res.data;
   },
 };

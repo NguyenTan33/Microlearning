@@ -211,15 +211,38 @@ export function parseQuizText(rawText: string): ParsedQuizQuestion[] {
 }
 
 /**
- * Chuyển đổi base64 thành ArrayBuffer
+ * Chuyển đổi base64 thành ArrayBuffer an toàn trên mọi thiết bị và engine JS (Hermes, JSC)
  */
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  if (typeof globalThis.atob === 'function') {
+    try {
+      const binaryString = globalThis.atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    } catch {
+      // Fallback sang tự giải mã byte thủ công
+    }
   }
-  return bytes.buffer;
+
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const val = chars.indexOf(clean[i]);
+    if (val === -1) continue;
+    buffer = (buffer << 6) | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+  return new Uint8Array(bytes).buffer;
 }
 
 /**

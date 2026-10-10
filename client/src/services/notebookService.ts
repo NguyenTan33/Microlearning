@@ -9,6 +9,7 @@ import type {
 import type { Course, Lesson } from '../types/catalog.types';
 import { callGeminiDirect, generatePodcastScript } from './geminiClient';
 import { ttsApi } from './ttsApi';
+import { extractTextFromFile, extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../utils/documentExtractor';
 
 // =========================================================================
 // CONSTANTS & BASE URLs
@@ -574,13 +575,18 @@ export const notebookService = {
   ): Promise<NotebookSource> {
     const docTitle = title || file.name;
 
-    // Đọc nội dung file text (hỗ trợ PDF text, TXT, MD, DOCX text)
-    let textContent = '';
+    // Trích xuất toàn bộ văn bản thực tế từ tệp (.docx, .doc, .pdf, .txt, .md, .csv)
+    let rawText = '';
     try {
-      textContent = await file.text();
-    } catch {
-      textContent = `[File tải lên: ${file.name} - ${(file.size / 1024).toFixed(1)} KB]`;
+      rawText = await extractTextFromFile(file);
+    } catch (e) {
+      console.warn('[notebookService] Error extracting file:', e);
     }
+
+    const textContent = formatExtractedDocumentContent(file.name, rawText, {
+      sizeBytes: file.size,
+      fileType: file.type || file.name.split('.').pop()?.toUpperCase(),
+    });
 
     return this.addLessonSource(notebookId, docTitle, textContent);
   },
@@ -694,11 +700,43 @@ export const notebookService = {
       ? getLocalSourcesByNotebook(notebookId)
       : getAllLocalSources();
 
+    // Tự động hồi phục (Auto-hydrate) nội dung văn bản nếu source trước đó chỉ chứa URL metadata
+    let hasUpdatedSource = false;
+    for (const src of localSources) {
+      const isMissingContent =
+        !src.full_text ||
+        src.full_text.length < 500 ||
+        (src.full_text.includes('Đường dẫn tệp gốc: http') && !src.full_text.includes('--- NỘI DUNG VĂN BẢN TRÍCH XUẤT ---'));
+
+      if (isMissingContent) {
+        const urlMatch = (src.full_text || '').match(/Đường dẫn tệp gốc:\s*(https?:\/\/[^\s\n\r]+)/i);
+        if (urlMatch && urlMatch[1]) {
+          try {
+            const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
+            if (rawExtracted && rawExtracted.trim().length > 20) {
+              src.full_text = formatExtractedDocumentContent(src.title.replace(/^\[Tài liệu\]\s*/i, ''), rawExtracted, {
+                lessonTitle: src.lessonTitle,
+                courseTitle: src.courseTitle,
+                fileUrl: urlMatch[1],
+              });
+              hasUpdatedSource = true;
+            }
+          } catch (healErr) {
+            console.warn('[notebookService] Auto-hydrate failed for source:', src.title, healErr);
+          }
+        }
+      }
+    }
+
+    if (hasUpdatedSource && notebookId) {
+      saveLocalSourcesByNotebook(notebookId, localSources);
+    }
+
     const localContextText =
       localSources.length > 0
         ? localSources
-            .slice(0, 5) // Giới hạn 5 sources để tránh vượt token limit
-            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 800)}`)
+            .slice(0, 5) // Gửi tối đa 5 sources
+            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 4500)}`)
             .join('\n\n')
         : '';
 

@@ -3,6 +3,7 @@ import { apiClient } from './apiClient';
 import { secureStorage } from '../utils/secureStorage';
 import { ttsApi } from './ttsApi';
 import { callGeminiDirect, generatePodcastScript } from './geminiClient';
+import { extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../utils/documentExtractor';
 import type {
   Notebook,
   NotebookSource,
@@ -10,7 +11,7 @@ import type {
   PodcastEpisode,
   SearchResult,
 } from '../types/notebook.types';
-import type { Lesson, Course } from '../types/catalog.types';
+import type { Lesson, Course, LessonAttachment } from '../types/catalog.types';
 
 export interface LessonNote {
   id: string;
@@ -311,6 +312,63 @@ export const notebookService = {
     );
   },
 
+  async addSourceToNotebook(notebookId: string, sourceId: string): Promise<void> {
+    const all = await this.getAllSources();
+    const targetSource = all.find((s) => s.id === sourceId);
+    if (!targetSource) return;
+
+    const current = await getStoredSourcesByNotebook(notebookId);
+    if (current.some((s) => s.id === sourceId)) return;
+
+    await saveStoredSourcesByNotebook(notebookId, [targetSource, ...current]);
+
+    const notebooks = await getStoredNotebooks();
+    const nb = notebooks.find((n) => n.id === notebookId);
+    if (nb) {
+      nb.source_count = (nb.source_count || 0) + 1;
+      await saveStoredNotebooks(notebooks);
+    }
+  },
+
+  async attachCourseAttachmentToNotebook(
+    notebookId: string,
+    attachment: LessonAttachment,
+    courseTitle?: string,
+    lessonTitle?: string
+  ): Promise<NotebookSource> {
+    const fileName = attachment.originalFileName || attachment.fileName || 'Tài liệu khóa học';
+    const docTitle = `[Tài liệu] ${fileName}`;
+
+    // 1. Tự động tải file từ Azure Blob Storage và trích xuất nội dung văn bản thực tế (.docx, .doc, .pdf, .txt)
+    let extractedText = '';
+    if (attachment.fileUrl) {
+      try {
+        extractedText = await extractTextFromRemoteUrl(attachment.fileUrl, fileName);
+      } catch (extractErr) {
+        console.warn('[notebookService] Error extracting text from attachment URL:', extractErr);
+      }
+    }
+
+    // 2. Định dạng nội dung nguồn với header ngữ cảnh và toàn bộ nội dung văn bản thực tế
+    const content = formatExtractedDocumentContent(fileName, extractedText, {
+      courseTitle,
+      lessonTitle,
+      fileType: attachment.fileType,
+      sizeBytes: attachment.fileSizeBytes,
+      fileUrl: attachment.fileUrl,
+    });
+
+    return this.addTextSource(
+      notebookId,
+      docTitle,
+      content,
+      attachment.lessonId,
+      undefined,
+      lessonTitle,
+      courseTitle
+    );
+  },
+
   async deleteSource(notebookId: string, sourceId: string): Promise<void> {
     const current = await getStoredSourcesByNotebook(notebookId);
     const updated = current.filter((s) => s.id !== sourceId);
@@ -355,11 +413,46 @@ export const notebookService = {
       ? await getStoredSourcesByNotebook(notebookId)
       : await getAllStoredSources();
 
+    // Nếu sổ tay cụ thể chưa gắn source, tự động nạp kho tài liệu đã lưu trên máy để AI luôn có dữ liệu trả lời
+    const effectiveSources = localSources.length > 0 ? localSources : await getAllStoredSources();
+
+    // Tự động kiểm tra và hồi phục nội dung (Auto-hydrate) cho các tài liệu trước đây bị lưu nhầm placeholder URL
+    let hasUpdatedSource = false;
+    for (const src of effectiveSources) {
+      const isMissingContent =
+        !src.full_text ||
+        src.full_text.length < 500 ||
+        (src.full_text.includes('Đường dẫn tài liệu: http') && !src.full_text.includes('--- NỘI DUNG VĂN BẢN TRÍCH XUẤT ---'));
+
+      if (isMissingContent) {
+        const urlMatch = (src.full_text || '').match(/Đường dẫn tài liệu:\s*(https?:\/\/[^\s\n\r]+)/i);
+        if (urlMatch && urlMatch[1]) {
+          try {
+            const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
+            if (rawExtracted && rawExtracted.trim().length > 20) {
+              src.full_text = formatExtractedDocumentContent(src.title.replace(/^\[Tài liệu\]\s*/i, ''), rawExtracted, {
+                lessonTitle: src.lesson_title,
+                courseTitle: src.course_title,
+                fileUrl: urlMatch[1],
+              });
+              hasUpdatedSource = true;
+            }
+          } catch (healErr) {
+            console.warn('[notebookService] Auto-hydrate failed for source:', src.title, healErr);
+          }
+        }
+      }
+    }
+
+    if (hasUpdatedSource && notebookId) {
+      saveStoredSourcesByNotebook(notebookId, effectiveSources).catch(() => {});
+    }
+
     const localContextText =
-      localSources.length > 0
-        ? localSources
-            .slice(0, 5)
-            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 800)}`)
+      effectiveSources.length > 0
+        ? effectiveSources
+            .slice(0, 8)
+            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 4500)}`)
             .join('\n\n')
         : '';
 
@@ -407,8 +500,8 @@ export const notebookService = {
     }
 
     // Bước 2: Offline Fallback với tài liệu đã lưu
-    if (localSources.length > 0) {
-      const matched = localSources.find(
+    if (effectiveSources.length > 0) {
+      const matched = effectiveSources.find(
         (s) =>
           s.title.toLowerCase().includes(question.toLowerCase().substring(0, 15)) ||
           (s.full_text && s.full_text.toLowerCase().includes(question.toLowerCase().substring(0, 20)))

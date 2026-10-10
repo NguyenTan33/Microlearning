@@ -41,6 +41,7 @@ import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLib
 import { LessonAttachmentsModal } from '../../src/components/common/LessonAttachmentsModal';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
+import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { streakApi } from '../../src/services/streakApi';
 import { mediaBookmarkService } from '../../src/services/mediaBookmarkService';
@@ -48,6 +49,7 @@ import { favoriteSubjectApi } from '../../src/services/favoriteSubjectApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { formatDuration } from '../../src/utils/formatters';
+import { parseVideoUrl, extractYoutubeVideoId, LessonMediaInfo } from '../../src/types/media.types';
 import type { CourseDetail, Lesson, Subject } from '../../src/types/catalog.types';
 
 export default function CourseDetailScreen() {
@@ -55,7 +57,7 @@ export default function CourseDetailScreen() {
   const router = useRouter();
   const courseId = Number(id);
   const { isTeacher, isAdmin } = useAuthStore();
-  const { downloadedLessonIds, activeDownloads, startDownload, deleteDownload } = useDownloadStore();
+  const { downloadedLessonIds, activeDownloads, startDownload, deleteDownload, refreshDownloads } = useDownloadStore();
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -170,8 +172,69 @@ export default function CourseDetailScreen() {
     setWatchedSeconds(completedIds.has(lesson.id) ? (lesson.durationSeconds || 180) : 0);
   };
 
+  const [activeLessonMediaInfo, setActiveLessonMediaInfo] = useState<LessonMediaInfo | null>(null);
+  const [activeLessonIsYoutube, setActiveLessonIsYoutube] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!activeLesson) {
+      setActiveLessonMediaInfo(null);
+      setActiveLessonIsYoutube(false);
+      return;
+    }
+
+    if (activeLesson.videoUrl && (parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(activeLesson.videoUrl))) {
+      setActiveLessonIsYoutube(true);
+    }
+
+    let isCancelled = false;
+    catalogApi.getLessonMediaInfo(activeLesson.id)
+      .then((mediaInfo) => {
+        if (isCancelled || !mediaInfo) return;
+        setActiveLessonMediaInfo(mediaInfo);
+        const isYt =
+          mediaInfo.sourceType === 'youtube' ||
+          Boolean(mediaInfo.streamUrl && (parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.streamUrl))) ||
+          Boolean(mediaInfo.externalUrl && (parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.externalUrl))) ||
+          Boolean(mediaInfo.embedUrl && (parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.embedUrl)));
+        
+        setActiveLessonIsYoutube(isYt);
+
+        // Tự động dọn dẹp nếu bài học là YouTube nhưng máy lại lưu nhầm file offline test.mp4 trước đó
+        if (isYt && downloadedLessonIds.has(activeLesson.id)) {
+          downloadRepository.deleteDownloadByLessonId(activeLesson.id).then(() => {
+            refreshDownloads();
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setActiveLessonIsYoutube(false);
+          setActiveLessonMediaInfo(null);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeLesson?.id, activeLesson?.videoUrl]);
+
+  const isYoutubeLesson = Boolean(
+    activeLessonIsYoutube ||
+      (activeLesson?.videoUrl && (parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(activeLesson.videoUrl))) ||
+      (activeLessonMediaInfo?.sourceType === 'youtube')
+  );
+
   const handleToggleDownload = async () => {
     if (!activeLesson) return;
+
+    if (isYoutubeLesson) {
+      Alert.alert(
+        'Không hỗ trợ tải ngoại tuyến',
+        'Video bài học này là nguồn liên kết từ YouTube. Chỉ các video được đăng tải trực tiếp lên máy chủ đám mây Azure mới hỗ trợ tải về máy để xem khi không có mạng.'
+      );
+      return;
+    }
+
     const isDownloaded = downloadedLessonIds.has(activeLesson.id);
 
     if (isDownloaded) {
@@ -202,8 +265,11 @@ export default function CourseDetailScreen() {
           }
         }
         await startDownload(activeLesson.id, streamUrl, activeLesson.title);
+        await refreshDownloads();
+        useDownloadStore.getState().removeDownloadProgress(activeLesson.id);
         Alert.alert('Thành công! 💾', `Đã lưu bài học "${activeLesson.title}" vào kho ngoại tuyến.`);
       } catch {
+        useDownloadStore.getState().removeDownloadProgress(activeLesson.id);
         Alert.alert('Lỗi', 'Không thể tải video bài học.');
       }
     }
@@ -357,7 +423,13 @@ export default function CourseDetailScreen() {
           <View style={styles.playerContainer}>
             <HybridVideoPlayer
               lessonId={activeLesson.id}
-              onlineStreamUrl={activeLesson.videoUrl}
+              onlineStreamUrl={
+                activeLesson.videoUrl ||
+                activeLessonMediaInfo?.externalUrl ||
+                activeLessonMediaInfo?.embedUrl ||
+                activeLessonMediaInfo?.streamUrl
+              }
+              mediaInfo={activeLessonMediaInfo}
               durationSeconds={activeLesson.durationSeconds || 180}
               seekTimestamp={seekTimestamp}
               onProgress={(currentSec: number, totalDur: number) => {
@@ -398,34 +470,36 @@ export default function CourseDetailScreen() {
                   <Text style={styles.quickActionPillText}>Tài liệu</Text>
                 </TouchableOpacity>
 
-                {/* 2. Nút Tải bài giảng về học offline */}
-                <TouchableOpacity
-                  style={[
-                    styles.quickActionPill,
-                    downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
-                  ]}
-                  onPress={handleToggleDownload}
-                  activeOpacity={0.8}
-                >
-                  {activeDownloads[activeLesson.id] !== undefined ? (
-                    <>
-                      <ActivityIndicator size="small" color="#38BDF8" />
-                      <Text style={styles.quickActionPillText}>
-                        Đang tải {activeDownloads[activeLesson.id]}%
-                      </Text>
-                    </>
-                  ) : downloadedLessonIds.has(activeLesson.id) ? (
-                    <>
-                      <HardDrive color="#10B981" size={15} />
-                      <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Download color="#818CF8" size={15} />
-                      <Text style={styles.quickActionPillText}>Tải offline</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                {/* 2. Nút Tải bài giảng về học offline - ẨN HOÀN TOÀN NẾU LÀ VIDEO YOUTUBE */}
+                {!isYoutubeLesson && (
+                  <TouchableOpacity
+                    style={[
+                      styles.quickActionPill,
+                      downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
+                    ]}
+                    onPress={handleToggleDownload}
+                    activeOpacity={0.8}
+                  >
+                    {downloadedLessonIds.has(activeLesson.id) ? (
+                      <>
+                        <HardDrive color="#10B981" size={15} />
+                        <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
+                      </>
+                    ) : activeDownloads[activeLesson.id] !== undefined ? (
+                      <>
+                        <ActivityIndicator size="small" color="#38BDF8" />
+                        <Text style={styles.quickActionPillText}>
+                          Đang tải {activeDownloads[activeLesson.id]}%
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Download color="#818CF8" size={15} />
+                        <Text style={styles.quickActionPillText}>Tải offline</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
 
                 {/* 3. Nút Lưu mốc video */}
                 <TouchableOpacity
@@ -435,6 +509,26 @@ export default function CourseDetailScreen() {
                 >
                   <Bookmark color="#F59E0B" size={15} fill="#F59E0B" />
                   <Text style={styles.quickActionPillText}>Lưu mốc</Text>
+                </TouchableOpacity>
+
+                {/* 4. Nút Sổ tay AI chuyển sang màn AI Notebook */}
+                <TouchableOpacity
+                  style={styles.quickActionPill}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/(tabs)/ai',
+                      params: {
+                        courseId: String(course.id),
+                        courseTitle: course.title,
+                        lessonId: String(activeLesson.id),
+                        lessonTitle: activeLesson.title,
+                      },
+                    });
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Sparkles color="#A855F7" size={15} />
+                  <Text style={styles.quickActionPillText}>Sổ tay AI</Text>
                 </TouchableOpacity>
               </View>
 
@@ -858,6 +952,11 @@ const styles = StyleSheet.create({
   quickActionPillSuccess: {
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  quickActionPillDisabled: {
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.55,
   },
   quickActionPillText: {
     color: '#F8FAFC',
