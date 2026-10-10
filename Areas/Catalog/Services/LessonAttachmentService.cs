@@ -132,5 +132,25 @@ namespace Microlearning.Areas.Catalog.Services
                 ))
                 .ToListAsync(cancellationToken);
         }
+
+        public async Task<IReadOnlyList<LessonAttachmentDto>> GetAttachmentsByCourseIdAsync(int courseId, CancellationToken cancellationToken = default)
+        {
+            return await _dbContext.LessonAttachments
+                .AsNoTracking()
+                .Where(a => a.Lesson != null && a.Lesson.Subject != null && a.Lesson.Subject.CourseId == courseId)
+                .OrderBy(a => a.CreatedAt)
+                .Select(a => new LessonAttachmentDto(
+                    a.Id,
+                    a.LessonId,
+                    a.FileName,
+                    a.OriginalFileName,
+                    a.FileType,
+                    a.FileUrl,
+                    a.FileSizeBytes,
+                    a.Sha256Checksum,
+                    a.CreatedAt
+                ))
+                .ToListAsync(cancellationToken);
+        }
     }
 }
