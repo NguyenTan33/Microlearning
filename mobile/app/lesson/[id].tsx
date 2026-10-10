@@ -212,8 +212,42 @@ export default function LessonScreen() {
     }
   };
 
+  const [lessonIsYoutube, setLessonIsYoutube] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!lessonId) {
+      setLessonIsYoutube(false);
+      return;
+    }
+
+    if (lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube') {
+      setLessonIsYoutube(true);
+      return;
+    }
+
+    let isCancelled = false;
+    catalogApi.getLessonMediaInfo(lessonId)
+      .then((mediaInfo) => {
+        if (isCancelled || !mediaInfo) return;
+        const isYt =
+          mediaInfo.sourceType === 'youtube' ||
+          Boolean(mediaInfo.streamUrl && parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube') ||
+          Boolean(mediaInfo.externalUrl && parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube') ||
+          Boolean(mediaInfo.embedUrl && parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube');
+        setLessonIsYoutube(isYt);
+      })
+      .catch(() => {
+        if (!isCancelled) setLessonIsYoutube(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [lessonId, lesson?.videoUrl]);
+
   const isYoutubeVideo = Boolean(
-    lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube'
+    lessonIsYoutube ||
+      (lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube')
   );
 
   const handleDownload = async () => {
@@ -402,36 +436,27 @@ export default function LessonScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.downloadActionBtn,
-                isYoutubeVideo && styles.downloadActionBtnDisabled,
-                isOfflineReady && styles.downloadActionBtnDone,
-              ]}
-              onPress={handleDownload}
-              disabled={downloading}
-              activeOpacity={isYoutubeVideo ? 0.6 : 0.8}
-            >
-              {isYoutubeVideo ? (
-                <>
-                  <Download color="#475569" size={18} />
-                  <Text style={[styles.downloadActionText, { color: '#64748B' }]}>
-                    Không tải YT
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
-                  <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
-                    {isOfflineReady
-                      ? 'Đã tải'
-                      : downloading
-                      ? `${downloadProgress}%`
-                      : 'Tải offline'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {/* Nút tải về bài học - ẨN HOÀN TOÀN NẾU LÀ VIDEO YOUTUBE */}
+            {!isYoutubeVideo && (
+              <TouchableOpacity
+                style={[
+                  styles.downloadActionBtn,
+                  isOfflineReady && styles.downloadActionBtnDone,
+                ]}
+                onPress={handleDownload}
+                disabled={downloading}
+                activeOpacity={0.8}
+              >
+                <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
+                <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
+                  {isOfflineReady
+                    ? 'Đã tải'
+                    : downloading
+                    ? `${downloadProgress}%`
+                    : 'Tải offline'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
