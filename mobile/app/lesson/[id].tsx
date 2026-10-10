@@ -36,6 +36,7 @@ import { outboxRepository } from '../../src/db/repositories/outboxRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { generateGuid } from '../../src/utils/guidHelper';
 import { streakApi } from '../../src/services/streakApi';
+import { quizApi } from '../../src/services/quizApi';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -58,6 +59,7 @@ export default function LessonScreen() {
   const [showNotebook, setShowNotebook] = useState(false);
   const [showStreakModal, setShowStreakModal] = useState(false);
   const [currentStreakCount, setCurrentStreakCount] = useState(1);
+  const [hasQuizAvailable, setHasQuizAvailable] = useState<boolean>(false);
 
   const isOfflineReady = downloadedLessonIds.has(lessonId);
 
@@ -67,12 +69,26 @@ export default function LessonScreen() {
       let item = await catalogRepository.getLessonById(lessonId);
       if (item) {
         setLesson(item);
+        if (item.hasQuiz) setHasQuizAvailable(true);
       }
 
       // 2. Tải trực tiếp từ Azure API
       try {
         item = await catalogApi.getLessonById(lessonId);
         setLesson(item);
+        if (item.hasQuiz) {
+          setHasQuizAvailable(true);
+        } else {
+          // Kiểm tra xem bài thi có tồn tại trên server không
+          quizApi.getQuizPackageByLessonId(lessonId)
+            .then((pkg) => {
+              if (pkg && pkg.questions && pkg.questions.length > 0) {
+                setHasQuizAvailable(true);
+                setLesson((prev) => (prev ? { ...prev, hasQuiz: true } : prev));
+              }
+            })
+            .catch(() => {});
+        }
 
         // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
         if (item.subjectId) {
@@ -325,7 +341,7 @@ export default function LessonScreen() {
         />
 
         {/* Khối bài thi trắc nghiệm */}
-        {lesson.hasQuiz ? (
+        {(lesson.hasQuiz || hasQuizAvailable) ? (
           <View style={styles.quizCtaCard}>
             <View style={styles.quizIconBox}>
               <FileQuestion color={canTakeQuiz ? '#F59E0B' : '#64748B'} size={24} />
