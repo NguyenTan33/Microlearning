@@ -2,6 +2,7 @@ export interface LessonAttachment {
   id: number;
   lessonId: number;
   fileName: string;
+  originalFileName?: string;
   fileUrl: string;
   fileSizeBytes: number;
   fileType: string;
