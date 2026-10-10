@@ -48,6 +48,7 @@ import { favoriteSubjectApi } from '../../src/services/favoriteSubjectApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { formatDuration } from '../../src/utils/formatters';
+import { parseVideoUrl } from '../../src/types/media.types';
 import type { CourseDetail, Lesson, Subject } from '../../src/types/catalog.types';
 
 export default function CourseDetailScreen() {
@@ -170,8 +171,21 @@ export default function CourseDetailScreen() {
     setWatchedSeconds(completedIds.has(lesson.id) ? (lesson.durationSeconds || 180) : 0);
   };
 
+  const isYoutubeLesson = Boolean(
+    activeLesson?.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube'
+  );
+
   const handleToggleDownload = async () => {
     if (!activeLesson) return;
+
+    if (isYoutubeLesson) {
+      Alert.alert(
+        'Không hỗ trợ tải ngoại tuyến',
+        'Video bài học này là nguồn liên kết từ YouTube. Chỉ các video được đăng tải trực tiếp lên máy chủ đám mây Azure mới hỗ trợ tải về máy để xem khi không có mạng.'
+      );
+      return;
+    }
+
     const isDownloaded = downloadedLessonIds.has(activeLesson.id);
 
     if (isDownloaded) {
@@ -405,12 +419,20 @@ export default function CourseDetailScreen() {
                 <TouchableOpacity
                   style={[
                     styles.quickActionPill,
+                    isYoutubeLesson && styles.quickActionPillDisabled,
                     downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
                   ]}
                   onPress={handleToggleDownload}
-                  activeOpacity={0.8}
+                  activeOpacity={isYoutubeLesson ? 0.6 : 0.8}
                 >
-                  {downloadedLessonIds.has(activeLesson.id) ? (
+                  {isYoutubeLesson ? (
+                    <>
+                      <Download color="#475569" size={15} />
+                      <Text style={[styles.quickActionPillText, { color: '#64748B' }]}>
+                        Không tải YT
+                      </Text>
+                    </>
+                  ) : downloadedLessonIds.has(activeLesson.id) ? (
                     <>
                       <HardDrive color="#10B981" size={15} />
                       <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
@@ -881,6 +903,11 @@ const styles = StyleSheet.create({
   quickActionPillSuccess: {
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  quickActionPillDisabled: {
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.55,
   },
   quickActionPillText: {
     color: '#F8FAFC',
