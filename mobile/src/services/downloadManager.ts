@@ -3,6 +3,7 @@ import { downloadRepository } from '../db/repositories/downloadRepository';
 import { secureStorage } from '../utils/secureStorage';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getApiBaseUrl } from './apiClient';
+import { extractYoutubeVideoId } from '../types/media.types';
 
 const VERIFIED_FALLBACK_VIDEO_URL =
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
@@ -15,6 +16,17 @@ export const downloadManager = {
     onProgress?: (percent: number) => void
   ): Promise<string | null> {
     try {
+      // Từ chối tải nếu là video từ YouTube
+      if (
+        videoRemoteUrl &&
+        (videoRemoteUrl.includes('youtube.com') ||
+          videoRemoteUrl.includes('youtu.be') ||
+          extractYoutubeVideoId(videoRemoteUrl))
+      ) {
+        console.warn('[DownloadManager] Video YouTube không hỗ trợ tải ngoại tuyến');
+        return null;
+      }
+
       const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
       const dirPath = `${docDir}downloads/videos/`;
       const dirInfo = await FileSystem.getInfoAsync(dirPath);
@@ -34,8 +46,8 @@ export const downloadManager = {
         targetUrl = `${baseUrl}/api/media/lesson/${lessonId}/stream`;
       }
 
-      if (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')) {
-        targetUrl = VERIFIED_FALLBACK_VIDEO_URL;
+      if (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be') || extractYoutubeVideoId(targetUrl)) {
+        return null;
       }
 
       // Chuẩn bị token nếu có
