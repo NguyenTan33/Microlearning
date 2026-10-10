@@ -62,19 +62,25 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 
   startDownload: async (lessonId, videoUrl = '', title = '') => {
+    let isFinished = false;
     get().setDownloadProgress(lessonId, 0);
 
-    const uri = await downloadManager.downloadLessonVideo(
-      lessonId,
-      videoUrl,
-      title || `Bài học #${lessonId}`,
-      (percent) => {
-        get().setDownloadProgress(lessonId, percent);
-      }
-    );
-
-    get().removeDownloadProgress(lessonId);
-    await get().refreshStorageAndDownloads();
+    try {
+      await downloadManager.downloadLessonVideo(
+        lessonId,
+        videoUrl,
+        title || `Bài học #${lessonId}`,
+        (percent) => {
+          if (!isFinished) {
+            get().setDownloadProgress(lessonId, Math.min(99, percent));
+          }
+        }
+      );
+    } finally {
+      isFinished = true;
+      get().removeDownloadProgress(lessonId);
+      await get().refreshStorageAndDownloads();
+    }
   },
 
   deleteDownload: async (lessonId) => {

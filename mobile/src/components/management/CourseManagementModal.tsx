@@ -36,6 +36,7 @@ import {
   FileUp,
 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { CourseStudentProgressModal } from './CourseStudentProgressModal';
@@ -148,8 +149,39 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
-  // Xử lý chọn tệp video (.mp4) từ thiết bị
-  const handlePickVideoFile = async () => {
+  // Chọn video từ Thư viện / Album
+  const handlePickVideoFromGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập Thư viện ảnh để chọn video bài giảng.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const fileName = asset.fileName || `video_${Date.now()}.mp4`;
+        setSelectedVideoFile({
+          uri: asset.uri,
+          name: fileName,
+          size: asset.fileSize,
+          mimeType: asset.mimeType || 'video/mp4',
+        });
+      }
+    } catch (err) {
+      console.warn('[Video] Gallery pick error:', err);
+      Alert.alert('Lỗi', 'Không thể mở thư viện video trên thiết bị.');
+    }
+  };
+
+  // Chọn video từ Tệp trên thiết bị
+  const handlePickVideoFromFileSystem = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['video/mp4', 'video/*'],
@@ -175,6 +207,28 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       console.warn('[Video] Pick video error:', err);
       Alert.alert('Lỗi', 'Không thể mở trình chọn tệp video trên thiết bị.');
     }
+  };
+
+  // Hộp thoại hỏi người dùng muốn chọn từ Album hay Tệp
+  const handleChooseVideoSource = () => {
+    Alert.alert(
+      'Chọn nguồn video',
+      'Bạn muốn chọn video từ Thư viện / Album hay Quản lý tệp?',
+      [
+        {
+          text: 'Thư viện / Album 🎬',
+          onPress: handlePickVideoFromGallery,
+        },
+        {
+          text: 'Tệp trên máy 📁',
+          onPress: handlePickVideoFromFileSystem,
+        },
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   const handleSaveVideo = async () => {
@@ -1212,13 +1266,13 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   <View style={{ marginVertical: 8 }}>
                     <TouchableOpacity
                       style={styles.filePickerBtn}
-                      onPress={handlePickVideoFile}
+                      onPress={handleChooseVideoSource}
                       activeOpacity={0.8}
                     >
                       <Upload color="#38BDF8" size={22} />
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={styles.filePickerBtnTitle}>
-                          {selectedVideoFile ? selectedVideoFile.name : 'Chạm để chọn video (.mp4) từ điện thoại'}
+                          {selectedVideoFile ? selectedVideoFile.name : 'Chạm để chọn video (Album / Tệp)'}
                         </Text>
                         <Text style={styles.filePickerBtnSub}>
                           {selectedVideoFile
