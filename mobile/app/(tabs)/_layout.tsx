@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { BookOpen, Compass, Download, User } from 'lucide-react-native';
+import { BookOpen, Compass, Download, User, Sparkles } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -34,6 +34,13 @@ export default function TabLayout() {
         options={{
           title: 'Khám phá',
           tabBarIcon: ({ color, size }) => <Compass color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="ai"
+        options={{
+          title: 'AI',
+          tabBarIcon: ({ color, size }) => <Sparkles color={color} size={size} />,
         }}
       />
       <Tabs.Screen

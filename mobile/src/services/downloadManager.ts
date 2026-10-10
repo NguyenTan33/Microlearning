@@ -141,11 +141,26 @@ export const downloadManager = {
     try {
       const downloaded = await downloadRepository.getByLessonId(lessonId);
       if (downloaded && downloaded.status === 'DOWNLOADED' && downloaded.localPath) {
-        const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
+        let checkPath = downloaded.localPath;
+        let fileInfo = await FileSystem.getInfoAsync(checkPath);
+
+        // Hỗ trợ khôi phục đường dẫn trên iOS khi Sandbox Container UUID thay đổi sau khi app khởi động lại
+        if (!fileInfo.exists) {
+          const docDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+          const filename = downloaded.localPath.split('/').pop() || `lesson_${lessonId}.mp4`;
+          const standardPath = `${docDir}downloads/videos/${filename}`;
+          const standardInfo = await FileSystem.getInfoAsync(standardPath);
+          if (standardInfo.exists) {
+            checkPath = standardPath;
+            fileInfo = standardInfo;
+            await downloadRepository.updateLocalPath(lessonId, standardPath);
+          }
+        }
+
         if (fileInfo.exists && 'size' in fileInfo && fileInfo.size > 10000) {
-          return { uri: downloaded.localPath, isOffline: true };
-        } else {
-          // Nếu file hỏng hoặc 0 byte, dọn dẹp để không gây lỗi AVFoundation -11829
+          return { uri: checkPath, isOffline: true };
+        } else if (fileInfo.exists && 'size' in fileInfo && fileInfo.size <= 10000) {
+          // File hỏng hoặc dung lượng < 10KB, dọn dẹp để không gây lỗi phát AVFoundation
           await downloadRepository.deleteRecord(lessonId);
         }
       }

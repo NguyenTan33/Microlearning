@@ -31,7 +31,7 @@ namespace Microlearning.Areas.AI.Controllers
         ];
 
         // Key mặc định đã verified (nên overwrite bằng Azure env var)
-        private const string DefaultGeminiKey = "AQ.Ab8RN6LFGm7_OdDzS_MryOVmCKP8af-R_XihlROE7lfDlzQHFw";
+        private const string DefaultGeminiKey = "AQ.Ab8RN6KHgAVW_JA-Rpg4Hi5aXbfMn_VlL48vfcGMFWYuKnz6gg";
 
         public AiAssistantController(
             ApplicationDbContext context,

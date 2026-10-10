@@ -188,17 +188,27 @@ export const catalogApi = {
   },
 
   /**
-   * Báo cáo tiến độ xem bài học
+   * Báo cáo tiến độ xem bài học lên Backend (hỗ trợ cả /api/progress/events và /api/lessons/:id/progress)
    */
   async sendProgressEvent(lessonId: number, watchedSeconds: number, totalDurationSeconds: number): Promise<boolean> {
+    const percent = totalDurationSeconds > 0 ? (watchedSeconds / totalDurationSeconds) * 100 : 0;
     try {
-      await apiClient.post(`/api/lessons/${lessonId}/progress`, {
-        watchedSeconds,
-        totalDurationSeconds,
+      await apiClient.post('/api/progress/events', {
+        lessonId,
+        watchedSeconds: Math.round(watchedSeconds),
+        percent: Math.min(100, Math.round(percent * 10) / 10),
       });
       return true;
     } catch {
-      return false;
+      try {
+        await apiClient.post(`/api/lessons/${lessonId}/progress`, {
+          watchedSeconds,
+          totalDurationSeconds,
+        });
+        return true;
+      } catch {
+        return false;
+      }
     }
   },
 

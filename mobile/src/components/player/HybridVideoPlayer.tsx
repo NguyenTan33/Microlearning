@@ -39,6 +39,17 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
 
     const resolveStream = async () => {
       try {
+        // Ưu tiên 1: Kiểm tra ngay file tải ngoại tuyến trong máy (0ms, không phụ thuộc mạng)
+        const offlineCheck = await downloadManager.resolvePlayableVideoUri(lessonId);
+        if (offlineCheck.isOffline && offlineCheck.uri) {
+          if (isMounted) {
+            setSourceUri(offlineCheck.uri);
+            setIsLoadingSource(false);
+          }
+          return;
+        }
+
+        // Ưu tiên 2: Nếu chưa tải offline, phân giải luồng online từ props hoặc API
         let streamTargetUrl = onlineStreamUrl || videoUrl;
 
         // Nếu chưa có streamUrl, truy vấn trực tiếp /api/media/lesson/{id}/info từ Azure API

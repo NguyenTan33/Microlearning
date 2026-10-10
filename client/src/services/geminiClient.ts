@@ -25,7 +25,7 @@ export function getGeminiApiKey(): string {
     return envKey.trim();
   }
   // Key mặc định đã verified hoạt động với gemini-3.5-flash-lite
-  return 'AQ.Ab8RN6LFGm7_OdDzS_MryOVmCKP8af-R_XihlROE7lfDlzQHFw';
+  return 'AQ.Ab8RN6KHgAVW_JA-Rpg4Hi5aXbfMn_VlL48vfcGMFWYuKnz6gg';
 }
 
 export interface GeminiHistoryItem {
