@@ -35,6 +35,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { catalogApi } from '../../services/catalogApi';
+import { quizApi } from '../../services/quizApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { parseVideoUrl } from '../../types/media.types';
 import { parseDocxQuizFile, parseQuizText, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
@@ -602,9 +603,59 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   };
 
   // =================== QUIZ BUILDER ACTIONS ===================
+  const handleOpenQuizModal = async (lesson: Lesson) => {
+    setTargetLessonForQuiz(lesson);
+    setQuizTitle(`Bài tập trắc nghiệm: ${lesson.title}`);
+    setActionLoading(true);
+    setShowQuizModal(true);
+
+    try {
+      const existing = await quizApi.getQuizByLesson(lesson.id);
+      if (existing && Array.isArray(existing.questions) && existing.questions.length > 0) {
+        setQuizTitle(existing.title || `Bài tập trắc nghiệm: ${lesson.title}`);
+        setQuizPassScore(existing.passScore || 80);
+        setQuizQuestions(
+          existing.questions.map((q) => ({
+            content: q.content,
+            explanation: q.explanation || '',
+            points: q.points || Math.max(1, Math.round(100 / existing.questions.length)),
+            options: (q.options || []).map((opt) => ({
+              optionText: opt.optionText,
+              isCorrect: Boolean(opt.isCorrect),
+            })),
+          }))
+        );
+        showToast('success', `Đã tải ${existing.questions.length} câu hỏi hiện có của bài học.`);
+      } else {
+        setQuizPassScore(80);
+        setQuizQuestions([
+          {
+            content: 'Khái niệm chính của bài học này là gì?',
+            explanation: 'Đây là đáp án chính xác theo nội dung bài học.',
+            points: 100,
+            options: [
+              { optionText: 'Phương án A (Đáp án đúng)', isCorrect: true },
+              { optionText: 'Phương án B', isCorrect: false },
+              { optionText: 'Phương án C', isCorrect: false },
+              { optionText: 'Phương án D', isCorrect: false },
+            ],
+          },
+        ]);
+      }
+    } catch {
+      // Giữ mặc định 1 câu hỏi ban đầu
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleSaveQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetLessonForQuiz) return;
+    if (quizQuestions.length === 0) {
+      showToast('error', 'Đề thi phải có ít nhất 1 câu hỏi.');
+      return;
+    }
     setActionLoading(true);
     try {
       await catalogApi.createQuiz(targetLessonForQuiz.id, {
@@ -613,7 +664,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         questions: quizQuestions.map((q, qIdx) => ({
           content: q.content,
           explanation: q.explanation,
-          points: Number(q.points),
+          points: Number(q.points) || Math.max(1, Math.round(100 / quizQuestions.length)),
           sortOrder: qIdx + 1,
           questionType: 1, // Single choice
           options: q.options.map((opt, oIdx) => ({
@@ -624,13 +675,28 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
         })),
       });
 
-      showToast('success', `Đã tạo đề thi trắc nghiệm cho bài "${targetLessonForQuiz.title}".`);
+      showToast('success', `Đã lưu thành công ${quizQuestions.length} câu hỏi trắc nghiệm cho bài "${targetLessonForQuiz.title}".`);
       setShowQuizModal(false);
       setTargetLessonForQuiz(null);
+
+      // Cập nhật trạng thái hasQuiz trực tiếp trên state để UI phản hồi ngay lập tức
+      setSelectedCourseDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          subjects: prev.subjects.map((s) => ({
+            ...s,
+            lessons: (s.lessons || []).map((l) =>
+              l.id === targetLessonForQuiz.id ? { ...l, hasQuiz: true } : l
+            ),
+          })),
+        };
+      });
+
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
       if (onDataChanged) onDataChanged();
     } catch (err: unknown) {
-      showToast('error', err instanceof Error ? err.message : 'Lỗi khi tạo đề trắc nghiệm.');
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi lưu đề trắc nghiệm.');
     } finally {
       setActionLoading(false);
     }
@@ -1264,16 +1330,16 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
 
                                   {/* Tạo / Soạn Đề thi trắc nghiệm */}
                                   <button
-                                    onClick={() => {
-                                      setTargetLessonForQuiz(lesson);
-                                      setQuizTitle(`Bài tập trắc nghiệm: ${lesson.title}`);
-                                      setShowQuizModal(true);
-                                    }}
-                                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-purple-950/60 border border-purple-500/30 hover:bg-purple-900 text-purple-300 text-[11px] font-semibold cursor-pointer"
-                                    title="Soạn đề thi trắc nghiệm cho bài học này"
+                                    onClick={() => handleOpenQuizModal(lesson)}
+                                    className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                                      lesson.hasQuiz
+                                        ? 'bg-purple-900/80 border-purple-500/50 hover:bg-purple-800 text-purple-200'
+                                        : 'bg-purple-950/60 border-purple-500/30 hover:bg-purple-900 text-purple-300'
+                                    }`}
+                                    title={lesson.hasQuiz ? 'Chỉnh sửa / Cập nhật đề thi trắc nghiệm' : 'Soạn đề thi trắc nghiệm cho bài học này'}
                                   >
-                                    <HelpCircle className="w-3 h-3" />
-                                    <span>Tạo Quiz</span>
+                                    <HelpCircle className="w-3 h-3 text-purple-400" />
+                                    <span>{lesson.hasQuiz ? 'Sửa Quiz' : 'Tạo Quiz'}</span>
                                   </button>
 
                                   {/* Feature 1: Quản lý Tài liệu đính kèm (Word, PDF) */}
