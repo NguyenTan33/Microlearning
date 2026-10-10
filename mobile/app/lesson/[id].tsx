@@ -40,6 +40,7 @@ import { generateGuid } from '../../src/utils/guidHelper';
 import { streakApi } from '../../src/services/streakApi';
 import { quizApi } from '../../src/services/quizApi';
 import { progressApi } from '../../src/services/progressApi';
+import { parseVideoUrl } from '../../src/types/media.types';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -211,8 +212,20 @@ export default function LessonScreen() {
     }
   };
 
+  const isYoutubeVideo = Boolean(
+    lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube'
+  );
+
   const handleDownload = async () => {
     if (!lesson) return;
+
+    if (isYoutubeVideo) {
+      Alert.alert(
+        'Không hỗ trợ tải',
+        'Video bài học này được liên kết từ YouTube nên không hỗ trợ tải về máy để xem ngoại tuyến. Chỉ video tải lên hệ thống Azure mới hỗ trợ tải offline.'
+      );
+      return;
+    }
 
     setDownloading(true);
     setDownloadProgress(0);
@@ -390,18 +403,34 @@ export default function LessonScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.downloadActionBtn, isOfflineReady && styles.downloadActionBtnDone]}
+              style={[
+                styles.downloadActionBtn,
+                isYoutubeVideo && styles.downloadActionBtnDisabled,
+                isOfflineReady && styles.downloadActionBtnDone,
+              ]}
               onPress={handleDownload}
               disabled={downloading}
+              activeOpacity={isYoutubeVideo ? 0.6 : 0.8}
             >
-              <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
-              <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
-                {isOfflineReady
-                  ? 'Đã tải'
-                  : downloading
-                  ? `${downloadProgress}%`
-                  : 'Tải offline'}
-              </Text>
+              {isYoutubeVideo ? (
+                <>
+                  <Download color="#475569" size={18} />
+                  <Text style={[styles.downloadActionText, { color: '#64748B' }]}>
+                    Không tải YT
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
+                  <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
+                    {isOfflineReady
+                      ? 'Đã tải'
+                      : downloading
+                      ? `${downloadProgress}%`
+                      : 'Tải offline'}
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -620,6 +649,11 @@ const styles = StyleSheet.create({
   downloadActionBtnDone: {
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  downloadActionBtnDisabled: {
+    backgroundColor: '#090D1A',
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.55,
   },
   downloadActionText: { color: '#E2E8F0', fontSize: 13, fontWeight: '600' },
   downloadActionTextDone: { color: '#10B981' },
