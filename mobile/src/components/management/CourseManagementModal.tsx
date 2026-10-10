@@ -152,21 +152,31 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   // Chọn video từ Thư viện / Album
   const handlePickVideoFromGallery = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập Thư viện ảnh để chọn video bài giảng.');
-        return;
+      try {
+        const permission = await ImagePicker.getMediaLibraryPermissionsAsync();
+        if (!permission.granted && permission.canAskAgain) {
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        }
+      } catch {
+        // Tiếp tục dùng system photo picker nếu không yêu cầu permission trước
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 1,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const fileName = asset.fileName || `video_${Date.now()}.mp4`;
+        let fileName = asset.fileName || '';
+        if (!fileName) {
+          const ext = asset.mimeType?.includes('quicktime') ? 'mov' : 'mp4';
+          fileName = `video_${Date.now()}.${ext}`;
+        } else if (!fileName.includes('.')) {
+          fileName = `${fileName}.mp4`;
+        }
+
         setSelectedVideoFile({
           uri: asset.uri,
           name: fileName,
@@ -176,7 +186,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       }
     } catch (err) {
       console.warn('[Video] Gallery pick error:', err);
-      Alert.alert('Lỗi', 'Không thể mở thư viện video trên thiết bị.');
+      Alert.alert('Lỗi', 'Không thể mở thư viện video trên thiết bị. Bạn có thể chọn mục "Tệp trên máy" để thay thế.');
     }
   };
 

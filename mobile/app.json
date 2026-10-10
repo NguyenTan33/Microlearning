@@ -44,6 +44,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#070B17"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần quyền truy cập Thư viện ảnh để tải lên video bài giảng."
+        }
       ]
     ]
   }

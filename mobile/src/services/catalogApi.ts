@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { apiClient, getApiBaseUrl } from './apiClient';
 import { STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
@@ -347,6 +348,61 @@ export const catalogApi = {
     sizeBytes: number;
     lessonId?: number;
   }> {
+    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // 1. Thử tải lên bằng FileSystem.uploadAsync (Native stream, hỗ trợ video lớn, tương thích Album & Tệp)
+    try {
+      const uploadRes = await FileSystem.uploadAsync(
+        `${baseUrl}/api/media/upload`,
+        file.uri,
+        {
+          fieldName: 'file',
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          parameters: {
+            lessonId: String(lessonId),
+          },
+          headers,
+        }
+      );
+
+      if (uploadRes.status >= 200 && uploadRes.status < 300) {
+        const result = JSON.parse(uploadRes.body);
+
+        try {
+          const existingLesson = await catalogRepository.getLessonById(lessonId);
+          if (existingLesson) {
+            await catalogRepository.saveLesson({
+              ...existingLesson,
+              mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+              videoUrl: result.streamUrl || existingLesson.videoUrl,
+            });
+          }
+        } catch {
+          // ignore cache write error
+        }
+
+        return result;
+      } else {
+        let errorMsg = `Tải lên thất bại với mã lỗi HTTP ${uploadRes.status}`;
+        try {
+          const errData = JSON.parse(uploadRes.body);
+          errorMsg = errData.message || errData.error || errorMsg;
+        } catch {
+          if (uploadRes.body) errorMsg = uploadRes.body;
+        }
+        throw new Error(errorMsg);
+      }
+    } catch (nativeErr: any) {
+      console.warn('[CatalogApi] FileSystem.uploadAsync failed, falling back to fetch FormData:', nativeErr?.message);
+    }
+
+    // 2. Fallback sang fetch FormData chuẩn nếu uploadAsync gặp sự cố môi trường
     const formData = new FormData();
     formData.append('file', {
       uri: file.uri,
@@ -355,18 +411,7 @@ export const catalogApi = {
     } as unknown as Blob);
     formData.append('lessonId', String(lessonId));
 
-    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    // LƯU Ý QUAN TRỌNG CHO REACT NATIVE:
-    // Tuyệt đối KHÔNG gán 'Content-Type': 'multipart/form-data' thủ công.
-    // fetch trên React Native sẽ tự động gắn header kèm boundary thích hợp.
-
     const controller = new AbortController();
-    // Cho phép upload video tối đa 10 phút trước khi hủy tác vụ
     const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
 
     try {
@@ -391,7 +436,6 @@ export const catalogApi = {
 
       const result = await res.json();
 
-      // Cập nhật thông tin vào cache SQLite cục bộ nếu có
       try {
         const existingLesson = await catalogRepository.getLessonById(lessonId);
         if (existingLesson) {
