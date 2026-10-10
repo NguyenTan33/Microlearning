@@ -98,6 +98,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       await authApi.resetPassword({
         phoneNumber: phoneNumber.trim(),
         newPassword: newPassword.trim(),
+        confirmNewPassword: newPassword.trim(),
         resetToken: 'token',
       });
 
