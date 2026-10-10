@@ -2,6 +2,7 @@ import { getSQLiteDatabase } from '../db/sqliteClient';
 import { apiClient } from './apiClient';
 import { secureStorage } from '../utils/secureStorage';
 import { ttsApi } from './ttsApi';
+import { callGeminiDirect, generatePodcastScript } from './geminiClient';
 import type {
   Notebook,
   NotebookSource,
@@ -386,7 +387,23 @@ export const notebookService = {
         return ans;
       }
     } catch {
-      // API call failed, proceed to fallback
+      // Backend gateway bận/lỗi -> Thử gọi Gemini trực tiếp từ Mobile
+    }
+
+    // Bước 1.5: Gọi Gemini trực tiếp từ Mobile
+    try {
+      const direct = await callGeminiDirect(
+        question,
+        localContextText || undefined,
+        undefined,
+        12000,
+        history
+      );
+      if (direct && direct.trim().length > 10) {
+        return direct;
+      }
+    } catch {
+      // Direct call failed
     }
 
     // Bước 2: Offline Fallback với tài liệu đã lưu
@@ -432,9 +449,16 @@ export const notebookService = {
       durationSeconds?: number;
     }
   ): Promise<PodcastEpisode> {
+    let script = content;
+    try {
+      script = await generatePodcastScript(episodeName, 'solo_expert', content);
+    } catch {
+      script = content;
+    }
+
     let audioUrl = '';
     try {
-      const cleanText = content
+      const cleanText = script
         .replace(/^#{1,6}\s+.*$/gm, '')
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .substring(0, 1500);
