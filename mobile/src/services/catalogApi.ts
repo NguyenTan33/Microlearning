@@ -408,6 +408,18 @@ export const catalogApi = {
 
   async linkExternalLessonVideo(data: LinkExternalMediaRequest): Promise<LessonMediaInfo> {
     const res = await apiClient.post<LessonMediaInfo>('/api/media/link-external', data);
+    try {
+      const existingLesson = await catalogRepository.getLessonById(data.lessonId);
+      if (existingLesson) {
+        await catalogRepository.saveLesson({
+          ...existingLesson,
+          mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+          videoUrl: data.url,
+        });
+      }
+    } catch {
+      // ignore cache write error
+    }
     return res.data;
   },
 
