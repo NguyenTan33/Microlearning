@@ -16,11 +16,11 @@ export const catalogRepository = {
       const realCourses = courses.filter((c) => !isDummyTitle(c.title));
 
       const persist = async () => {
-        // Đồng bộ chuẩn xác theo server: nếu danh sách rỗng, xóa sạch bảng
+        // Đồng bộ chuẩn xác theo server: nếu danh sách rỗng, xóa sạch bảng nhưng bảo toàn bài học ngoại tuyến
         if (realCourses.length === 0) {
           await db.runAsync(`DELETE FROM LocalCourses;`);
           await db.runAsync(`DELETE FROM LocalSubjects;`);
-          await db.runAsync(`DELETE FROM LocalLessons;`);
+          await db.runAsync(`DELETE FROM LocalLessons WHERE id NOT IN (SELECT lessonId FROM DownloadedMedia);`);
         } else {
           const ids = realCourses.map((c) => c.id).join(',');
           await db.runAsync(`DELETE FROM LocalCourses WHERE id NOT IN (${ids});`);
@@ -175,15 +175,63 @@ export const catalogRepository = {
     };
   },
 
+  async saveLesson(lesson: Lesson): Promise<void> {
+    try {
+      const db = await getSQLiteDatabase();
+      await db.runAsync(
+        `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          lesson.id,
+          lesson.subjectId || 0,
+          lesson.title || `Bài học #${lesson.id}`,
+          lesson.description || '',
+          lesson.durationSeconds || 0,
+          lesson.sortOrder || 1,
+          lesson.hasQuiz ? 1 : 0,
+          lesson.videoUrl || '',
+          lesson.audioTtsUrl || '',
+        ]
+      );
+    } catch (err) {
+      console.warn('[catalogRepository] saveLesson error:', err);
+    }
+  },
+
   async getLessonById(lessonId: number): Promise<Lesson | null> {
     const db = await getSQLiteDatabase();
     const lesson = await db.getFirstAsync<any>(`SELECT * FROM LocalLessons WHERE id = ?`, [lessonId]);
-    if (!lesson) return null;
-    return {
-      ...lesson,
-      hasQuiz: Boolean(lesson.hasQuiz),
-      isPublished: Boolean(lesson.isPublished),
-    };
+    if (lesson) {
+      return {
+        ...lesson,
+        videoUrl: lesson.videoUrl || lesson.videoRemoteUrl || undefined,
+        hasQuiz: Boolean(lesson.hasQuiz),
+        isPublished: Boolean(lesson.isPublished),
+      };
+    }
+
+    // Fallback nếu không có trong LocalLessons nhưng đã có trong kho ngoại tuyến DownloadedMedia
+    const downloaded = await db.getFirstAsync<any>(
+      `SELECT * FROM DownloadedMedia WHERE lessonId = ? AND status = 'DOWNLOADED'`,
+      [lessonId]
+    );
+    if (downloaded) {
+      return {
+        id: lessonId,
+        subjectId: 0,
+        title: downloaded.fileName || `Bài học #${lessonId}`,
+        description: 'Bài học đã tải về bộ nhớ ngoại tuyến.',
+        durationSeconds: 180,
+        sortOrder: 1,
+        version: 1,
+        mediaAssetCount: 1,
+        hasQuiz: false,
+        isPublished: true,
+        videoUrl: downloaded.localPath,
+      };
+    }
+
+    return null;
   },
 
   async updateLessonQuizStatus(lessonId: number, hasQuiz: boolean): Promise<void> {

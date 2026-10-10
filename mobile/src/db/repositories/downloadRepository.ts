@@ -70,6 +70,11 @@ export const downloadRepository = {
     await this.deleteRecord(lessonId);
   },
 
+  async updateLocalPath(lessonId: number, newPath: string): Promise<void> {
+    const db = await getSQLiteDatabase();
+    await db.runAsync(`UPDATE DownloadedMedia SET localPath = ? WHERE lessonId = ?;`, [newPath, lessonId]);
+  },
+
   async togglePinned(lessonId: number, isPinned: boolean): Promise<void> {
     const db = await getSQLiteDatabase();
     await db.runAsync(`UPDATE DownloadedMedia SET isPinned = ? WHERE lessonId = ?;`, [

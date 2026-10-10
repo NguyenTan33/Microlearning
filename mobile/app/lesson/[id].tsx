@@ -31,6 +31,7 @@ import { DuolingoStreakCelebrationModal } from '../../src/components/common/Duol
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
+import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { downloadManager } from '../../src/services/downloadManager';
 import { outboxRepository } from '../../src/db/repositories/outboxRepository';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
@@ -75,52 +76,80 @@ export default function LessonScreen() {
 
       // 2. Tải trực tiếp từ Azure API
       try {
-        item = await catalogApi.getLessonById(lessonId);
-        setLesson(item);
-        if (item.hasQuiz) {
-          setHasQuizAvailable(true);
-        } else {
-          // Kiểm tra xem bài thi có tồn tại trên server không
-          quizApi.getQuizPackageByLessonId(lessonId)
-            .then((pkg) => {
-              if (pkg && pkg.questions && pkg.questions.length > 0) {
-                setHasQuizAvailable(true);
-                setLesson((prev) => (prev ? { ...prev, hasQuiz: true } : prev));
-              }
-            })
-            .catch(() => {});
-        }
+        const remoteItem = await catalogApi.getLessonById(lessonId);
+        if (remoteItem) {
+          item = remoteItem;
+          setLesson(remoteItem);
+          await catalogRepository.saveLesson(remoteItem);
 
-        // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
-        if (item.subjectId) {
-          const siblings = await catalogApi.getLessonsBySubject(item.subjectId);
-          if (Array.isArray(siblings)) {
-            setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
+          if (remoteItem.hasQuiz) {
+            setHasQuizAvailable(true);
+          } else {
+            // Kiểm tra xem bài thi có tồn tại trên server không
+            quizApi.getQuizPackageByLessonId(lessonId)
+              .then((pkg) => {
+                if (pkg && pkg.questions && pkg.questions.length > 0) {
+                  setHasQuizAvailable(true);
+                  setLesson((prev) => (prev ? { ...prev, hasQuiz: true } : prev));
+                }
+              })
+              .catch(() => {});
           }
-        }
 
-        // Đồng bộ tiến độ từ Server / Web (khôi phục trạng thái hoàn thành ngay cả khi vừa đăng nhập mobile)
-        try {
-          const serverProgress = await progressApi.getLessonProgress(lessonId);
-          if (serverProgress && (serverProgress.isCompleted || serverProgress.percent > 0)) {
-            await progressRepository.saveProgress(
-              lessonId,
-              serverProgress.watchedSeconds || 0,
-              serverProgress.percent || 0,
-              Boolean(serverProgress.isCompleted)
-            );
-            if (serverProgress.isCompleted) {
-              setIsCompleted(true);
-              setWatchedPercent(100);
-            } else if (serverProgress.percent > 0) {
-              setWatchedPercent((prev) => Math.max(prev, serverProgress.percent));
+          // Lấy danh sách bài giảng cùng môn để làm nút Tiến / Lùi
+          if (remoteItem.subjectId) {
+            const siblings = await catalogApi.getLessonsBySubject(remoteItem.subjectId);
+            if (Array.isArray(siblings)) {
+              setSiblingLessons(siblings.sort((a, b) => a.sortOrder - b.sortOrder));
             }
           }
-        } catch {
-          // ignore server progress check error
+
+          // Đồng bộ tiến độ từ Server / Web (khôi phục trạng thái hoàn thành ngay cả khi vừa đăng nhập mobile)
+          try {
+            const serverProgress = await progressApi.getLessonProgress(lessonId);
+            if (serverProgress && (serverProgress.isCompleted || serverProgress.percent > 0)) {
+              await progressRepository.saveProgress(
+                lessonId,
+                serverProgress.watchedSeconds || 0,
+                serverProgress.percent || 0,
+                Boolean(serverProgress.isCompleted)
+              );
+              if (serverProgress.isCompleted) {
+                setIsCompleted(true);
+                setWatchedPercent(100);
+              } else if (serverProgress.percent > 0) {
+                setWatchedPercent((prev) => Math.max(prev, serverProgress.percent));
+              }
+            }
+          } catch {
+            // ignore server progress check error
+          }
         }
       } catch {
-        // Fallback SQLite
+        // Fallback SQLite khi không có Internet
+      }
+
+      // 3. Fallback: Nếu không tải được online và SQLite chưa có lesson, kiểm tra kho ngoại tuyến DownloadedMedia
+      if (!item) {
+        const downloaded = await downloadRepository.getByLessonId(lessonId);
+        if (downloaded) {
+          const offlineLesson: Lesson = {
+            id: lessonId,
+            subjectId: 0,
+            title: downloaded.fileName || `Bài học #${lessonId}`,
+            description: 'Bài học đã tải về bộ nhớ ngoại tuyến.',
+            durationSeconds: 180,
+            sortOrder: 1,
+            version: 1,
+            mediaAssetCount: 1,
+            hasQuiz: false,
+            isPublished: true,
+            videoUrl: downloaded.localPath,
+          };
+          item = offlineLesson;
+          setLesson(offlineLesson);
+          await catalogRepository.saveLesson(offlineLesson);
+        }
       }
 
       // 3. Kiểm tra tiến độ học từ SQLite
@@ -208,6 +237,10 @@ export default function LessonScreen() {
       );
 
       if (localUri) {
+        await catalogRepository.saveLesson({
+          ...lesson,
+          videoUrl: localUri,
+        });
         await refreshDownloads();
         Alert.alert('Thành công! 💾', 'Đã tải bài học về bộ nhớ ngoại tuyến.');
       } else {
