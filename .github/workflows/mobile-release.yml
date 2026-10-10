@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - Mobile
-      - FE
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile-release.yml'
