@@ -42,6 +42,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { parseDocxQuizFromUri } from '../../src/utils/docxQuizParser';
+import { extractTextFromFileUri, formatExtractedDocumentContent } from '../../src/utils/documentExtractor';
 import { attachmentApi } from '../../src/services/attachmentApi';
 import { notebookService } from '../../src/services/notebookService';
 import { catalogApi } from '../../src/services/catalogApi';
@@ -535,39 +536,19 @@ export default function AiNotebookScreen() {
 
       const fileName = file.name || 'Tài liệu từ máy';
       const fileLower = fileName.toLowerCase();
-      let extractedContent = '';
 
-      if (fileLower.endsWith('.docx')) {
-        try {
-          const { rawText } = await parseDocxQuizFromUri(file.uri);
-          if (rawText && rawText.trim().length > 0) {
-            extractedContent = `VĂN BẢN TRÍCH XUẤT TỪ FILE WORD (.DOCX): ${fileName}\n\n${rawText}`;
-          }
-        } catch (docxErr) {
-          console.warn('[AiNotebook] Error parsing docx:', docxErr);
-        }
-      } else if (fileLower.endsWith('.txt')) {
-        try {
-          const rawText = await FileSystem.readAsStringAsync(file.uri, {
-            encoding: FileSystem.EncodingType.UTF8,
-          });
-          extractedContent = `VĂN BẢN TỆP (.TXT): ${fileName}\n\n${rawText}`;
-        } catch (txtErr) {
-          console.warn('[AiNotebook] Error reading txt:', txtErr);
-        }
+      // Trích xuất toàn bộ văn bản thực tế từ tệp trong máy (.docx, .doc, .pdf, .txt...)
+      let rawText = '';
+      try {
+        rawText = await extractTextFromFileUri(file.uri, fileName);
+      } catch (extractErr) {
+        console.warn('[AiNotebook] Error extracting file from URI:', extractErr);
       }
 
-      if (!extractedContent) {
-        const fileSizeKb = file.size ? (file.size / 1024).toFixed(1) : 'N/A';
-        extractedContent = [
-          `TÀI LIỆU NẠP TỪ THIẾT BỊ: ${fileName}`,
-          `Loại tệp: ${file.mimeType || fileLower.split('.').pop()?.toUpperCase() || 'Tài liệu'}`,
-          `Kích thước tệp: ${fileSizeKb} KB`,
-          `Thời gian nạp: ${new Date().toLocaleString('vi-VN')}`,
-          `Sổ tay tiếp nhận: ${activeNotebook.name}`,
-          `Tệp tài liệu này đã được tải lên từ thiết bị và đồng bộ vào kho dữ liệu AI để hỗ trợ hỏi đáp và phân tích.`,
-        ].join('\n');
-      }
+      const extractedContent = formatExtractedDocumentContent(fileName, rawText, {
+        sizeBytes: file.size,
+        fileType: file.mimeType || fileLower.split('.').pop()?.toUpperCase() || 'Tài liệu',
+      });
 
       const newSrc = await notebookService.addTextSource(
         activeNotebook.id,
