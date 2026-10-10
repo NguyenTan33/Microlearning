@@ -40,7 +40,7 @@ import { generateGuid } from '../../src/utils/guidHelper';
 import { streakApi } from '../../src/services/streakApi';
 import { quizApi } from '../../src/services/quizApi';
 import { progressApi } from '../../src/services/progressApi';
-import { parseVideoUrl } from '../../src/types/media.types';
+import { parseVideoUrl, extractYoutubeVideoId, LessonMediaInfo } from '../../src/types/media.types';
 import type { Lesson } from '../../src/types/catalog.types';
 
 export default function LessonScreen() {
@@ -212,32 +212,45 @@ export default function LessonScreen() {
     }
   };
 
+  const [lessonMediaInfo, setLessonMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [lessonIsYoutube, setLessonIsYoutube] = useState<boolean>(false);
 
   useEffect(() => {
     if (!lessonId) {
+      setLessonMediaInfo(null);
       setLessonIsYoutube(false);
       return;
     }
 
-    if (lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube') {
+    if (lesson?.videoUrl && (parseVideoUrl(lesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(lesson.videoUrl))) {
       setLessonIsYoutube(true);
-      return;
     }
 
     let isCancelled = false;
     catalogApi.getLessonMediaInfo(lessonId)
       .then((mediaInfo) => {
         if (isCancelled || !mediaInfo) return;
+        setLessonMediaInfo(mediaInfo);
         const isYt =
           mediaInfo.sourceType === 'youtube' ||
-          Boolean(mediaInfo.streamUrl && parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube') ||
-          Boolean(mediaInfo.externalUrl && parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube') ||
-          Boolean(mediaInfo.embedUrl && parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube');
+          Boolean(mediaInfo.streamUrl && (parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.streamUrl))) ||
+          Boolean(mediaInfo.externalUrl && (parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.externalUrl))) ||
+          Boolean(mediaInfo.embedUrl && (parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.embedUrl)));
+        
         setLessonIsYoutube(isYt);
+
+        // Tự động dọn dẹp nếu bài học là YouTube nhưng máy lại lưu nhầm file offline test.mp4 trước đó
+        if (isYt && downloadedLessonIds.has(lessonId)) {
+          downloadRepository.deleteDownloadByLessonId(lessonId).then(() => {
+            refreshDownloads();
+          }).catch(() => {});
+        }
       })
       .catch(() => {
-        if (!isCancelled) setLessonIsYoutube(false);
+        if (!isCancelled) {
+          setLessonIsYoutube(false);
+          setLessonMediaInfo(null);
+        }
       });
 
     return () => {
@@ -247,7 +260,8 @@ export default function LessonScreen() {
 
   const isYoutubeVideo = Boolean(
     lessonIsYoutube ||
-      (lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'youtube')
+      (lesson?.videoUrl && (parseVideoUrl(lesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(lesson.videoUrl))) ||
+      (lessonMediaInfo?.sourceType === 'youtube')
   );
 
   const handleDownload = async () => {
@@ -336,7 +350,13 @@ export default function LessonScreen() {
         {/* Trình phát Video Hybrid kết nối Azure Media Stream */}
         <HybridVideoPlayer
           lessonId={lessonId}
-          onlineStreamUrl={lesson.videoUrl}
+          onlineStreamUrl={
+            lesson.videoUrl ||
+            lessonMediaInfo?.externalUrl ||
+            lessonMediaInfo?.embedUrl ||
+            lessonMediaInfo?.streamUrl
+          }
+          mediaInfo={lessonMediaInfo}
           durationSeconds={lesson.durationSeconds}
           seekTimestamp={seekTimestamp ? Number(seekTimestamp) : undefined}
           onCompleted={handleCompleteLesson}

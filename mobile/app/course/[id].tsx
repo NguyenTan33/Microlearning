@@ -41,6 +41,7 @@ import { BookmarkLibraryModal } from '../../src/components/bookmarks/BookmarkLib
 import { LessonAttachmentsModal } from '../../src/components/common/LessonAttachmentsModal';
 import { catalogRepository } from '../../src/db/repositories/catalogRepository';
 import { progressRepository } from '../../src/db/repositories/progressRepository';
+import { downloadRepository } from '../../src/db/repositories/downloadRepository';
 import { catalogApi } from '../../src/services/catalogApi';
 import { streakApi } from '../../src/services/streakApi';
 import { mediaBookmarkService } from '../../src/services/mediaBookmarkService';
@@ -48,7 +49,7 @@ import { favoriteSubjectApi } from '../../src/services/favoriteSubjectApi';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useDownloadStore } from '../../src/store/useDownloadStore';
 import { formatDuration } from '../../src/utils/formatters';
-import { parseVideoUrl } from '../../src/types/media.types';
+import { parseVideoUrl, extractYoutubeVideoId, LessonMediaInfo } from '../../src/types/media.types';
 import type { CourseDetail, Lesson, Subject } from '../../src/types/catalog.types';
 
 export default function CourseDetailScreen() {
@@ -171,32 +172,45 @@ export default function CourseDetailScreen() {
     setWatchedSeconds(completedIds.has(lesson.id) ? (lesson.durationSeconds || 180) : 0);
   };
 
+  const [activeLessonMediaInfo, setActiveLessonMediaInfo] = useState<LessonMediaInfo | null>(null);
   const [activeLessonIsYoutube, setActiveLessonIsYoutube] = useState<boolean>(false);
 
   useEffect(() => {
     if (!activeLesson) {
+      setActiveLessonMediaInfo(null);
       setActiveLessonIsYoutube(false);
       return;
     }
 
-    if (activeLesson.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube') {
+    if (activeLesson.videoUrl && (parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(activeLesson.videoUrl))) {
       setActiveLessonIsYoutube(true);
-      return;
     }
 
     let isCancelled = false;
     catalogApi.getLessonMediaInfo(activeLesson.id)
       .then((mediaInfo) => {
         if (isCancelled || !mediaInfo) return;
+        setActiveLessonMediaInfo(mediaInfo);
         const isYt =
           mediaInfo.sourceType === 'youtube' ||
-          Boolean(mediaInfo.streamUrl && parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube') ||
-          Boolean(mediaInfo.externalUrl && parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube') ||
-          Boolean(mediaInfo.embedUrl && parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube');
+          Boolean(mediaInfo.streamUrl && (parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.streamUrl))) ||
+          Boolean(mediaInfo.externalUrl && (parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.externalUrl))) ||
+          Boolean(mediaInfo.embedUrl && (parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube' || extractYoutubeVideoId(mediaInfo.embedUrl)));
+        
         setActiveLessonIsYoutube(isYt);
+
+        // Tự động dọn dẹp nếu bài học là YouTube nhưng máy lại lưu nhầm file offline test.mp4 trước đó
+        if (isYt && downloadedLessonIds.has(activeLesson.id)) {
+          downloadRepository.deleteDownloadByLessonId(activeLesson.id).then(() => {
+            refreshDownloads();
+          }).catch(() => {});
+        }
       })
       .catch(() => {
-        if (!isCancelled) setActiveLessonIsYoutube(false);
+        if (!isCancelled) {
+          setActiveLessonIsYoutube(false);
+          setActiveLessonMediaInfo(null);
+        }
       });
 
     return () => {
@@ -206,7 +220,8 @@ export default function CourseDetailScreen() {
 
   const isYoutubeLesson = Boolean(
     activeLessonIsYoutube ||
-      (activeLesson?.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube')
+      (activeLesson?.videoUrl && (parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube' || extractYoutubeVideoId(activeLesson.videoUrl))) ||
+      (activeLessonMediaInfo?.sourceType === 'youtube')
   );
 
   const handleToggleDownload = async () => {
@@ -408,7 +423,13 @@ export default function CourseDetailScreen() {
           <View style={styles.playerContainer}>
             <HybridVideoPlayer
               lessonId={activeLesson.id}
-              onlineStreamUrl={activeLesson.videoUrl}
+              onlineStreamUrl={
+                activeLesson.videoUrl ||
+                activeLessonMediaInfo?.externalUrl ||
+                activeLessonMediaInfo?.embedUrl ||
+                activeLessonMediaInfo?.streamUrl
+              }
+              mediaInfo={activeLessonMediaInfo}
               durationSeconds={activeLesson.durationSeconds || 180}
               seekTimestamp={seekTimestamp}
               onProgress={(currentSec: number, totalDur: number) => {
