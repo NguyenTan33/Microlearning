@@ -62,6 +62,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     setSelectedSourceDetail,
     sources,
     messages,
+    clearMessages,
     searchResults,
     podcasts,
     episodeProfiles,
@@ -218,6 +219,14 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   const [playbackSourceType, setPlaybackSourceType] = useState<'AUDIO' | 'SYNTHESIS'>('AUDIO');
   const [newPodcastVoice, setNewPodcastVoice] = useState<string>('vi-VN-HoaiMyNeural');
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Tự động cuộn xuống tin nhắn mới nhất trong khung chat RAG
+  useEffect(() => {
+    if (currentTab === 'ASK_SEARCH') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isAsking, currentTab]);
 
   // Phát hiện và nạp danh sách giọng tiếng Việt của trình duyệt (Web Speech API)
   useEffect(() => {
@@ -514,7 +523,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 flex flex-col bg-[#070b18] text-slate-100 min-h-0">
+    <div className="w-full flex-1 flex flex-col bg-[#070b18] text-slate-100 rounded-2xl sm:rounded-3xl border border-indigo-500/20 overflow-hidden shadow-2xl h-[calc(100vh-130px)] min-h-[640px] max-h-[960px]">
       {/* =========================================================================
           TOP ACTION BAR
       ========================================================================= */}
@@ -705,7 +714,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
         {/* =========================================================================
             MAIN CONTENT AREA CHO 4 CHỨC NĂNG
         ========================================================================= */}
-        <main className="flex-1 flex flex-col bg-[#050814] min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6">
+        <main className={`flex-1 flex flex-col bg-[#050814] min-h-0 ${currentTab === 'ASK_SEARCH' ? 'overflow-hidden p-3 sm:p-5' : 'overflow-y-auto custom-scrollbar p-4 sm:p-6'}`}>
           {error && (
             <div className="mb-4 px-3.5 py-2 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 shrink-0">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -927,7 +936,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                                     e.stopPropagation();
                                     openAddSourceModal(nb.id, 'UPLOAD');
                                   }}
-                                  className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-300 text-[10px] font-semibold text-slate-300 transition-all flex items-center gap-1"
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer"
                                   title="Thêm source vào sổ tay này"
                                 >
                                   <Plus className="w-3 h-3" />
@@ -940,7 +949,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                                       removeNotebook(nb.id);
                                     }
                                   }}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-white/5 transition-all cursor-pointer"
                                   title="Xóa sổ tay này"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -957,42 +966,45 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 {/* KHU VỰC CHI TIẾT SỔ TAY ĐANG CHỌN & QUẢN LÝ SOURCES CỦA SỔ TAY */}
                 {activeNotebook ? (
                   <div className="mt-8 pt-6 border-t border-white/10 space-y-4">
-                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/60 to-slate-900/80 border border-purple-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <BookMarked className="w-5 h-5 text-purple-400 shrink-0" />
-                          <h3 className="text-sm sm:text-base font-bold text-white">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/40 via-slate-900/70 to-slate-900/90 border border-purple-500/30 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-lg shadow-purple-950/20">
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
+                            <BookMarked className="w-4 h-4 text-purple-300" />
+                          </div>
+                          <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
                             {activeNotebook.name}
                           </h3>
-                          <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold text-[11px] border border-purple-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 font-semibold text-xs border border-purple-500/30 flex items-center gap-1.5 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
                             {sources.length} tài liệu liên kết
                           </span>
                         </div>
                         {activeNotebook.description && (
-                          <p className="text-xs text-slate-400 max-w-2xl">
+                          <p className="text-xs text-slate-400 max-w-2xl leading-relaxed pl-10">
                             {activeNotebook.description}
                           </p>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      {/* Toolbar thao tác sổ tay: Đều nhau, chuẩn chiều cao h-9, decor hiện đại */}
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-2.5 shrink-0">
                         {isTeacherOrAdmin && (
                           <>
-                            {/* Nút to màu xanh: Thêm Source vào Sổ tay này */}
+                            {/* Nút Thêm Source mới */}
                             <button
                               onClick={() => openAddSourceModal(activeNotebook.id, 'UPLOAD')}
-                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 active:scale-95 cursor-pointer"
-                              title="Tải file hoặc nhập văn bản vào Sổ tay này"
+                              className="h-9 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/25 active:scale-95 cursor-pointer whitespace-nowrap border border-emerald-400/20"
+                              title="Tải file hoặc nhập văn bản mới vào Sổ tay này"
                             >
-                              <Plus className="w-4 h-4 stroke-[3]" />
-                              <FileUp className="w-4 h-4" />
-                              <span>+ Thêm Source vào Sổ tay này</span>
+                              <FileUp className="w-4 h-4 text-emerald-100" />
+                              <span>Thêm Source mới</span>
                             </button>
 
                             {/* Nút Gắn Source có sẵn */}
                             <button
                               onClick={() => setIsExistingSourceModalOpen(true)}
-                              className="px-3 py-2 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                              className="h-9 px-3.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/30 text-indigo-200 hover:text-white font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shadow-sm"
                               title="Chọn tài liệu đã có trong kho để gắn vào Sổ tay này"
                             >
                               <Layers className="w-4 h-4 text-indigo-300" />
@@ -1004,10 +1016,10 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                         {/* Nút Chuyển sang Hỏi đáp về Sổ tay này */}
                         <button
                           onClick={() => setCurrentTab('ASK_SEARCH')}
-                          className="px-3 py-2 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-200 font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          className="h-9 px-3.5 rounded-xl bg-purple-950/70 hover:bg-purple-900 border border-purple-500/30 text-purple-200 hover:text-white font-semibold text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shadow-sm"
                           title="Hỏi đáp AI về các tài liệu trong Sổ tay này"
                         >
-                          <Search className="w-4 h-4 text-purple-300" />
+                          <Sparkles className="w-4 h-4 text-purple-300" />
                           <span>Hỏi đáp RAG</span>
                         </button>
                       </div>
@@ -1024,10 +1036,10 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                           <button
                             onClick={() => handleQuickSyncCurrentLesson(activeNotebook.id)}
                             disabled={isSyncing}
-                            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>Nạp bài giảng hiện tại vào sổ tay này</span>
+                            <span>Nạp bài giảng hiện tại</span>
                           </button>
                         )}
                       </div>
@@ -1159,14 +1171,21 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
               VIEW 3: ASK AND SEARCH (HỎI ĐÁP & TÌM KIẾM THÔNG MINH RAG)
           ===================================================================== */}
           {currentTab === 'ASK_SEARCH' && (
-            <div className="flex-1 flex flex-col min-h-[500px]">
+            <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
               {/* Tab con: Tìm kiếm kiến thức VS Hỏi đáp RAG */}
-              <div className="mb-4 pb-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Search className="w-5 h-5 text-indigo-400" />
-                  <h2 className="text-lg font-bold text-white">
-                    Hỏi Đáp & Tìm Kiếm Tri Thức (Ask and Search)
-                  </h2>
+              <div className="mb-3.5 pb-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                    <Search className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      <span>Hỏi Đáp &amp; Tìm Kiếm Tri Thức (Ask and Search)</span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      Tra cứu RAG trực tiếp từ tài liệu bài giảng và sổ tay học tập
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1189,7 +1208,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   <button
                     onClick={() => searchKnowledge(searchQueryInput, searchFilterType)}
                     disabled={isSearching}
-                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
                   >
                     {isSearching ? 'Tìm...' : 'Tìm'}
                   </button>
@@ -1198,14 +1217,14 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
 
               {/* Nếu có kết quả tìm kiếm, hiển thị bảng kết quả */}
               {searchResults.length > 0 && (
-                <div className="mb-6 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2">
+                <div className="mb-3 p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-2 shrink-0 max-h-40 overflow-y-auto custom-scrollbar">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-indigo-300">
                       Kết quả tìm kiếm ({searchResults.length})
                     </span>
                     <button
                       onClick={() => searchKnowledge('')}
-                      className="text-[11px] text-slate-400 hover:text-white"
+                      className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
                     >
                       Đóng
                     </button>
@@ -1221,10 +1240,37 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </div>
               )}
 
-              {/* Khung Chat RAG với AI */}
-              <div className="flex-1 flex flex-col bg-slate-900/40 rounded-2xl border border-white/10 min-h-0">
-                {/* Tin nhắn */}
-                <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 custom-scrollbar min-h-0">
+              {/* Khung Chat RAG với AI - CỐ ĐỊNH, CHỈ CUỘN NỘI BỘ, KHÔNG KÉO DÀI WEB */}
+              <div className="flex-1 flex flex-col bg-slate-900/60 rounded-2xl border border-white/10 overflow-hidden min-h-0 shadow-2xl">
+                {/* Header Context của đoạn Chat */}
+                <div className="px-4 py-2.5 bg-slate-950/80 border-b border-white/5 flex items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <span className="text-xs font-bold text-white truncate">
+                      {activeNotebook ? activeNotebook.name : 'Sổ tay toàn hệ thống'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 text-[10px] font-semibold border border-indigo-500/25 shrink-0">
+                      {sources.length} tài liệu RAG
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] text-slate-400 hidden sm:inline">Phản hồi từ tài liệu</span>
+                    {messages.length > 0 && (
+                      <button
+                        onClick={clearMessages}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer"
+                        title="Xóa lịch sử tin nhắn của phiên này"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Xóa lịch sử</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tin nhắn - KHUNG TRƯỢT BÊN TRONG CÓ THANH CUỘN */}
+                <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4 custom-scrollbar min-h-0 scroll-smooth">
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600/30 to-purple-600/30 border border-indigo-500/30 flex items-center justify-center mb-3">
@@ -1253,85 +1299,88 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    messages.map((m) => {
-                      const isUser = m.sender === 'user';
-                      return (
-                        <div
-                          key={m.id}
-                          className={`flex gap-3 max-w-3xl ${
-                            isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
-                          }`}
-                        >
+                    <>
+                      {messages.map((m) => {
+                        const isUser = m.sender === 'user';
+                        return (
                           <div
-                            className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs ${
-                              isUser ? 'bg-indigo-600 text-white' : 'bg-purple-600 text-white'
+                            key={m.id}
+                            className={`flex gap-3 max-w-3xl ${
+                              isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
                             }`}
                           >
-                            {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                          </div>
-
-                          <div
-                            className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
-                              isUser
-                                ? 'bg-indigo-600 text-white rounded-tr-none'
-                                : m.isError
-                                ? 'bg-rose-950/80 border border-rose-500/30 text-rose-200 rounded-tl-none'
-                                : 'bg-slate-900/90 border border-indigo-500/20 text-slate-200 rounded-tl-none shadow-sm'
-                            }`}
-                          >
-                            {/* Nội dung tin nhắn - render markdown cơ bản */}
-                            <div className="whitespace-pre-wrap">
-                              {m.text.split('\n').map((line, li) => {
-                                // Bold: **text**
-                                const boldLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                                // Bullet list
-                                if (line.match(/^[-•*]\s+/)) {
-                                  return (
-                                    <div key={li} className="flex items-start gap-1.5 my-0.5">
-                                      <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
-                                      <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^[-•*]\s+/, '') }} />
-                                    </div>
-                                  );
-                                }
-                                // Numbered list
-                                if (line.match(/^\d+\.\s+/)) {
-                                  const num = line.match(/^(\d+)\./)?.[1];
-                                  return (
-                                    <div key={li} className="flex items-start gap-1.5 my-0.5">
-                                      <span className="text-indigo-400 font-bold shrink-0 min-w-[16px]">{num}.</span>
-                                      <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^\d+\.\s+/, '') }} />
-                                    </div>
-                                  );
-                                }
-                                return (
-                                  <p key={li} className={line === '' ? 'h-2' : 'my-0.5'}
-                                    dangerouslySetInnerHTML={{ __html: boldLine }} />
-                                );
-                              })}
+                            <div
+                              className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs ${
+                                isUser ? 'bg-indigo-600 text-white' : 'bg-purple-600 text-white'
+                              }`}
+                            >
+                              {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                             </div>
 
-                            {/* Source reference - hiển thị bài học nguồn */}
-                            {!isUser && m.sources && m.sources.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-indigo-500/20 flex flex-wrap gap-1">
-                                {m.sources.map((src, si) => (
-                                  <span
-                                    key={si}
-                                    className="px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-[10px] text-indigo-300 font-semibold flex items-center gap-1"
-                                  >
-                                    <FileText className="w-2.5 h-2.5" />
-                                    {src}
-                                  </span>
-                                ))}
+                            <div
+                              className={`p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                                isUser
+                                  ? 'bg-indigo-600 text-white rounded-tr-none'
+                                  : m.isError
+                                  ? 'bg-rose-950/80 border border-rose-500/30 text-rose-200 rounded-tl-none'
+                                  : 'bg-slate-900/90 border border-indigo-500/20 text-slate-200 rounded-tl-none shadow-sm'
+                              }`}
+                            >
+                              {/* Nội dung tin nhắn - render markdown cơ bản */}
+                              <div className="whitespace-pre-wrap">
+                                {m.text.split('\n').map((line, li) => {
+                                  // Bold: **text**
+                                  const boldLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                  // Bullet list
+                                  if (line.match(/^[-•*]\s+/)) {
+                                    return (
+                                      <div key={li} className="flex items-start gap-1.5 my-0.5">
+                                        <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+                                        <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^[-•*]\s+/, '') }} />
+                                      </div>
+                                    );
+                                  }
+                                  // Numbered list
+                                  if (line.match(/^\d+\.\s+/)) {
+                                    const num = line.match(/^(\d+)\./)?.[1];
+                                    return (
+                                      <div key={li} className="flex items-start gap-1.5 my-0.5">
+                                        <span className="text-indigo-400 font-bold shrink-0 min-w-[16px]">{num}.</span>
+                                        <span dangerouslySetInnerHTML={{ __html: boldLine.replace(/^\d+\.\s+/, '') }} />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <p key={li} className={line === '' ? 'h-2' : 'my-0.5'}
+                                      dangerouslySetInnerHTML={{ __html: boldLine }} />
+                                  );
+                                })}
                               </div>
-                            )}
 
-                            <span className="block text-[10px] text-slate-500 mt-1.5 text-right font-mono">
-                              {m.timestamp}
-                            </span>
+                              {/* Source reference - hiển thị bài học nguồn */}
+                              {!isUser && m.sources && m.sources.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-indigo-500/20 flex flex-wrap gap-1">
+                                  {m.sources.map((src, si) => (
+                                    <span
+                                      key={si}
+                                      className="px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-[10px] text-indigo-300 font-semibold flex items-center gap-1"
+                                    >
+                                      <FileText className="w-2.5 h-2.5" />
+                                      {src}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <span className="block text-[10px] text-slate-500 mt-1.5 text-right font-mono">
+                                {m.timestamp}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })}
+                      <div ref={messagesEndRef} />
+                    </>
                   )}
 
                   {isAsking && (
@@ -1347,7 +1396,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   )}
                 </div>
 
-                {/* Input gửi câu hỏi */}
+                {/* Input gửi câu hỏi - CỐ ĐỊNH Ở ĐÁY KHUNG CHAT (shrink-0) */}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1356,20 +1405,20 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       setAskQuestionInput('');
                     }
                   }}
-                  className="p-3 sm:p-4 border-t border-white/10 flex items-center gap-2 bg-slate-900/80"
+                  className="p-3 sm:p-3.5 border-t border-white/10 flex items-center gap-2 bg-slate-950/95 backdrop-blur-md shrink-0"
                 >
                   <input
                     type="text"
                     value={askQuestionInput}
                     onChange={(e) => setAskQuestionInput(e.target.value)}
-                    placeholder="Hỏi bất kỳ điều gì về bài học này..."
-                    disabled={!activeNotebook || isAsking}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950/90 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
+                    placeholder={activeNotebook ? `Hỏi đáp về "${activeNotebook.name}"...` : 'Hỏi bất kỳ điều gì về bài học này...'}
+                    disabled={isAsking}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
                   />
                   <button
                     type="submit"
-                    disabled={!askQuestionInput.trim() || isAsking || !activeNotebook}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                    disabled={!askQuestionInput.trim() || isAsking}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 shadow-md shadow-indigo-600/30 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Gửi</span>
