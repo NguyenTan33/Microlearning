@@ -31,6 +31,35 @@ async function runSchemaMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
     if (!courseColNames.has('totalSubjects')) {
       await db.execAsync('ALTER TABLE LocalCourses ADD COLUMN totalSubjects INTEGER DEFAULT 0;');
     }
+
+    // 3. Di chuyển bảng DownloadedMedia nếu cần để tách rời hoàn toàn ràng buộc Foreign Key
+    try {
+      const fks = await db.getAllAsync<{ table: string }>('PRAGMA foreign_key_list(DownloadedMedia)');
+      if (fks && fks.length > 0) {
+        // Có ràng buộc foreign key cũ với LocalLessons, tiến hành recreate bảng an toàn giữ nguyên dữ liệu đã tải
+        await db.execAsync(`
+          CREATE TABLE IF NOT EXISTS DownloadedMedia_New (
+            mediaId INTEGER PRIMARY KEY AUTOINCREMENT,
+            lessonId INTEGER NOT NULL UNIQUE,
+            fileName TEXT NOT NULL,
+            localPath TEXT NOT NULL,
+            fileSizeBytes INTEGER NOT NULL,
+            checksum TEXT NOT NULL,
+            downloadedAt TEXT NOT NULL,
+            lastPlayedAt TEXT NOT NULL,
+            isPinned INTEGER DEFAULT 0,
+            status TEXT NOT NULL
+          );
+          INSERT OR IGNORE INTO DownloadedMedia_New 
+            SELECT mediaId, lessonId, fileName, localPath, fileSizeBytes, checksum, downloadedAt, lastPlayedAt, isPinned, status 
+            FROM DownloadedMedia;
+          DROP TABLE DownloadedMedia;
+          ALTER TABLE DownloadedMedia_New RENAME TO DownloadedMedia;
+        `);
+      }
+    } catch (dmErr) {
+      console.warn('[sqliteClient] DownloadedMedia FK migration notice:', dmErr);
+    }
   } catch (err) {
     console.warn('[sqliteClient] Migration execution warning:', err);
   }

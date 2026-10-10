@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { downloadRepository } from '../db/repositories/downloadRepository';
 import { secureStorage } from '../utils/secureStorage';
 import { STORAGE_KEYS } from '../utils/constants';
+import { getApiBaseUrl } from './apiClient';
 
 const VERIFIED_FALLBACK_VIDEO_URL =
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
@@ -25,14 +26,22 @@ export const downloadManager = {
 
       // Chuẩn bị URL tải hợp lệ (nếu rỗng hoặc stream azure không tải được, dùng URL mẫu kiểm định)
       let targetUrl = videoRemoteUrl?.trim();
-      if (!targetUrl || !targetUrl.startsWith('http') || targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')) {
+      const baseUrl = getApiBaseUrl();
+
+      if (targetUrl && targetUrl.startsWith('/')) {
+        targetUrl = `${baseUrl}${targetUrl}`;
+      } else if (!targetUrl || (!targetUrl.startsWith('http') && !targetUrl.startsWith('file:'))) {
+        targetUrl = `${baseUrl}/api/media/lesson/${lessonId}/stream`;
+      }
+
+      if (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')) {
         targetUrl = VERIFIED_FALLBACK_VIDEO_URL;
       }
 
       // Chuẩn bị token nếu có
       const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       const headers: Record<string, string> = {};
-      if (token && targetUrl.includes('/api/media/')) {
+      if (token && (targetUrl.includes('/api/media/') || targetUrl.includes('eastasia-01.azurewebsites.net'))) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
