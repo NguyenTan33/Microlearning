@@ -7,6 +7,12 @@
     "icon": "./assets/icon.png",
     "scheme": "microlearning",
     "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3f928282-25db-403a-a11f-b4a0a1ec7601"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.microlearning.mobile"
@@ -19,8 +25,9 @@
       "package": "com.microlearning.mobile",
       "versionCode": 1,
       "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -51,6 +58,13 @@
           "photosPermission": "Ứng dụng cần quyền truy cập Thư viện ảnh để tải lên video bài giảng."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3f928282-25db-403a-a11f-b4a0a1ec7601"
+      }
+    },
+    "owner": "devminhtan"
   }
 }
