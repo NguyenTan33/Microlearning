@@ -38,6 +38,24 @@ export const attachmentApi = {
   },
 
   /**
+   * Lấy toàn bộ tài liệu đính kèm (Word/PDF) thuộc mọi bài học của khóa học
+   */
+  async getCourseAttachments(courseId: number): Promise<LessonAttachment[]> {
+    try {
+      const res = await fetch(`/api/courses/${courseId}/attachments`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        return [];
+      }
+      return await handleResponse<LessonAttachment[]>(res);
+    } catch (err) {
+      console.warn(`Không thể lấy tài liệu khóa học ${courseId}:`, err);
+      return [];
+    }
+  },
+
+  /**
    * Tải tệp tài liệu mới lên (PDF, DOC, DOCX tối đa 50MB)
    */
   async uploadAttachment(lessonId: number, file: File): Promise<LessonAttachment> {
