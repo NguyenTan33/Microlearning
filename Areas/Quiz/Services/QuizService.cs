@@ -281,24 +281,67 @@ namespace Microlearning.Areas.Quiz.Services
                 existingQuiz.Version += 1;
                 existingQuiz.UpdatedAt = DateTime.UtcNow;
 
-                // Xóa các lần làm bài cũ của đề thi để tránh ràng buộc khóa ngoại
+                var oldQuestionIds = existingQuiz.Questions?.Select(q => q.Id).ToList() ?? new List<int>();
+
+                // 1. Xóa toàn bộ UserQuizMistakes liên quan đến đề thi hoặc các câu hỏi cũ để tránh ràng buộc FK
+                var relatedMistakes = await _dbContext.UserQuizMistakes
+                    .Where(m => m.QuizId == existingQuiz.Id || (oldQuestionIds.Any() && oldQuestionIds.Contains(m.QuestionId)))
+                    .ToListAsync();
+                if (relatedMistakes.Any())
+                {
+                    _dbContext.UserQuizMistakes.RemoveRange(relatedMistakes);
+                }
+
+                // 2. Xóa toàn bộ QuizAnswerOptions và QuizAnswers của các lần thi cũ
+                var attemptIds = existingQuiz.QuizAttempts?.Select(a => a.Id).ToList() ?? new List<int>();
+                if (!attemptIds.Any())
+                {
+                    attemptIds = await _dbContext.QuizAttempts
+                        .Where(a => a.QuizId == existingQuiz.Id)
+                        .Select(a => a.Id)
+                        .ToListAsync();
+                }
+
+                if (attemptIds.Any())
+                {
+                    var relatedAnswerIds = await _dbContext.QuizAnswers
+                        .Where(a => attemptIds.Contains(a.QuizAttemptId))
+                        .Select(a => a.Id)
+                        .ToListAsync();
+
+                    if (relatedAnswerIds.Any())
+                    {
+                        var relatedAnswerOptions = await _dbContext.QuizAnswerOptions
+                            .Where(o => relatedAnswerIds.Contains(o.QuizAnswerId))
+                            .ToListAsync();
+                        if (relatedAnswerOptions.Any())
+                        {
+                            _dbContext.QuizAnswerOptions.RemoveRange(relatedAnswerOptions);
+                        }
+
+                        var answersToDelete = await _dbContext.QuizAnswers
+                            .Where(a => relatedAnswerIds.Contains(a.Id))
+                            .ToListAsync();
+                        _dbContext.QuizAnswers.RemoveRange(answersToDelete);
+                    }
+                }
+
+                // 3. Xóa các lần làm bài cũ của đề thi để tránh ràng buộc khóa ngoại
                 if (existingQuiz.QuizAttempts != null && existingQuiz.QuizAttempts.Any())
                 {
                     _dbContext.QuizAttempts.RemoveRange(existingQuiz.QuizAttempts);
                 }
 
-                // Xóa sạch các câu trả lời liên quan (nếu còn) và câu hỏi cũ
+                // 4. Xóa sạch câu hỏi và lựa chọn cũ
                 if (existingQuiz.Questions != null && existingQuiz.Questions.Any())
                 {
-                    var oldQuestionIds = existingQuiz.Questions.Select(q => q.Id).ToList();
-                    var relatedAnswers = await _dbContext.QuizAnswers
-                        .Where(a => oldQuestionIds.Contains(a.QuestionId))
-                        .ToListAsync();
-                    if (relatedAnswers.Any())
+                    foreach (var ques in existingQuiz.Questions)
                     {
-                        _dbContext.QuizAnswers.RemoveRange(relatedAnswers);
+                        if (ques.QuizOptions != null && ques.QuizOptions.Any())
+                        {
+                            _dbContext.QuizOptions.RemoveRange(ques.QuizOptions);
+                        }
                     }
-
                     _dbContext.Questions.RemoveRange(existingQuiz.Questions);
                 }
 

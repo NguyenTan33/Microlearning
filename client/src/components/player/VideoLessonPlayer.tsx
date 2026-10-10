@@ -4,6 +4,7 @@ import {
   Pause,
   RotateCcw,
   RotateCw,
+  Volume1,
   Volume2,
   VolumeX,
   Maximize,
@@ -37,6 +38,8 @@ interface YTPlayerInstance {
   mute: () => void;
   unMute: () => void;
   isMuted: () => boolean;
+  setVolume: (volume: number) => void;
+  getVolume: () => number;
   setPlaybackRate: (suggestedRate: number) => void;
   getPlayerState: () => number;
   destroy: () => void;
@@ -150,6 +153,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [volume, setVolume] = useState<number>(1);
+  const [prevVolume, setPrevVolume] = useState<number>(1);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -427,17 +432,61 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       try {
         if (isMuted) {
           ytPlayerRef.current.unMute();
+          const restore = prevVolume > 0 ? prevVolume : 1;
+          ytPlayerRef.current.setVolume(restore * 100);
+          setVolume(restore);
           setIsMuted(false);
         } else {
+          setPrevVolume(volume > 0 ? volume : 1);
           ytPlayerRef.current.mute();
+          setVolume(0);
           setIsMuted(true);
         }
       } catch {}
       return;
     }
     if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
+      if (isMuted) {
+        const restore = prevVolume > 0 ? prevVolume : 1;
+        videoRef.current.muted = false;
+        videoRef.current.volume = restore;
+        setVolume(restore);
+        setIsMuted(false);
+      } else {
+        setPrevVolume(volume > 0 ? volume : 1);
+        videoRef.current.muted = true;
+        setVolume(0);
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const handleVolumeChange = (newVol: number) => {
+    const clamped = Math.max(0, Math.min(1, newVol));
+    setVolume(clamped);
+
+    if (clamped === 0) {
+      setIsMuted(true);
+    } else {
+      setIsMuted(false);
+      setPrevVolume(clamped);
+    }
+
+    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (clamped === 0) {
+          ytPlayerRef.current.mute();
+        } else {
+          ytPlayerRef.current.unMute();
+          ytPlayerRef.current.setVolume(clamped * 100);
+        }
+      } catch {}
+      return;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.volume = clamped;
+      videoRef.current.muted = clamped === 0;
     }
   };
 
@@ -1016,14 +1065,33 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               <RotateCw className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             </button>
 
-            {/* Mute/Unmute */}
-            <button
-              onClick={handleToggleMute}
-              title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
-              className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
-            >
-              {isMuted ? <VolumeX className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-rose-400" /> : <Volume2 className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
-            </button>
+            {/* Thanh điều khiển Âm lượng (Kéo từ lớn đến tắt + Mute toggle) */}
+            <div className="flex items-center gap-1 sm:gap-1.5 group/vol">
+              <button
+                type="button"
+                onClick={handleToggleMute}
+                title={isMuted || volume === 0 ? 'Bật âm thanh' : 'Tắt âm thanh'}
+                className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-white transition-all cursor-pointer"
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-rose-400" />
+                ) : volume < 0.5 ? (
+                  <Volume1 className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-cyan-400" />
+                ) : (
+                  <Volume2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-cyan-300" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                title={`Âm lượng: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                className="w-14 sm:w-20 h-1.5 accent-cyan-400 bg-slate-700/80 hover:bg-slate-600 rounded-lg cursor-pointer transition-all appearance-none"
+              />
+            </div>
 
             {/* Thời gian xem */}
             <span className="font-mono text-slate-400 text-[10px] sm:text-xs">
