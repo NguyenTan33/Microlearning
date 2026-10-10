@@ -1062,7 +1062,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       {/* =========================================================================
           MAIN CONTENT AREA
       ========================================================================= */}
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 pb-24 md:pb-6 flex-1">
+      <main className={`max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 pb-24 md:pb-6 flex-1 ${currentView === 'NOTEBOOK' ? 'flex flex-col min-h-0' : ''}`}>
         {/* VIEW 1: KHÁM PHÁ KHÓA HỌC (CATALOG) */}
         {currentView === 'CATALOG' && (
           <CourseCatalogView
