@@ -43,6 +43,13 @@ namespace Microlearning.Areas.Media.Controllers
         [HttpGet("lesson/{lessonId}/stream")]
         public async Task<IActionResult> StreamLessonVideo(int lessonId)
         {
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var mediaInfo = await _mediaService.GetLessonMediaInfoAsync(lessonId, baseUrl);
+            if (mediaInfo.SourceType == "youtube" || mediaInfo.SourceType == "vimeo" || mediaInfo.SourceType == "direct_url")
+            {
+                return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
+            }
+
             var (stream, contentType, _, _) = await _mediaService.GetLessonVideoStreamAsync(lessonId);
             return File(stream, contentType, enableRangeProcessing: true);
         }
