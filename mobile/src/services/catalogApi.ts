@@ -318,6 +318,40 @@ export const catalogApi = {
     return res.data;
   },
 
+  async uploadLessonVideo(
+    file: { uri: string; name: string; type: string },
+    lessonId: number
+  ): Promise<{
+    id: number;
+    fileName: string;
+    blobKey: string;
+    streamUrl: string;
+    sizeBytes: number;
+    lessonId?: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.type || 'video/mp4',
+    } as unknown as Blob);
+    formData.append('lessonId', String(lessonId));
+
+    const res = await apiClient.post<{
+      id: number;
+      fileName: string;
+      blobKey: string;
+      streamUrl: string;
+      sizeBytes: number;
+      lessonId?: number;
+    }>('/api/media/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data;
+  },
+
   async linkExternalLessonVideo(data: LinkExternalMediaRequest): Promise<LessonMediaInfo> {
     const res = await apiClient.post<LessonMediaInfo>('/api/media/link-external', data);
     return res.data;

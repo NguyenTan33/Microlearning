@@ -21,7 +21,9 @@ import {
   FileQuestion,
   AlertCircle,
   FileCheck,
+  Upload,
 } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { attachmentApi } from '../../services/attachmentApi';
 import type { LessonAttachment } from '../../types/catalog.types';
 
@@ -43,6 +45,13 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
   const [attachments, setAttachments] = useState<LessonAttachment[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAdding, setIsAdding] = useState<boolean>(false);
+  const [addMode, setAddMode] = useState<'FILE' | 'URL'>('FILE');
+  const [selectedFile, setSelectedFile] = useState<{
+    uri: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+  } | null>(null);
   const [newFileName, setNewFileName] = useState<string>('');
   const [newFileUrl, setNewFileUrl] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -64,10 +73,45 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
     if (visible && lessonId) {
       loadAttachments();
       setIsAdding(false);
+      setSelectedFile(null);
       setNewFileName('');
       setNewFileUrl('');
+      setAddMode('FILE');
     }
   }, [visible, lessonId]);
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const lowerName = asset.name.toLowerCase();
+        if (!lowerName.endsWith('.pdf') && !lowerName.endsWith('.doc') && !lowerName.endsWith('.docx')) {
+          Alert.alert('Định dạng không hợp lệ', 'Vui lòng chọn tệp PDF (.pdf) hoặc Word (.docx, .doc).');
+          return;
+        }
+
+        setSelectedFile({
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size,
+          mimeType: asset.mimeType || 'application/pdf',
+        });
+        setNewFileName(asset.name);
+      }
+    } catch (err) {
+      console.warn('[Attachments] Pick document error:', err);
+      Alert.alert('Lỗi', 'Không thể mở trình chọn tệp trên thiết bị.');
+    }
+  };
 
   const handleOpenFile = async (url: string) => {
     try {
@@ -102,27 +146,52 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
   };
 
   const handleAddAttachment = async () => {
-    if (!newFileName.trim() || !newFileUrl.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên tài liệu và đường dẫn URL.');
-      return;
-    }
+    if (addMode === 'FILE') {
+      if (!selectedFile) {
+        Alert.alert('Chưa chọn tệp', 'Vui lòng bấm chọn tệp tài liệu PDF hoặc Word từ thiết bị.');
+        return;
+      }
 
-    setSubmitting(true);
-    try {
-      // Gọi upload hoặc thêm tài liệu vào danh sách
-      await attachmentApi.addAttachmentByUrl(lessonId, {
-        fileName: newFileName.trim(),
-        fileUrl: newFileUrl.trim(),
-      });
-      Alert.alert('Thành công', 'Đã thêm tài liệu đính kèm mới!');
-      setIsAdding(false);
-      setNewFileName('');
-      setNewFileUrl('');
-      await loadAttachments();
-    } catch {
-      Alert.alert('Lỗi', 'Không thể thêm tài liệu đính kèm.');
-    } finally {
-      setSubmitting(false);
+      setSubmitting(true);
+      try {
+        await attachmentApi.uploadAttachmentFile(lessonId, {
+          uri: selectedFile.uri,
+          name: newFileName.trim() || selectedFile.name,
+          type: selectedFile.mimeType,
+        });
+        Alert.alert('Thành công', 'Đã tải lên tệp tài liệu thành công!');
+        setIsAdding(false);
+        setSelectedFile(null);
+        setNewFileName('');
+        await loadAttachments();
+      } catch (err) {
+        console.warn('[Attachments] Upload error:', err);
+        Alert.alert('Lỗi tải lên', 'Không thể tải lên tệp tài liệu. Vui lòng thử lại.');
+      } finally {
+        setSubmitting(false);
+      }
+    } else {
+      if (!newFileName.trim() || !newFileUrl.trim()) {
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên tài liệu và đường dẫn URL.');
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        await attachmentApi.addAttachmentByUrl(lessonId, {
+          fileName: newFileName.trim(),
+          fileUrl: newFileUrl.trim(),
+        });
+        Alert.alert('Thành công', 'Đã thêm tài liệu đính kèm mới!');
+        setIsAdding(false);
+        setNewFileName('');
+        setNewFileUrl('');
+        await loadAttachments();
+      } catch {
+        Alert.alert('Lỗi', 'Không thể thêm tài liệu đính kèm.');
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -160,7 +229,10 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
           {canManage && !isAdding && (
             <TouchableOpacity
               style={styles.addBtn}
-              onPress={() => setIsAdding(true)}
+              onPress={() => {
+                setIsAdding(true);
+                setAddMode('FILE');
+              }}
               activeOpacity={0.8}
             >
               <Plus color="#FFFFFF" size={16} />
@@ -172,25 +244,87 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
           {isAdding && (
             <View style={styles.addFormContainer}>
               <Text style={styles.addFormTitle}>Gắn tài liệu bài giảng mới</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Tên tài liệu (VD: Slide_Bai_1.pdf) *"
-                placeholderTextColor="#64748B"
-                value={newFileName}
-                onChangeText={setNewFileName}
-              />
-              <TextInput
-                style={styles.formInput}
-                placeholder="URL tài liệu (https://...) *"
-                placeholderTextColor="#64748B"
-                value={newFileUrl}
-                onChangeText={setNewFileUrl}
-                autoCapitalize="none"
-              />
+
+              {/* Mode Tabs: Tải tệp thiết bị vs Nhập URL */}
+              <View style={styles.modeTabsRow}>
+                <TouchableOpacity
+                  style={[styles.modeTabBtn, addMode === 'FILE' && styles.modeTabBtnActive]}
+                  onPress={() => setAddMode('FILE')}
+                >
+                  <Upload color={addMode === 'FILE' ? '#38BDF8' : '#94A3B8'} size={14} />
+                  <Text style={[styles.modeTabText, addMode === 'FILE' && styles.modeTabTextActive]}>
+                    Tải tệp từ máy (.pdf, .doc, .docx)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modeTabBtn, addMode === 'URL' && styles.modeTabBtnActive]}
+                  onPress={() => setAddMode('URL')}
+                >
+                  <ExternalLink color={addMode === 'URL' ? '#38BDF8' : '#94A3B8'} size={14} />
+                  <Text style={[styles.modeTabText, addMode === 'URL' && styles.modeTabTextActive]}>
+                    Nhập liên kết URL
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {addMode === 'FILE' ? (
+                <View style={{ marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={styles.filePickerBtn}
+                    onPress={handlePickDocument}
+                    activeOpacity={0.8}
+                  >
+                    <Upload color="#38BDF8" size={20} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.filePickerBtnTitle}>
+                        {selectedFile ? selectedFile.name : 'Chạm để chọn tệp PDF / Word (.docx)'}
+                      </Text>
+                      <Text style={styles.filePickerBtnSub}>
+                        {selectedFile
+                          ? `Dung lượng: ${formatFileSize(selectedFile.size)}`
+                          : 'Hỗ trợ định dạng .pdf, .docx, .doc (tối đa 50MB)'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {selectedFile && (
+                    <TextInput
+                      style={[styles.formInput, { marginTop: 10 }]}
+                      placeholder="Tên hiển thị tài liệu *"
+                      placeholderTextColor="#64748B"
+                      value={newFileName}
+                      onChangeText={setNewFileName}
+                    />
+                  )}
+                </View>
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="Tên tài liệu (VD: Giao_trinh_mon_hoc.pdf) *"
+                    placeholderTextColor="#64748B"
+                    value={newFileName}
+                    onChangeText={setNewFileName}
+                  />
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="URL tài liệu (https://...) *"
+                    placeholderTextColor="#64748B"
+                    value={newFileUrl}
+                    onChangeText={setNewFileUrl}
+                    autoCapitalize="none"
+                  />
+                </View>
+              )}
+
               <View style={styles.formBtnRow}>
                 <TouchableOpacity
                   style={styles.cancelFormBtn}
-                  onPress={() => setIsAdding(false)}
+                  onPress={() => {
+                    setIsAdding(false);
+                    setSelectedFile(null);
+                  }}
                 >
                   <Text style={styles.cancelFormBtnText}>Hủy</Text>
                 </TouchableOpacity>
@@ -202,7 +336,9 @@ export const LessonAttachmentsModal: React.FC<LessonAttachmentsModalProps> = ({
                   {submitting ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.submitFormBtnText}>Lưu tài liệu</Text>
+                    <Text style={styles.submitFormBtnText}>
+                      {addMode === 'FILE' ? 'Tải lên ngay' : 'Lưu tài liệu'}
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -352,6 +488,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 10,
+  },
+  modeTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modeTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 6,
+  },
+  modeTabBtnActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderColor: '#38BDF8',
+  },
+  modeTabText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  modeTabTextActive: {
+    color: '#38BDF8',
+  },
+  filePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderWidth: 1.5,
+    borderColor: '#38BDF8',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  filePickerBtnTitle: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filePickerBtnSub: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 2,
   },
   formInput: {
     backgroundColor: '#0F172A',

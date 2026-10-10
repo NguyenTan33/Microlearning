@@ -12,6 +12,29 @@ export const attachmentApi = {
     }
   },
 
+  async uploadAttachmentFile(
+    lessonId: number,
+    file: { uri: string; name: string; type?: string }
+  ): Promise<LessonAttachment> {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.type || 'application/pdf',
+    } as unknown as Blob);
+
+    const res = await apiClient.post<LessonAttachment>(
+      `/api/lessons/${lessonId}/attachments`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return res.data;
+  },
+
   async uploadAttachment(lessonId: number, formData: FormData): Promise<LessonAttachment> {
     const res = await apiClient.post<LessonAttachment>(
       `/api/lessons/${lessonId}/attachments`,
