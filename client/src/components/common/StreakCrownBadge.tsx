@@ -74,23 +74,6 @@ export const StreakCrownBadge: React.FC = () => {
           <span className={`font-extrabold ${isLandingPulse ? 'text-amber-200 text-sm' : ''}`}>{streak.currentStreak}</span>
           <span className="hidden sm:inline font-medium text-[11px] opacity-80">ngày</span>
         </button>
-
-        {/* Nút Vương miện Master Crown 👑 (Nếu đạt 100%) */}
-        {streak.hasMasterCrown && (
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="h-9 relative flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold text-amber-100 bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 shadow-md shadow-amber-500/20 border border-amber-400/50 hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all overflow-hidden group cursor-pointer whitespace-nowrap"
-            title="Vương Miện Danh Dự: Bạn đã hoàn thành 100% tất cả các khóa học!"
-          >
-            {/* Hiệu ứng lấp lánh (Shimmer glow) */}
-            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-amber-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            <span className="text-sm filter drop-shadow animate-pulse">👑</span>
-            <span className="tracking-wide uppercase text-[10px] font-extrabold text-amber-300 hidden md:inline">
-              Master Crown
-            </span>
-          </button>
-        )}
       </div>
 
       {/* Modal chi tiết Chuỗi Streak & Vương Miện Hoàng Gia (Dùng React Portal và z-[9999] để đảm bảo luôn nổi trên cùng mọi layer) */}

@@ -55,7 +55,7 @@ jobs:
 
       - name: 📦 Install mobile dependencies
         working-directory: mobile
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: 🔍 TypeScript Strict Typecheck
         working-directory: mobile

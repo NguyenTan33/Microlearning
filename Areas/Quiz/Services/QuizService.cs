@@ -268,10 +268,74 @@ namespace Microlearning.Areas.Quiz.Services
                 throw new BusinessException($"Bài học với mã {lessonId} không tồn tại.");
             }
 
-            var existingQuiz = await _dbContext.Quizzes.FirstOrDefaultAsync(q => q.LessonId == lessonId);
+            var existingQuiz = await _dbContext.Quizzes
+                .Include(q => q.Questions)
+                    .ThenInclude(ques => ques.QuizOptions)
+                .Include(q => q.QuizAttempts)
+                .FirstOrDefaultAsync(q => q.LessonId == lessonId);
+
             if (existingQuiz != null)
             {
-                throw new BusinessException($"Bài học với mã {lessonId} đã có đề thi. Vui lòng cập nhật thay vì tạo mới.");
+                existingQuiz.Title = request.Title.Trim();
+                existingQuiz.PassScore = request.PassScore;
+                existingQuiz.Version += 1;
+                existingQuiz.UpdatedAt = DateTime.UtcNow;
+
+                // Xóa các lần làm bài cũ của đề thi để tránh ràng buộc khóa ngoại
+                if (existingQuiz.QuizAttempts != null && existingQuiz.QuizAttempts.Any())
+                {
+                    _dbContext.QuizAttempts.RemoveRange(existingQuiz.QuizAttempts);
+                }
+
+                // Xóa sạch các câu trả lời liên quan (nếu còn) và câu hỏi cũ
+                if (existingQuiz.Questions != null && existingQuiz.Questions.Any())
+                {
+                    var oldQuestionIds = existingQuiz.Questions.Select(q => q.Id).ToList();
+                    var relatedAnswers = await _dbContext.QuizAnswers
+                        .Where(a => oldQuestionIds.Contains(a.QuestionId))
+                        .ToListAsync();
+                    if (relatedAnswers.Any())
+                    {
+                        _dbContext.QuizAnswers.RemoveRange(relatedAnswers);
+                    }
+
+                    _dbContext.Questions.RemoveRange(existingQuiz.Questions);
+                }
+
+                // Thêm các câu hỏi mới vào đề thi
+                if (request.Questions != null && request.Questions.Any())
+                {
+                    foreach (var qDto in request.Questions)
+                    {
+                        var question = new Question
+                        {
+                            QuizId = existingQuiz.Id,
+                            Content = qDto.Content.Trim(),
+                            Explanation = qDto.Explanation?.Trim(),
+                            Points = qDto.Points,
+                            SortOrder = qDto.SortOrder,
+                            QuestionType = qDto.QuestionType
+                        };
+
+                        if (qDto.Options != null && qDto.Options.Any())
+                        {
+                            foreach (var optDto in qDto.Options)
+                            {
+                                question.QuizOptions.Add(new QuizOption
+                                {
+                                    OptionText = optDto.OptionText.Trim(),
+                                    IsCorrect = optDto.IsCorrect,
+                                    SortOrder = optDto.SortOrder
+                                });
+                            }
+                        }
+
+                        existingQuiz.Questions.Add(question);
+                    }
+                }
+
+                await _dbContext.SaveChangesAsync();
+                return await GetQuizByLessonIdAsync(lessonId);
             }
 
             var quiz = new Model.Entities.Quiz
