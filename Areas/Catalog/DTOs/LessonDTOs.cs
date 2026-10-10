@@ -29,6 +29,7 @@ namespace Microlearning.Areas.Catalog.DTOs
         DateTime CreatedAt,
         DateTime? UpdatedAt,
         bool HasQuiz = false,
-        int MediaAssetCount = 0
+        int MediaAssetCount = 0,
+        string? VideoUrl = null
     );
 }
