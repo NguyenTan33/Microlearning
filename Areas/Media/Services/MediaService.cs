@@ -496,7 +496,9 @@ namespace Microlearning.Areas.Media.Services
             _dbContext.MediaAssets.Add(mediaAsset);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            var streamUrl = sourceType == "direct_url" ? cleanUrl : $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lesson.Id}/stream";
+            var streamUrl = (sourceType == "youtube" || sourceType == "vimeo")
+                ? (embedUrl ?? cleanUrl)
+                : cleanUrl;
 
             return new LessonMediaInfoResponse(
                 lesson.Id,
@@ -537,7 +539,9 @@ namespace Microlearning.Areas.Media.Services
                 mediaAsset.BlobKey.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
                 var (sourceType, embedUrl, contentType) = ParseVideoSource(mediaAsset.BlobKey);
-                var streamUrl = sourceType == "direct_url" ? mediaAsset.BlobKey : $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lessonId}/stream";
+                var streamUrl = (sourceType == "youtube" || sourceType == "vimeo")
+                    ? (embedUrl ?? mediaAsset.BlobKey)
+                    : (sourceType == "direct_url" ? mediaAsset.BlobKey : $"{baseUrl.TrimEnd('/')}/api/media/lesson/{lessonId}/stream");
 
                 return new LessonMediaInfoResponse(
                     lessonId,
