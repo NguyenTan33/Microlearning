@@ -10,7 +10,7 @@ import type {
   PodcastEpisode,
   SearchResult,
 } from '../types/notebook.types';
-import type { Lesson, Course } from '../types/catalog.types';
+import type { Lesson, Course, LessonAttachment } from '../types/catalog.types';
 
 export interface LessonNote {
   id: string;
@@ -308,6 +308,61 @@ export const notebookService = {
       course.id,
       lesson.title,
       course.title
+    );
+  },
+
+  async addSourceToNotebook(notebookId: string, sourceId: string): Promise<void> {
+    const all = await this.getAllSources();
+    const targetSource = all.find((s) => s.id === sourceId);
+    if (!targetSource) return;
+
+    const current = await getStoredSourcesByNotebook(notebookId);
+    if (current.some((s) => s.id === sourceId)) return;
+
+    await saveStoredSourcesByNotebook(notebookId, [targetSource, ...current]);
+
+    const notebooks = await getStoredNotebooks();
+    const nb = notebooks.find((n) => n.id === notebookId);
+    if (nb) {
+      nb.source_count = (nb.source_count || 0) + 1;
+      await saveStoredNotebooks(notebooks);
+    }
+  },
+
+  async attachCourseAttachmentToNotebook(
+    notebookId: string,
+    attachment: LessonAttachment,
+    courseTitle?: string,
+    lessonTitle?: string
+  ): Promise<NotebookSource> {
+    const fileName = attachment.fileName || 'Tài liệu khóa học';
+    const docTitle = `[Tài liệu] ${fileName}`;
+    const fileSizeKb = attachment.fileSizeBytes
+      ? (attachment.fileSizeBytes / 1024).toFixed(1)
+      : 'N/A';
+
+    const content = [
+      `TÀI LIỆU KHÓA HỌC: ${fileName}`,
+      `Khóa học: ${courseTitle || 'Chưa xác định'}`,
+      `Bài học: ${lessonTitle || 'Chưa xác định'}`,
+      `Loại tệp: ${attachment.fileType || 'Tài liệu'}`,
+      `Kích thước: ${fileSizeKb} KB`,
+      attachment.fileUrl ? `Đường dẫn tài liệu: ${attachment.fileUrl}` : '',
+      `Mã bài học: ${attachment.lessonId}`,
+      `Thời gian tạo: ${new Date().toLocaleString('vi-VN')}`,
+      `Nội dung tài liệu học tập chính thức do giảng viên đính kèm. AI có thể sử dụng thông tin này để trả lời câu hỏi và phân tích kiến thức cho người học.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return this.addTextSource(
+      notebookId,
+      docTitle,
+      content,
+      attachment.lessonId,
+      undefined,
+      lessonTitle,
+      courseTitle
     );
   },
 

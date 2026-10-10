@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Flame,
+  Sparkles,
 } from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
@@ -331,7 +332,7 @@ export default function LessonScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Quick Toolbar: Attachments & Notebook */}
+        {/* Quick Toolbar: Attachments & Notebook & Sổ tay AI */}
         <View style={styles.toolBarRow}>
           <TouchableOpacity
             style={styles.toolBtn}
@@ -339,7 +340,7 @@ export default function LessonScreen() {
             activeOpacity={0.7}
           >
             <Paperclip color="#38BDF8" size={16} />
-            <Text style={styles.toolBtnText}>Tài liệu đính kèm</Text>
+            <Text style={styles.toolBtnText}>Tài liệu</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -348,7 +349,24 @@ export default function LessonScreen() {
             activeOpacity={0.7}
           >
             <BookOpen color="#818CF8" size={16} />
-            <Text style={styles.toolBtnText}>Sổ ghi chú</Text>
+            <Text style={styles.toolBtnText}>Ghi chú</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.toolBtn, styles.toolBtnAi]}
+            onPress={() => {
+              router.push({
+                pathname: '/(tabs)/ai',
+                params: {
+                  lessonId: String(lesson.id),
+                  lessonTitle: lesson.title,
+                },
+              });
+            }}
+            activeOpacity={0.7}
+          >
+            <Sparkles color="#C084FC" size={16} />
+            <Text style={[styles.toolBtnText, { color: '#C084FC' }]}>Sổ tay AI</Text>
           </TouchableOpacity>
         </View>
 
@@ -378,10 +396,10 @@ export default function LessonScreen() {
             >
               <Download color={isOfflineReady ? '#10B981' : '#818CF8'} size={18} />
               <Text style={[styles.downloadActionText, isOfflineReady && styles.downloadActionTextDone]}>
-                {downloading
-                  ? `${downloadProgress}%`
-                  : isOfflineReady
+                {isOfflineReady
                   ? 'Đã tải'
+                  : downloading
+                  ? `${downloadProgress}%`
                   : 'Tải offline'}
               </Text>
             </TouchableOpacity>
@@ -554,6 +572,10 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     fontSize: 12,
     fontWeight: '600',
+  },
+  toolBtnAi: {
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderColor: 'rgba(192, 132, 252, 0.35)',
   },
   lessonMetaSection: {
     backgroundColor: '#0F172A',
