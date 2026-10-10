@@ -422,16 +422,6 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
                   mediaPlaybackRequiresUserAction: false,
                 }}
               />
-
-              <TouchableOpacity
-                style={styles.platformBadge}
-                onPress={handleOpenYoutubeApp}
-                activeOpacity={0.7}
-              >
-                <Youtube color="#EF4444" size={14} />
-                <Text style={styles.platformBadgeText}>YouTube</Text>
-                <ExternalLink color="#94A3B8" size={11} />
-              </TouchableOpacity>
             </>
           )}
         </View>
