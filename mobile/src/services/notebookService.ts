@@ -3,6 +3,7 @@ import { apiClient } from './apiClient';
 import { secureStorage } from '../utils/secureStorage';
 import { ttsApi } from './ttsApi';
 import { callGeminiDirect, generatePodcastScript } from './geminiClient';
+import { extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../utils/documentExtractor';
 import type {
   Notebook,
   NotebookSource,
@@ -335,25 +336,27 @@ export const notebookService = {
     courseTitle?: string,
     lessonTitle?: string
   ): Promise<NotebookSource> {
-    const fileName = attachment.fileName || 'Tài liệu khóa học';
+    const fileName = attachment.originalFileName || attachment.fileName || 'Tài liệu khóa học';
     const docTitle = `[Tài liệu] ${fileName}`;
-    const fileSizeKb = attachment.fileSizeBytes
-      ? (attachment.fileSizeBytes / 1024).toFixed(1)
-      : 'N/A';
 
-    const content = [
-      `TÀI LIỆU KHÓA HỌC: ${fileName}`,
-      `Khóa học: ${courseTitle || 'Chưa xác định'}`,
-      `Bài học: ${lessonTitle || 'Chưa xác định'}`,
-      `Loại tệp: ${attachment.fileType || 'Tài liệu'}`,
-      `Kích thước: ${fileSizeKb} KB`,
-      attachment.fileUrl ? `Đường dẫn tài liệu: ${attachment.fileUrl}` : '',
-      `Mã bài học: ${attachment.lessonId}`,
-      `Thời gian tạo: ${new Date().toLocaleString('vi-VN')}`,
-      `Nội dung tài liệu học tập chính thức do giảng viên đính kèm. AI có thể sử dụng thông tin này để trả lời câu hỏi và phân tích kiến thức cho người học.`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    // 1. Tự động tải file từ Azure Blob Storage và trích xuất nội dung văn bản thực tế (.docx, .doc, .pdf, .txt)
+    let extractedText = '';
+    if (attachment.fileUrl) {
+      try {
+        extractedText = await extractTextFromRemoteUrl(attachment.fileUrl, fileName);
+      } catch (extractErr) {
+        console.warn('[notebookService] Error extracting text from attachment URL:', extractErr);
+      }
+    }
+
+    // 2. Định dạng nội dung nguồn với header ngữ cảnh và toàn bộ nội dung văn bản thực tế
+    const content = formatExtractedDocumentContent(fileName, extractedText, {
+      courseTitle,
+      lessonTitle,
+      fileType: attachment.fileType,
+      sizeBytes: attachment.fileSizeBytes,
+      fileUrl: attachment.fileUrl,
+    });
 
     return this.addTextSource(
       notebookId,
@@ -413,11 +416,43 @@ export const notebookService = {
     // Nếu sổ tay cụ thể chưa gắn source, tự động nạp kho tài liệu đã lưu trên máy để AI luôn có dữ liệu trả lời
     const effectiveSources = localSources.length > 0 ? localSources : await getAllStoredSources();
 
+    // Tự động kiểm tra và hồi phục nội dung (Auto-hydrate) cho các tài liệu trước đây bị lưu nhầm placeholder URL
+    let hasUpdatedSource = false;
+    for (const src of effectiveSources) {
+      const isMissingContent =
+        !src.full_text ||
+        src.full_text.length < 500 ||
+        (src.full_text.includes('Đường dẫn tài liệu: http') && !src.full_text.includes('--- NỘI DUNG VĂN BẢN TRÍCH XUẤT ---'));
+
+      if (isMissingContent) {
+        const urlMatch = (src.full_text || '').match(/Đường dẫn tài liệu:\s*(https?:\/\/[^\s\n\r]+)/i);
+        if (urlMatch && urlMatch[1]) {
+          try {
+            const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
+            if (rawExtracted && rawExtracted.trim().length > 20) {
+              src.full_text = formatExtractedDocumentContent(src.title.replace(/^\[Tài liệu\]\s*/i, ''), rawExtracted, {
+                lessonTitle: src.lesson_title,
+                courseTitle: src.course_title,
+                fileUrl: urlMatch[1],
+              });
+              hasUpdatedSource = true;
+            }
+          } catch (healErr) {
+            console.warn('[notebookService] Auto-hydrate failed for source:', src.title, healErr);
+          }
+        }
+      }
+    }
+
+    if (hasUpdatedSource && notebookId) {
+      saveStoredSourcesByNotebook(notebookId, effectiveSources).catch(() => {});
+    }
+
     const localContextText =
       effectiveSources.length > 0
         ? effectiveSources
             .slice(0, 8)
-            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 3500)}`)
+            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 4500)}`)
             .join('\n\n')
         : '';
 
