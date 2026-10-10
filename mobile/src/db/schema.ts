@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS LocalLessons (
 
 CREATE TABLE IF NOT EXISTS DownloadedMedia (
     mediaId INTEGER PRIMARY KEY AUTOINCREMENT,
-    lessonId INTEGER NOT NULL,
+    lessonId INTEGER NOT NULL UNIQUE,
     fileName TEXT NOT NULL,
     localPath TEXT NOT NULL,
     fileSizeBytes INTEGER NOT NULL,
@@ -67,8 +67,7 @@ CREATE TABLE IF NOT EXISTS DownloadedMedia (
     downloadedAt TEXT NOT NULL,
     lastPlayedAt TEXT NOT NULL,
     isPinned INTEGER DEFAULT 0,
-    status TEXT NOT NULL,
-    FOREIGN KEY (lessonId) REFERENCES LocalLessons(id) ON DELETE CASCADE
+    status TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS LocalQuizzes (

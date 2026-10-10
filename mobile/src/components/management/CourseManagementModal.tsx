@@ -32,11 +32,15 @@ import {
   FileQuestion,
   FileText,
   Check,
+  Upload,
+  FileUp,
 } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { catalogApi } from '../../services/catalogApi';
 import type { Course, CourseDetail, Subject, Lesson } from '../../types/catalog.types';
 import { CourseStudentProgressModal } from './CourseStudentProgressModal';
 import { LessonAttachmentsModal } from '../common/LessonAttachmentsModal';
+import { parseDocxQuizFromUri, type ParsedQuizQuestion } from '../../utils/docxQuizParser';
 
 interface CourseManagementModalProps {
   visible: boolean;
@@ -90,13 +94,21 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   // Status Filter for Studio (Tất cả / Công khai / Đang ẩn)
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'UNPUBLISHED'>('ALL');
 
-  // Video Link Modal for Lesson
+  // Video Upload / Link Modal for Lesson
   const [videoModalLesson, setVideoModalLesson] = useState<Lesson | null>(null);
+  const [videoMode, setVideoMode] = useState<'FILE' | 'URL'>('FILE');
+  const [selectedVideoFile, setSelectedVideoFile] = useState<{
+    uri: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+  } | null>(null);
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [savingVideoLink, setSavingVideoLink] = useState(false);
 
   // Quiz Builder Modal for Lesson
   const [quizModalLesson, setQuizModalLesson] = useState<Lesson | null>(null);
+  const [quizMode, setQuizMode] = useState<'MANUAL' | 'WORD'>('WORD');
   const [quizTitle, setQuizTitle] = useState('');
   const [quizPassScore, setQuizPassScore] = useState('80');
   const [quizQuestionText, setQuizQuestionText] = useState('');
@@ -105,6 +117,8 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const [quizOptionC, setQuizOptionC] = useState('');
   const [quizOptionD, setQuizOptionD] = useState('');
   const [quizCorrectIndex, setQuizCorrectIndex] = useState(0);
+  const [importedQuizQuestions, setImportedQuizQuestions] = useState<ParsedQuizQuestion[]>([]);
+  const [isParsingWord, setIsParsingWord] = useState(false);
   const [savingQuiz, setSavingQuiz] = useState(false);
 
   // Attachment Manager Modal for Lesson
@@ -134,70 +148,220 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
-  const handleSaveVideoUrl = async () => {
-    if (!videoModalLesson || !videoUrlInput.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập đường dẫn video bài học.');
-      return;
-    }
-    setSavingVideoLink(true);
+  // Xử lý chọn tệp video (.mp4) từ thiết bị
+  const handlePickVideoFile = async () => {
     try {
-      await catalogApi.linkExternalLessonVideo({
-        lessonId: videoModalLesson.id,
-        url: videoUrlInput.trim(),
-        title: videoModalLesson.title,
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['video/mp4', 'video/*'],
+        copyToCacheDirectory: true,
       });
-      Alert.alert('Thành công', 'Đã lưu luồng video cho bài học!');
-      setVideoModalLesson(null);
-      if (selectedCourse) await loadCourseDetail(selectedCourse.id);
-      if (onCourseUpdated) onCourseUpdated();
-    } catch {
-      Alert.alert('Lỗi', 'Không thể liên kết video bài học.');
-    } finally {
-      setSavingVideoLink(false);
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const lowerName = asset.name.toLowerCase();
+        if (!lowerName.endsWith('.mp4') && !lowerName.endsWith('.mov') && !lowerName.endsWith('.webm')) {
+          Alert.alert('Định dạng không hợp lệ', 'Vui lòng chọn tệp video định dạng .mp4, .mov hoặc .webm.');
+          return;
+        }
+
+        setSelectedVideoFile({
+          uri: asset.uri,
+          name: asset.name,
+          size: asset.size,
+          mimeType: asset.mimeType || 'video/mp4',
+        });
+      }
+    } catch (err) {
+      console.warn('[Video] Pick video error:', err);
+      Alert.alert('Lỗi', 'Không thể mở trình chọn tệp video trên thiết bị.');
+    }
+  };
+
+  const handleSaveVideo = async () => {
+    if (!videoModalLesson) return;
+
+    if (videoMode === 'FILE') {
+      if (!selectedVideoFile) {
+        Alert.alert('Chưa chọn video', 'Vui lòng bấm chọn tệp video (.mp4) từ điện thoại.');
+        return;
+      }
+
+      setSavingVideoLink(true);
+      try {
+        await catalogApi.uploadLessonVideo(
+          {
+            uri: selectedVideoFile.uri,
+            name: selectedVideoFile.name,
+            type: selectedVideoFile.mimeType || 'video/mp4',
+          },
+          videoModalLesson.id
+        );
+        Alert.alert('Thành công', `Đã tải lên video "${selectedVideoFile.name}" thành công!`);
+        setVideoModalLesson(null);
+        setSelectedVideoFile(null);
+        if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+        if (onCourseUpdated) onCourseUpdated();
+      } catch (err) {
+        console.warn('[Video] Upload error:', err);
+        Alert.alert('Lỗi tải video', 'Quá trình tải lên tệp video gặp sự cố. Vui lòng thử lại.');
+      } finally {
+        setSavingVideoLink(false);
+      }
+    } else {
+      if (!videoUrlInput.trim()) {
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập đường dẫn URL video bài học.');
+        return;
+      }
+      setSavingVideoLink(true);
+      try {
+        await catalogApi.linkExternalLessonVideo({
+          lessonId: videoModalLesson.id,
+          url: videoUrlInput.trim(),
+          title: videoModalLesson.title,
+        });
+        Alert.alert('Thành công', 'Đã lưu liên kết luồng video cho bài học!');
+        setVideoModalLesson(null);
+        if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+        if (onCourseUpdated) onCourseUpdated();
+      } catch {
+        Alert.alert('Lỗi', 'Không thể liên kết video bài học.');
+      } finally {
+        setSavingVideoLink(false);
+      }
+    }
+  };
+
+  // Xử lý chọn tệp Word (.docx) hoặc .txt đề thi trắc nghiệm
+  const handlePickWordQuizFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const lowerName = asset.name.toLowerCase();
+        if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.txt')) {
+          Alert.alert('Định dạng không hợp lệ', 'Vui lòng chọn tệp Word (.docx) hoặc tệp văn bản (.txt).');
+          return;
+        }
+
+        setIsParsingWord(true);
+        try {
+          const parsed = await parseDocxQuizFromUri(asset.uri);
+          if (parsed.questions.length === 0) {
+            Alert.alert(
+              'Không tìm thấy câu hỏi',
+              'Không trích xuất được câu hỏi trắc nghiệm hợp lệ từ tệp. Đảm bảo cấu trúc: "Câu 1: ... A. ... B. ... Đáp án: A".'
+            );
+            return;
+          }
+
+          setImportedQuizQuestions(parsed.questions);
+          const autoTitle = asset.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+          if (quizTitle === 'Bài kiểm tra đánh giá' || !quizTitle) {
+            setQuizTitle(`Trắc nghiệm: ${autoTitle}`);
+          }
+          Alert.alert(
+            'Nhập thành công 🎉',
+            `Đã nhận diện thành công ${parsed.questions.length} câu hỏi trắc nghiệm từ tệp "${asset.name}"!`
+          );
+        } catch (err) {
+          console.warn('[Quiz] Parse word error:', err);
+          Alert.alert('Lỗi đọc tệp', 'Không thể trích xuất nội dung từ tệp Word. Hãy kiểm tra định dạng .docx.');
+        } finally {
+          setIsParsingWord(false);
+        }
+      }
+    } catch (err) {
+      console.warn('[Quiz] Pick word error:', err);
+      Alert.alert('Lỗi', 'Không thể mở trình chọn tệp trên thiết bị.');
     }
   };
 
   const handleSaveQuiz = async () => {
     if (!quizModalLesson) return;
-    if (!quizQuestionText.trim() || !quizOptionA.trim() || !quizOptionB.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập nội dung câu hỏi và ít nhất 2 đáp án (A và B).');
-      return;
-    }
 
-    const options = [
-      { optionText: quizOptionA.trim(), isCorrect: quizCorrectIndex === 0, sortOrder: 1 },
-      { optionText: quizOptionB.trim(), isCorrect: quizCorrectIndex === 1, sortOrder: 2 },
-    ];
-    if (quizOptionC.trim()) {
-      options.push({ optionText: quizOptionC.trim(), isCorrect: quizCorrectIndex === 2, sortOrder: 3 });
-    }
-    if (quizOptionD.trim()) {
-      options.push({ optionText: quizOptionD.trim(), isCorrect: quizCorrectIndex === 3, sortOrder: 4 });
-    }
+    if (quizMode === 'WORD') {
+      if (importedQuizQuestions.length === 0) {
+        Alert.alert('Chưa có câu hỏi', 'Vui lòng bấm nút chọn file Word (.docx) để trích xuất câu hỏi.');
+        return;
+      }
 
-    setSavingQuiz(true);
-    try {
-      await catalogApi.createQuiz(quizModalLesson.id, {
-        title: quizTitle.trim() || `Trắc nghiệm: ${quizModalLesson.title}`,
-        passScore: Number(quizPassScore) || 80,
-        questions: [
-          {
-            content: quizQuestionText.trim(),
-            points: 10,
-            sortOrder: 1,
+      setSavingQuiz(true);
+      try {
+        await catalogApi.createQuiz(quizModalLesson.id, {
+          title: quizTitle.trim() || `Trắc nghiệm: ${quizModalLesson.title}`,
+          passScore: Number(quizPassScore) || 80,
+          questions: importedQuizQuestions.map((q, idx) => ({
+            content: q.content,
+            explanation: q.explanation,
+            points: q.points || Math.max(1, Math.round(100 / importedQuizQuestions.length)),
+            sortOrder: idx + 1,
             questionType: 1,
-            options,
-          },
-        ],
-      });
-      Alert.alert('Thành công', 'Đã tạo bộ câu hỏi trắc nghiệm cho bài học!');
-      setQuizModalLesson(null);
-      if (selectedCourse) await loadCourseDetail(selectedCourse.id);
-      if (onCourseUpdated) onCourseUpdated();
-    } catch {
-      Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
-    } finally {
-      setSavingQuiz(false);
+            options: q.options.map((opt, oIdx) => ({
+              optionText: opt.optionText,
+              isCorrect: opt.isCorrect,
+              sortOrder: oIdx + 1,
+            })),
+          })),
+        });
+
+        Alert.alert('Thành công', `Đã lưu thành công bộ đề gồm ${importedQuizQuestions.length} câu hỏi!`);
+        setQuizModalLesson(null);
+        setImportedQuizQuestions([]);
+        if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+        if (onCourseUpdated) onCourseUpdated();
+      } catch {
+        Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
+      } finally {
+        setSavingQuiz(false);
+      }
+    } else {
+      if (!quizQuestionText.trim() || !quizOptionA.trim() || !quizOptionB.trim()) {
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập nội dung câu hỏi và ít nhất 2 đáp án (A và B).');
+        return;
+      }
+
+      const options = [
+        { optionText: quizOptionA.trim(), isCorrect: quizCorrectIndex === 0, sortOrder: 1 },
+        { optionText: quizOptionB.trim(), isCorrect: quizCorrectIndex === 1, sortOrder: 2 },
+      ];
+      if (quizOptionC.trim()) {
+        options.push({ optionText: quizOptionC.trim(), isCorrect: quizCorrectIndex === 2, sortOrder: 3 });
+      }
+      if (quizOptionD.trim()) {
+        options.push({ optionText: quizOptionD.trim(), isCorrect: quizCorrectIndex === 3, sortOrder: 4 });
+      }
+
+      setSavingQuiz(true);
+      try {
+        await catalogApi.createQuiz(quizModalLesson.id, {
+          title: quizTitle.trim() || `Trắc nghiệm: ${quizModalLesson.title}`,
+          passScore: Number(quizPassScore) || 80,
+          questions: [
+            {
+              content: quizQuestionText.trim(),
+              points: 10,
+              sortOrder: 1,
+              questionType: 1,
+              options,
+            },
+          ],
+        });
+        Alert.alert('Thành công', 'Đã tạo câu hỏi trắc nghiệm cho bài học!');
+        setQuizModalLesson(null);
+        if (selectedCourse) await loadCourseDetail(selectedCourse.id);
+        if (onCourseUpdated) onCourseUpdated();
+      } catch {
+        Alert.alert('Lỗi', 'Không thể lưu câu hỏi trắc nghiệm.');
+      } finally {
+        setSavingQuiz(false);
+      }
     }
   };
 
@@ -961,41 +1125,93 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             </View>
           </Modal>
 
-          {/* Modal Gắn Luồng Video Cho Bài Học */}
+          {/* Modal Gắn Luồng Video Cho Bài Học (Hỗ trợ upload .mp4 trực tiếp hoặc URL) */}
           <Modal visible={Boolean(videoModalLesson)} transparent animationType="fade">
             <View style={styles.innerModalOverlay}>
               <View style={styles.innerModalCard}>
                 <Text style={styles.innerModalTitle}>
-                  Gắn Luồng Video Bài Giảng
+                  Gắn Video Bài Giảng
                 </Text>
                 <Text style={styles.innerModalSubTitle}>
                   Bài học: {videoModalLesson?.title}
                 </Text>
 
-                <TextInput
-                  style={styles.innerInput}
-                  placeholder="URL luồng phát video (MP4 / Azure / HLS / YouTube)..."
-                  placeholderTextColor="#64748B"
-                  value={videoUrlInput}
-                  onChangeText={setVideoUrlInput}
-                  autoCapitalize="none"
-                />
+                {/* Tabs chế độ: Tải video từ máy vs Nhập URL */}
+                <View style={styles.modeTabsRow}>
+                  <TouchableOpacity
+                    style={[styles.modeTabBtn, videoMode === 'FILE' && styles.modeTabBtnActive]}
+                    onPress={() => setVideoMode('FILE')}
+                  >
+                    <Upload color={videoMode === 'FILE' ? '#38BDF8' : '#94A3B8'} size={14} />
+                    <Text style={[styles.modeTabText, videoMode === 'FILE' && styles.modeTabTextActive]}>
+                      Tải từ máy (.mp4)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.modeTabBtn, videoMode === 'URL' && styles.modeTabBtnActive]}
+                    onPress={() => setVideoMode('URL')}
+                  >
+                    <Video color={videoMode === 'URL' ? '#38BDF8' : '#94A3B8'} size={14} />
+                    <Text style={[styles.modeTabText, videoMode === 'URL' && styles.modeTabTextActive]}>
+                      Nhập link URL
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {videoMode === 'FILE' ? (
+                  <View style={{ marginVertical: 8 }}>
+                    <TouchableOpacity
+                      style={styles.filePickerBtn}
+                      onPress={handlePickVideoFile}
+                      activeOpacity={0.8}
+                    >
+                      <Upload color="#38BDF8" size={22} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={styles.filePickerBtnTitle}>
+                          {selectedVideoFile ? selectedVideoFile.name : 'Chạm để chọn video (.mp4) từ điện thoại'}
+                        </Text>
+                        <Text style={styles.filePickerBtnSub}>
+                          {selectedVideoFile
+                            ? `Dung lượng: ${(Number(selectedVideoFile.size || 0) / (1024 * 1024)).toFixed(1)} MB`
+                            : 'Định dạng .mp4, .webm, .mov (hỗ trợ tối đa 500MB)'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TextInput
+                    style={[styles.innerInput, { marginVertical: 8 }]}
+                    placeholder="URL luồng phát video (MP4 / Azure / HLS / YouTube)..."
+                    placeholderTextColor="#64748B"
+                    value={videoUrlInput}
+                    onChangeText={setVideoUrlInput}
+                    autoCapitalize="none"
+                  />
+                )}
 
                 <View style={styles.modalBtnRow}>
                   <TouchableOpacity
                     style={styles.cancelBtn}
-                    onPress={() => setVideoModalLesson(null)}
+                    onPress={() => {
+                      setVideoModalLesson(null);
+                      setSelectedVideoFile(null);
+                    }}
                   >
                     <Text style={styles.cancelBtnText}>Hủy</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.confirmBtn}
-                    onPress={handleSaveVideoUrl}
+                    onPress={handleSaveVideo}
                     disabled={savingVideoLink}
                   >
                     <Text style={styles.confirmBtnText}>
-                      {savingVideoLink ? 'Đang lưu...' : 'Lưu Video'}
+                      {savingVideoLink
+                        ? 'Đang tải lên...'
+                        : videoMode === 'FILE'
+                        ? 'Tải lên video'
+                        : 'Lưu Video'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1003,7 +1219,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
             </View>
           </Modal>
 
-          {/* Modal Soạn Đề Câu Hỏi Quiz Trắc Nghiệm */}
+          {/* Modal Soạn Đề Câu Hỏi Quiz Trắc Nghiệm (Hỗ trợ nhập File Word .docx hoặc nhập tay) */}
           <Modal visible={Boolean(quizModalLesson)} transparent animationType="fade">
             <View style={styles.innerModalOverlay}>
               <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
@@ -1014,6 +1230,29 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                   <Text style={styles.innerModalSubTitle}>
                     Bài học: {quizModalLesson?.title}
                   </Text>
+
+                  {/* Tabs: Tải từ Word .docx vs Soạn thủ công */}
+                  <View style={styles.modeTabsRow}>
+                    <TouchableOpacity
+                      style={[styles.modeTabBtn, quizMode === 'WORD' && styles.modeTabBtnActive]}
+                      onPress={() => setQuizMode('WORD')}
+                    >
+                      <FileUp color={quizMode === 'WORD' ? '#38BDF8' : '#94A3B8'} size={14} />
+                      <Text style={[styles.modeTabText, quizMode === 'WORD' && styles.modeTabTextActive]}>
+                        Tải file Word (.docx)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modeTabBtn, quizMode === 'MANUAL' && styles.modeTabBtnActive]}
+                      onPress={() => setQuizMode('MANUAL')}
+                    >
+                      <FileQuestion color={quizMode === 'MANUAL' ? '#38BDF8' : '#94A3B8'} size={14} />
+                      <Text style={[styles.modeTabText, quizMode === 'MANUAL' && styles.modeTabTextActive]}>
+                        Nhập thủ công
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
                   <TextInput
                     style={styles.innerInput}
@@ -1032,91 +1271,146 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
                     onChangeText={setQuizPassScore}
                   />
 
-                  <TextInput
-                    style={[styles.innerInput, { height: 60 }]}
-                    placeholder="Nội dung câu hỏi trắc nghiệm *"
-                    placeholderTextColor="#64748B"
-                    multiline
-                    value={quizQuestionText}
-                    onChangeText={setQuizQuestionText}
-                  />
+                  {quizMode === 'WORD' ? (
+                    <View style={{ marginVertical: 8 }}>
+                      <TouchableOpacity
+                        style={styles.filePickerBtn}
+                        onPress={handlePickWordQuizFile}
+                        disabled={isParsingWord}
+                        activeOpacity={0.8}
+                      >
+                        {isParsingWord ? (
+                          <ActivityIndicator size="small" color="#38BDF8" />
+                        ) : (
+                          <FileUp color="#38BDF8" size={24} />
+                        )}
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={styles.filePickerBtnTitle}>
+                            {importedQuizQuestions.length > 0
+                              ? `Đã nhận diện ${importedQuizQuestions.length} câu hỏi trắc nghiệm`
+                              : 'Chạm để chọn file Word (.docx) chứa câu hỏi'}
+                          </Text>
+                          <Text style={styles.filePickerBtnSub}>
+                            Hỗ trợ tự động phân tích định dạng: "Câu 1: ... A. ... B. ... Đáp án: A"
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
 
-                  <Text style={styles.optionsHeaderLabel}>
-                    Các lựa chọn (Chạm nút tròn để chọn đáp án đúng):
-                  </Text>
+                      {importedQuizQuestions.length > 0 && (
+                        <View style={styles.quizPreviewBox}>
+                          <Text style={styles.quizPreviewTitle}>
+                            Xem trước {importedQuizQuestions.length} câu hỏi đã nạp:
+                          </Text>
+                          {importedQuizQuestions.slice(0, 3).map((q, idx) => (
+                            <View key={idx} style={styles.quizPreviewItem}>
+                              <Text style={styles.quizPreviewItemText} numberOfLines={2}>
+                                {idx + 1}. {q.content}
+                              </Text>
+                              <Text style={styles.quizPreviewSubText}>
+                                {q.options.length} phương án • Đáp án: {q.options.find((o) => o.isCorrect)?.optionText || 'A'}
+                              </Text>
+                            </View>
+                          ))}
+                          {importedQuizQuestions.length > 3 && (
+                            <Text style={styles.quizPreviewMore}>
+                              ... và {importedQuizQuestions.length - 3} câu hỏi khác
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View>
+                      <TextInput
+                        style={[styles.innerInput, { height: 60 }]}
+                        placeholder="Nội dung câu hỏi trắc nghiệm *"
+                        placeholderTextColor="#64748B"
+                        multiline
+                        value={quizQuestionText}
+                        onChangeText={setQuizQuestionText}
+                      />
 
-                  {/* Option A */}
-                  <View style={styles.quizOptionRow}>
-                    <TouchableOpacity
-                      style={[styles.radioCircle, quizCorrectIndex === 0 && styles.radioCircleActive]}
-                      onPress={() => setQuizCorrectIndex(0)}
-                    >
-                      {quizCorrectIndex === 0 ? <View style={styles.radioInner} /> : null}
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.innerInput, styles.optionInput]}
-                      placeholder="Đáp án A *"
-                      placeholderTextColor="#64748B"
-                      value={quizOptionA}
-                      onChangeText={setQuizOptionA}
-                    />
-                  </View>
+                      <Text style={styles.optionsHeaderLabel}>
+                        Các lựa chọn (Chạm nút tròn để chọn đáp án đúng):
+                      </Text>
 
-                  {/* Option B */}
-                  <View style={styles.quizOptionRow}>
-                    <TouchableOpacity
-                      style={[styles.radioCircle, quizCorrectIndex === 1 && styles.radioCircleActive]}
-                      onPress={() => setQuizCorrectIndex(1)}
-                    >
-                      {quizCorrectIndex === 1 ? <View style={styles.radioInner} /> : null}
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.innerInput, styles.optionInput]}
-                      placeholder="Đáp án B *"
-                      placeholderTextColor="#64748B"
-                      value={quizOptionB}
-                      onChangeText={setQuizOptionB}
-                    />
-                  </View>
+                      {/* Option A */}
+                      <View style={styles.quizOptionRow}>
+                        <TouchableOpacity
+                          style={[styles.radioCircle, quizCorrectIndex === 0 && styles.radioCircleActive]}
+                          onPress={() => setQuizCorrectIndex(0)}
+                        >
+                          {quizCorrectIndex === 0 ? <View style={styles.radioInner} /> : null}
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[styles.innerInput, styles.optionInput]}
+                          placeholder="Đáp án A *"
+                          placeholderTextColor="#64748B"
+                          value={quizOptionA}
+                          onChangeText={setQuizOptionA}
+                        />
+                      </View>
 
-                  {/* Option C */}
-                  <View style={styles.quizOptionRow}>
-                    <TouchableOpacity
-                      style={[styles.radioCircle, quizCorrectIndex === 2 && styles.radioCircleActive]}
-                      onPress={() => setQuizCorrectIndex(2)}
-                    >
-                      {quizCorrectIndex === 2 ? <View style={styles.radioInner} /> : null}
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.innerInput, styles.optionInput]}
-                      placeholder="Đáp án C (tùy chọn)"
-                      placeholderTextColor="#64748B"
-                      value={quizOptionC}
-                      onChangeText={setQuizOptionC}
-                    />
-                  </View>
+                      {/* Option B */}
+                      <View style={styles.quizOptionRow}>
+                        <TouchableOpacity
+                          style={[styles.radioCircle, quizCorrectIndex === 1 && styles.radioCircleActive]}
+                          onPress={() => setQuizCorrectIndex(1)}
+                        >
+                          {quizCorrectIndex === 1 ? <View style={styles.radioInner} /> : null}
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[styles.innerInput, styles.optionInput]}
+                          placeholder="Đáp án B *"
+                          placeholderTextColor="#64748B"
+                          value={quizOptionB}
+                          onChangeText={setQuizOptionB}
+                        />
+                      </View>
 
-                  {/* Option D */}
-                  <View style={styles.quizOptionRow}>
-                    <TouchableOpacity
-                      style={[styles.radioCircle, quizCorrectIndex === 3 && styles.radioCircleActive]}
-                      onPress={() => setQuizCorrectIndex(3)}
-                    >
-                      {quizCorrectIndex === 3 ? <View style={styles.radioInner} /> : null}
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.innerInput, styles.optionInput]}
-                      placeholder="Đáp án D (tùy chọn)"
-                      placeholderTextColor="#64748B"
-                      value={quizOptionD}
-                      onChangeText={setQuizOptionD}
-                    />
-                  </View>
+                      {/* Option C */}
+                      <View style={styles.quizOptionRow}>
+                        <TouchableOpacity
+                          style={[styles.radioCircle, quizCorrectIndex === 2 && styles.radioCircleActive]}
+                          onPress={() => setQuizCorrectIndex(2)}
+                        >
+                          {quizCorrectIndex === 2 ? <View style={styles.radioInner} /> : null}
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[styles.innerInput, styles.optionInput]}
+                          placeholder="Đáp án C (tùy chọn)"
+                          placeholderTextColor="#64748B"
+                          value={quizOptionC}
+                          onChangeText={setQuizOptionC}
+                        />
+                      </View>
+
+                      {/* Option D */}
+                      <View style={styles.quizOptionRow}>
+                        <TouchableOpacity
+                          style={[styles.radioCircle, quizCorrectIndex === 3 && styles.radioCircleActive]}
+                          onPress={() => setQuizCorrectIndex(3)}
+                        >
+                          {quizCorrectIndex === 3 ? <View style={styles.radioInner} /> : null}
+                        </TouchableOpacity>
+                        <TextInput
+                          style={[styles.innerInput, styles.optionInput]}
+                          placeholder="Đáp án D (tùy chọn)"
+                          placeholderTextColor="#64748B"
+                          value={quizOptionD}
+                          onChangeText={setQuizOptionD}
+                        />
+                      </View>
+                    </View>
+                  )}
 
                   <View style={styles.modalBtnRow}>
                     <TouchableOpacity
                       style={styles.cancelBtn}
-                      onPress={() => setQuizModalLesson(null)}
+                      onPress={() => {
+                        setQuizModalLesson(null);
+                        setImportedQuizQuestions([]);
+                      }}
                     >
                       <Text style={styles.cancelBtnText}>Hủy</Text>
                     </TouchableOpacity>
@@ -1610,5 +1904,89 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  modeTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  modeTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#070B17',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    gap: 6,
+  },
+  modeTabBtnActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderColor: '#38BDF8',
+  },
+  modeTabText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  modeTabTextActive: {
+    color: '#38BDF8',
+  },
+  filePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#070B17',
+    borderWidth: 1.5,
+    borderColor: '#38BDF8',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 14,
+  },
+  filePickerBtnTitle: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filePickerBtnSub: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  quizPreviewBox: {
+    backgroundColor: '#070B17',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  quizPreviewTitle: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  quizPreviewItem: {
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  quizPreviewItemText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+  },
+  quizPreviewSubText: {
+    color: '#64748B',
+    fontSize: 10,
+    marginTop: 1,
+  },
+  quizPreviewMore: {
+    color: '#818CF8',
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });

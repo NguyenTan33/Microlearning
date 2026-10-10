@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Maximize2, AlertCircle } from 'lucide-react-native';
+import { Maximize2, AlertCircle, PictureInPicture } from 'lucide-react-native';
 import { downloadManager } from '../../services/downloadManager';
 import { autoSyncEngine } from '../../services/autoSyncEngine';
 import { catalogApi } from '../../services/catalogApi';
@@ -187,16 +187,37 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
         nativeControls={true}
         fullscreenOptions={{ enable: true }}
         allowsPictureInPicture={true}
+        startsPictureInPictureAutomatically={true}
       />
 
-      {/* Nút phóng to toàn màn hình */}
-      <TouchableOpacity
-        style={styles.fullscreenBtn}
-        onPress={handleToggleFullscreen}
-        activeOpacity={0.8}
-      >
-        <Maximize2 color="#FFFFFF" size={14} />
-      </TouchableOpacity>
+      {/* Cụm nút điều khiển PiP & Toàn màn hình */}
+      <View style={styles.controlsRow}>
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={() => {
+            if (videoViewRef.current) {
+              try {
+                videoViewRef.current.startPictureInPicture();
+              } catch (err) {
+                console.warn('[HybridVideoPlayer] Start PiP error:', err);
+              }
+            }
+          }}
+          activeOpacity={0.8}
+          accessibilityLabel="Thu nhỏ màn hình PiP"
+        >
+          <PictureInPicture color="#FFFFFF" size={14} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.controlBtn}
+          onPress={handleToggleFullscreen}
+          activeOpacity={0.8}
+          accessibilityLabel="Phóng to toàn màn hình"
+        >
+          <Maximize2 color="#FFFFFF" size={14} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -231,15 +252,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
   },
-  fullscreenBtn: {
+  controlsRow: {
     position: 'absolute',
     bottom: 10,
     right: 10,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    padding: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 10,
+  },
+  controlBtn: {
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    padding: 7,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    zIndex: 10,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
 });

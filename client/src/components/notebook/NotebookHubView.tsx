@@ -35,11 +35,11 @@ import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
 import { attachmentApi } from '../../services/attachmentApi';
 import { ttsApi } from '../../services/ttsApi';
-import type { Course, Lesson, LessonAttachment } from '../../types/catalog.types';
+import type { Course, CourseDetail, Lesson, LessonAttachment } from '../../types/catalog.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 
 interface NotebookHubViewProps {
-  currentCourse?: Course;
+  currentCourse?: CourseDetail | Course;
   activeLesson?: Lesson;
   onBackToWorkspace?: () => void;
   currentUser?: UserTokenPayload | null;
@@ -111,21 +111,79 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
 
   // Tự động tải danh sách tài liệu khóa học khi mở modal gắn Source
   useEffect(() => {
-    if (isExistingSourceModalOpen && currentCourse?.id) {
+    if (isExistingSourceModalOpen) {
       setIsLoadingCourseDocs(true);
       setAttachedDocNotice(null);
-      attachmentApi.getCourseAttachments(currentCourse.id)
-        .then((docs) => {
-          setCourseAttachments(docs);
-        })
-        .catch(() => {
+
+      const fetchDocs = async () => {
+        try {
+          let docs: LessonAttachment[] = [];
+
+          // 1. Thử lấy từ endpoint cấp khóa học: /api/courses/{courseId}/attachments
+          if (currentCourse?.id && currentCourse.id > 0) {
+            try {
+              docs = await attachmentApi.getCourseAttachments(currentCourse.id);
+            } catch {
+              docs = [];
+            }
+          }
+
+          // 2. Nếu danh sách rỗng nhưng đang mở một bài học cụ thể, truy vấn trực tiếp bài học đó
+          if ((!docs || docs.length === 0) && activeLesson?.id) {
+            try {
+              const lessonDocs = await attachmentApi.getAttachments(activeLesson.id);
+              if (Array.isArray(lessonDocs) && lessonDocs.length > 0) {
+                docs = lessonDocs;
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          // 3. Nếu vẫn rỗng, lặp qua tất cả các bài học thuộc môn học của khóa học để gom tài liệu
+          const courseDetail = currentCourse && 'subjects' in currentCourse ? (currentCourse as CourseDetail) : null;
+          if ((!docs || docs.length === 0) && courseDetail?.subjects) {
+            const allLessonIds: number[] = [];
+            courseDetail.subjects.forEach((subj) => {
+              subj.lessons?.forEach((les) => {
+                if (les.id && !allLessonIds.includes(les.id)) {
+                  allLessonIds.push(les.id);
+                }
+              });
+            });
+
+            if (allLessonIds.length > 0) {
+              const nestedResults = await Promise.all(
+                allLessonIds.map(async (lesId) => {
+                  try {
+                    return await attachmentApi.getAttachments(lesId);
+                  } catch {
+                    return [];
+                  }
+                })
+              );
+              const flat = nestedResults.flat();
+              // Lọc trùng theo id
+              const seen = new Set<number>();
+              docs = flat.filter((item) => {
+                if (seen.has(item.id)) return false;
+                seen.add(item.id);
+                return true;
+              });
+            }
+          }
+
+          setCourseAttachments(Array.isArray(docs) ? docs : []);
+        } catch {
           setCourseAttachments([]);
-        })
-        .finally(() => {
+        } finally {
           setIsLoadingCourseDocs(false);
-        });
+        }
+      };
+
+      fetchDocs();
     }
-  }, [isExistingSourceModalOpen, currentCourse?.id]);
+  }, [isExistingSourceModalOpen, currentCourse, activeLesson?.id]);
 
   // Source form states
   const [newSourceTitle, setNewSourceTitle] = useState<string>('');

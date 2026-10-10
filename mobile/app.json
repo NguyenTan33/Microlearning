@@ -30,7 +30,13 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "expo-video",
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true,
+          "supportsBackgroundAudio": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
