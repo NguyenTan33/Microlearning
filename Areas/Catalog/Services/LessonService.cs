@@ -40,11 +40,22 @@ namespace Microlearning.Areas.Catalog.Services
                     l.CreatedAt,
                     l.UpdatedAt,
                     l.Quiz != null,
-                    l.MediaAssets.Count
+                    l.MediaAssets.Count,
+                    l.MediaAssets.OrderByDescending(m => m.CreatedAt).Select(m => m.BlobKey).FirstOrDefault()
                 ))
                 .ToListAsync();
 
-            return lessons;
+            return lessons.Select(l =>
+            {
+                var vUrl = l.VideoUrl;
+                if (!string.IsNullOrWhiteSpace(vUrl) &&
+                    !vUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !vUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    vUrl = $"/api/media/lesson/{l.Id}/stream";
+                }
+                return l with { VideoUrl = vUrl };
+            }).ToList();
         }
 
         public async Task<LessonResponse> GetLessonByIdAsync(int lessonId)
@@ -60,6 +71,15 @@ namespace Microlearning.Areas.Catalog.Services
                 throw new BusinessException($"Không tìm thấy bài học với mã {lessonId}.");
             }
 
+            var latestMedia = lesson.MediaAssets.OrderByDescending(m => m.CreatedAt).FirstOrDefault();
+            string? videoUrl = latestMedia?.BlobKey;
+            if (!string.IsNullOrWhiteSpace(videoUrl) &&
+                !videoUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !videoUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                videoUrl = $"/api/media/lesson/{lesson.Id}/stream";
+            }
+
             return new LessonResponse(
                 lesson.Id,
                 lesson.SubjectId,
@@ -72,7 +92,8 @@ namespace Microlearning.Areas.Catalog.Services
                 lesson.CreatedAt,
                 lesson.UpdatedAt,
                 lesson.Quiz != null,
-                lesson.MediaAssets.Count
+                lesson.MediaAssets.Count,
+                videoUrl
             );
         }
 

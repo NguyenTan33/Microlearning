@@ -79,20 +79,33 @@ namespace Microlearning.Areas.Catalog.Services
                 s.CreatedAt,
                 s.UpdatedAt,
                 s.Lessons.Count,
-                s.Lessons.Select(l => new LessonResponse(
-                    l.Id,
-                    l.SubjectId,
-                    l.Title,
-                    l.Description,
-                    l.DurationSeconds,
-                    l.SortOrder,
-                    l.Version,
-                    l.IsPublished,
-                    l.CreatedAt,
-                    l.UpdatedAt,
-                    l.Quiz != null,
-                    l.MediaAssets.Count
-                )).ToList()
+                s.Lessons.Select(l =>
+                {
+                    var latestMedia = l.MediaAssets.OrderByDescending(m => m.CreatedAt).FirstOrDefault();
+                    string? videoUrl = latestMedia?.BlobKey;
+                    if (!string.IsNullOrWhiteSpace(videoUrl) &&
+                        !videoUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                        !videoUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        videoUrl = $"/api/media/lesson/{l.Id}/stream";
+                    }
+
+                    return new LessonResponse(
+                        l.Id,
+                        l.SubjectId,
+                        l.Title,
+                        l.Description,
+                        l.DurationSeconds,
+                        l.SortOrder,
+                        l.Version,
+                        l.IsPublished,
+                        l.CreatedAt,
+                        l.UpdatedAt,
+                        l.Quiz != null,
+                        l.MediaAssets.Count,
+                        videoUrl
+                    );
+                }).ToList()
             )).ToList();
 
             return new CourseDetailResponse(
