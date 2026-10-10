@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { notebookService } from '../services/notebookService';
+import { extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../utils/documentExtractor';
 import type {
   Notebook,
   NotebookSource,
@@ -280,16 +281,24 @@ export function useNotebook(options: UseNotebookOptions = {}) {
       try {
         const fileName = attachment.originalFileName || attachment.fileName;
         const docTitle = `[Tài liệu] ${fileName}`;
-        const content = [
-          `TÀI LIỆU KHÓA HỌC: ${fileName}`,
-          `Khóa học: ${course?.title || currentCourse?.title || 'Chưa xác định'}`,
-          `Loại tài liệu: ${attachment.fileType}`,
-          `Kích thước: ${(attachment.fileSizeBytes / 1024).toFixed(1)} KB`,
-          `Đường dẫn tệp gốc: ${attachment.fileUrl}`,
-          `Mã bài học liên kết: ${attachment.lessonId}`,
-          `Thời gian tải lên: ${new Date(attachment.createdAt).toLocaleString('vi-VN')}`,
-          `Nội dung tài liệu học tập chính thức do giảng viên đính kèm. AI có thể sử dụng thông tin này để trả lời câu hỏi và giải đáp thắc mắc chuyên sâu cho học viên.`,
-        ].join('\n');
+
+        // 1. Tự động tải tệp từ Azure Blob Storage và trích xuất nội dung văn bản thực tế (.docx, .doc, .pdf, .txt)
+        let extractedText = '';
+        if (attachment.fileUrl) {
+          try {
+            extractedText = await extractTextFromRemoteUrl(attachment.fileUrl, fileName);
+          } catch (extractErr) {
+            console.warn('[useNotebook] Error extracting text from attachment URL:', extractErr);
+          }
+        }
+
+        // 2. Định dạng nội dung nguồn với toàn bộ văn bản thực tế để AI đọc hiểu
+        const content = formatExtractedDocumentContent(fileName, extractedText, {
+          courseTitle: course?.title || currentCourse?.title,
+          fileType: attachment.fileType,
+          sizeBytes: attachment.fileSizeBytes,
+          fileUrl: attachment.fileUrl,
+        });
 
         const newSource = await notebookService.addLessonSource(
           nbId,
