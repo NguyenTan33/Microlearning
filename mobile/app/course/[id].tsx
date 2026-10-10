@@ -55,7 +55,7 @@ export default function CourseDetailScreen() {
   const router = useRouter();
   const courseId = Number(id);
   const { isTeacher, isAdmin } = useAuthStore();
-  const { downloadedLessonIds, activeDownloads, startDownload, deleteDownload } = useDownloadStore();
+  const { downloadedLessonIds, activeDownloads, startDownload, deleteDownload, refreshDownloads } = useDownloadStore();
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -202,8 +202,11 @@ export default function CourseDetailScreen() {
           }
         }
         await startDownload(activeLesson.id, streamUrl, activeLesson.title);
+        await refreshDownloads();
+        useDownloadStore.getState().removeDownloadProgress(activeLesson.id);
         Alert.alert('Thành công! 💾', `Đã lưu bài học "${activeLesson.title}" vào kho ngoại tuyến.`);
       } catch {
+        useDownloadStore.getState().removeDownloadProgress(activeLesson.id);
         Alert.alert('Lỗi', 'Không thể tải video bài học.');
       }
     }
@@ -407,17 +410,17 @@ export default function CourseDetailScreen() {
                   onPress={handleToggleDownload}
                   activeOpacity={0.8}
                 >
-                  {activeDownloads[activeLesson.id] !== undefined ? (
+                  {downloadedLessonIds.has(activeLesson.id) ? (
+                    <>
+                      <HardDrive color="#10B981" size={15} />
+                      <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
+                    </>
+                  ) : activeDownloads[activeLesson.id] !== undefined ? (
                     <>
                       <ActivityIndicator size="small" color="#38BDF8" />
                       <Text style={styles.quickActionPillText}>
                         Đang tải {activeDownloads[activeLesson.id]}%
                       </Text>
-                    </>
-                  ) : downloadedLessonIds.has(activeLesson.id) ? (
-                    <>
-                      <HardDrive color="#10B981" size={15} />
-                      <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
                     </>
                   ) : (
                     <>
@@ -435,6 +438,26 @@ export default function CourseDetailScreen() {
                 >
                   <Bookmark color="#F59E0B" size={15} fill="#F59E0B" />
                   <Text style={styles.quickActionPillText}>Lưu mốc</Text>
+                </TouchableOpacity>
+
+                {/* 4. Nút Sổ tay AI chuyển sang màn AI Notebook */}
+                <TouchableOpacity
+                  style={styles.quickActionPill}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/(tabs)/ai',
+                      params: {
+                        courseId: String(course.id),
+                        courseTitle: course.title,
+                        lessonId: String(activeLesson.id),
+                        lessonTitle: activeLesson.title,
+                      },
+                    });
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Sparkles color="#A855F7" size={15} />
+                  <Text style={styles.quickActionPillText}>Sổ tay AI</Text>
                 </TouchableOpacity>
               </View>
 
