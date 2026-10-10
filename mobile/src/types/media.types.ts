@@ -17,6 +17,21 @@ export interface LinkExternalMediaRequest {
 }
 
 /**
+ * Trích xuất Video ID 11 ký tự của YouTube từ bất kỳ định dạng liên kết nào
+ */
+export function extractYoutubeVideoId(rawUrl: string): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+  if (shortMatch) return shortMatch[1];
+  const pathMatch = trimmed.match(/youtube\.com\/(?:embed|shorts|live|v)\/([a-zA-Z0-9_-]{11})/i);
+  if (pathMatch) return pathMatch[1];
+  const watchMatch = trimmed.match(/youtube\.com\/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})/i);
+  if (watchMatch) return watchMatch[1];
+  return null;
+}
+
+/**
  * Trích xuất loại nguồn và đường dẫn Embed của video từ URL
  */
 export function parseVideoUrl(rawUrl: string): {
@@ -32,13 +47,12 @@ export function parseVideoUrl(rawUrl: string): {
   const url = rawUrl.trim();
 
   // 1. YouTube
-  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/i);
-  if (ytMatch && ytMatch[1]) {
-    const videoId = ytMatch[1];
+  const ytId = extractYoutubeVideoId(url);
+  if (ytId) {
     return {
       sourceType: 'youtube',
-      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0`,
-      videoId,
+      embedUrl: `https://www.youtube.com/embed/${ytId}?enablejsapi=1&rel=0`,
+      videoId: ytId,
       platformName: 'YouTube',
     };
   }
