@@ -475,6 +475,11 @@ export default function AiNotebookScreen() {
         doc.lessonTitle
       );
       setSources((prev) => [newSrc, ...prev.filter((s) => s.id !== newSrc.id)]);
+      setNotebooks((prev) =>
+        prev.map((nb) =>
+          nb.id === activeNotebook.id ? { ...nb, source_count: (nb.source_count || 0) + 1 } : nb
+        )
+      );
       Alert.alert('Thành công! 📎', `Đã gắn tài liệu "${doc.fileName}" vào sổ tay "${activeNotebook.name}".`);
     } catch {
       Alert.alert('Lỗi', 'Không thể gắn tài liệu vào sổ tay.');
@@ -489,6 +494,11 @@ export default function AiNotebookScreen() {
     try {
       await notebookService.addSourceToNotebook(activeNotebook.id, s.id);
       setSources((prev) => [s, ...prev.filter((item) => item.id !== s.id)]);
+      setNotebooks((prev) =>
+        prev.map((nb) =>
+          nb.id === activeNotebook.id ? { ...nb, source_count: (nb.source_count || 0) + 1 } : nb
+        )
+      );
       Alert.alert('Thành công! 🔗', `Đã gắn tài liệu "${s.title}" vào sổ tay "${activeNotebook.name}".`);
     } catch {
       Alert.alert('Lỗi', 'Không thể gắn tài liệu vào sổ tay.');
@@ -566,6 +576,11 @@ export default function AiNotebookScreen() {
       );
 
       setSources((prev) => [newSrc, ...prev]);
+      setNotebooks((prev) =>
+        prev.map((nb) =>
+          nb.id === activeNotebook.id ? { ...nb, source_count: (nb.source_count || 0) + 1 } : nb
+        )
+      );
       Alert.alert('Thành công! 📄', `Đã nạp tệp "${fileName}" vào sổ tay "${activeNotebook.name}".`);
     } catch (err) {
       console.warn('[AiNotebook] Upload device file error:', err);
@@ -727,6 +742,24 @@ export default function AiNotebookScreen() {
           {/* TAB 1: HỎI ĐÁP RAG CHAT */}
           {activeTab === 'CHAT' && (
             <View style={styles.chatSection}>
+              {/* Context Bar hiển thị Sổ tay & Tài liệu đang kết nối RAG */}
+              <View style={styles.chatContextBar}>
+                <View style={styles.chatContextInfo}>
+                  <BookMarked color="#818CF8" size={13} />
+                  <Text style={styles.chatContextText} numberOfLines={1}>
+                    {activeNotebook?.name || 'Sổ tay AI'} ({sources.length} tài liệu đã gắn)
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.chatAttachBtn}
+                  onPress={handleOpenExistingSourceModal}
+                  activeOpacity={0.8}
+                >
+                  <Link2 color="#818CF8" size={12} />
+                  <Text style={styles.chatAttachBtnText}>+ Gắn Source</Text>
+                </TouchableOpacity>
+              </View>
+
               <FlatList
                 ref={flatListRef}
                 data={messages}
@@ -969,13 +1002,23 @@ export default function AiNotebookScreen() {
             <ScrollView style={styles.tabContentScroll}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionHeading}>Danh mục sổ tay AI</Text>
-                <TouchableOpacity
-                  style={styles.actionBtnPrimary}
-                  onPress={() => setIsCreatingNotebook(true)}
-                >
-                  <Plus color="#FFFFFF" size={14} />
-                  <Text style={styles.actionBtnText}>Tạo sổ tay</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={styles.actionBtnSecondary}
+                    onPress={handleOpenExistingSourceModal}
+                    activeOpacity={0.8}
+                  >
+                    <Link2 color="#818CF8" size={13} />
+                    <Text style={styles.actionBtnSecondaryText}>Gắn Source</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionBtnPrimary}
+                    onPress={() => setIsCreatingNotebook(true)}
+                  >
+                    <Plus color="#FFFFFF" size={14} />
+                    <Text style={styles.actionBtnText}>Tạo sổ</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Form tạo Notebook */}
@@ -1057,12 +1100,34 @@ export default function AiNotebookScreen() {
                       <Text style={styles.notebookCountBadge}>
                         {nb.source_count || 0} tài liệu
                       </Text>
-                      {isSelected && (
-                        <View style={styles.activePill}>
-                          <CheckCircle2 color="#10B981" size={12} />
-                          <Text style={styles.activePillText}>Đang dùng</Text>
-                        </View>
-                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {/* Nút Gắn Source trực tiếp vào Sổ tay này */}
+                        <TouchableOpacity
+                          style={styles.nbAttachSourceBtn}
+                          onPress={async () => {
+                            await handleSelectNotebook(nb);
+                            handleOpenExistingSourceModal();
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Link2 color="#818CF8" size={12} />
+                          <Text style={styles.nbAttachSourceBtnText}>Gắn Source</Text>
+                        </TouchableOpacity>
+
+                        {isSelected ? (
+                          <View style={styles.activePill}>
+                            <CheckCircle2 color="#10B981" size={12} />
+                            <Text style={styles.activePillText}>Đang dùng</Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.selectNbBtn}
+                            onPress={() => handleSelectNotebook(nb)}
+                          >
+                            <Text style={styles.selectNbBtnText}>Chọn</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -2308,6 +2373,86 @@ const styles = StyleSheet.create({
   modalCloseFooterBtnText: {
     color: '#E2E8F0',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  chatContextBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0D1424',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  chatContextInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  chatContextText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  chatAttachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  chatAttachBtnText: {
+    color: '#818CF8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  actionBtnSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  actionBtnSecondaryText: {
+    color: '#818CF8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  nbAttachSourceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.25)',
+  },
+  nbAttachSourceBtnText: {
+    color: '#818CF8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  selectNbBtn: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  selectNbBtnText: {
+    color: '#94A3B8',
+    fontSize: 11,
     fontWeight: '600',
   },
 });

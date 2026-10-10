@@ -646,6 +646,8 @@ export function useNotebook(options: UseNotebookOptions = {}) {
     setSelectedSourceDetail,
     sources,
     messages,
+    setMessages,
+    clearMessages: () => setMessages([]),
     searchResults,
     podcasts,
     episodeProfiles,
