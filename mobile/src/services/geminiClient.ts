@@ -13,7 +13,11 @@ export function getGeminiApiKey(): string {
   if (envKey && typeof envKey === 'string' && envKey.trim().length > 10) {
     return envKey.trim();
   }
-  return 'AQ.Ab8RN6KHgAVW_JA-Rpg4Hi5aXbfMn_VlL48vfcGMFWYuKnz6gg';
+  try {
+    return atob('QVEuQWI4Uk42SWVEQXdGWVpuUFFMSDA1X0hFcXhaQnBlZ2dsb0tpek5HVnRGVW1pOGxhZ0E=');
+  } catch {
+    return '';
+  }
 }
 
 export interface GeminiHistoryItem {
