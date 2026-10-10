@@ -1,4 +1,5 @@
-import { apiClient } from './apiClient';
+import { apiClient, getApiBaseUrl } from './apiClient';
+import { STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
 import { catalogRepository } from '../db/repositories/catalogRepository';
 import type { Course, CourseDetail, Subject, Lesson } from '../types/catalog.types';
@@ -302,6 +303,7 @@ export const catalogApi = {
     sortOrder: number;
   }): Promise<Lesson> {
     const res = await apiClient.post<Lesson>('/api/lessons', data);
+    catalogRepository.saveLesson(res.data).catch(() => {});
     return res.data;
   },
 
@@ -315,6 +317,7 @@ export const catalogApi = {
     }
   ): Promise<Lesson> {
     const res = await apiClient.put<Lesson>(`/api/lessons/${id}`, data);
+    catalogRepository.saveLesson(res.data).catch(() => {});
     return res.data;
   },
 
@@ -347,19 +350,60 @@ export const catalogApi = {
     } as unknown as Blob);
     formData.append('lessonId', String(lessonId));
 
-    const res = await apiClient.post<{
-      id: number;
-      fileName: string;
-      blobKey: string;
-      streamUrl: string;
-      sizeBytes: number;
-      lessonId?: number;
-    }>('/api/media/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return res.data;
+    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // LƯU Ý QUAN TRỌNG CHO REACT NATIVE:
+    // Tuyệt đối KHÔNG gán 'Content-Type': 'multipart/form-data' thủ công.
+    // fetch trên React Native sẽ tự động gắn header kèm boundary thích hợp.
+
+    const controller = new AbortController();
+    // Cho phép upload video tối đa 10 phút trước khi hủy tác vụ
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/media/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        let errorMsg = `Tải lên thất bại với mã lỗi HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          errorMsg = errData.message || errData.error || errorMsg;
+        } catch {
+          const raw = await res.text();
+          if (raw) errorMsg = raw;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await res.json();
+
+      // Cập nhật thông tin vào cache SQLite cục bộ nếu có
+      try {
+        const existingLesson = await catalogRepository.getLessonById(lessonId);
+        if (existingLesson) {
+          await catalogRepository.saveLesson({
+            ...existingLesson,
+            mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
+            videoUrl: result.streamUrl || existingLesson.videoUrl,
+          });
+        }
+      } catch {
+        // ignore cache write error
+      }
+
+      return result;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   async linkExternalLessonVideo(data: LinkExternalMediaRequest): Promise<LessonMediaInfo> {
@@ -387,6 +431,17 @@ export const catalogApi = {
     }
   ): Promise<{ id: number; title: string }> {
     const res = await apiClient.post<{ id: number; title: string }>(`/api/quizzes/lesson/${lessonId}`, data);
+    try {
+      const existing = await catalogRepository.getLessonById(lessonId);
+      if (existing) {
+        await catalogRepository.saveLesson({
+          ...existing,
+          hasQuiz: true,
+        });
+      }
+    } catch {
+      // ignore
+    }
     return res.data;
   },
 };
