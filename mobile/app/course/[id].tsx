@@ -171,8 +171,42 @@ export default function CourseDetailScreen() {
     setWatchedSeconds(completedIds.has(lesson.id) ? (lesson.durationSeconds || 180) : 0);
   };
 
+  const [activeLessonIsYoutube, setActiveLessonIsYoutube] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!activeLesson) {
+      setActiveLessonIsYoutube(false);
+      return;
+    }
+
+    if (activeLesson.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube') {
+      setActiveLessonIsYoutube(true);
+      return;
+    }
+
+    let isCancelled = false;
+    catalogApi.getLessonMediaInfo(activeLesson.id)
+      .then((mediaInfo) => {
+        if (isCancelled || !mediaInfo) return;
+        const isYt =
+          mediaInfo.sourceType === 'youtube' ||
+          Boolean(mediaInfo.streamUrl && parseVideoUrl(mediaInfo.streamUrl).sourceType === 'youtube') ||
+          Boolean(mediaInfo.externalUrl && parseVideoUrl(mediaInfo.externalUrl).sourceType === 'youtube') ||
+          Boolean(mediaInfo.embedUrl && parseVideoUrl(mediaInfo.embedUrl).sourceType === 'youtube');
+        setActiveLessonIsYoutube(isYt);
+      })
+      .catch(() => {
+        if (!isCancelled) setActiveLessonIsYoutube(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeLesson?.id, activeLesson?.videoUrl]);
+
   const isYoutubeLesson = Boolean(
-    activeLesson?.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube'
+    activeLessonIsYoutube ||
+      (activeLesson?.videoUrl && parseVideoUrl(activeLesson.videoUrl).sourceType === 'youtube')
   );
 
   const handleToggleDownload = async () => {
@@ -415,42 +449,36 @@ export default function CourseDetailScreen() {
                   <Text style={styles.quickActionPillText}>Tài liệu</Text>
                 </TouchableOpacity>
 
-                {/* 2. Nút Tải bài giảng về học offline */}
-                <TouchableOpacity
-                  style={[
-                    styles.quickActionPill,
-                    isYoutubeLesson && styles.quickActionPillDisabled,
-                    downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
-                  ]}
-                  onPress={handleToggleDownload}
-                  activeOpacity={isYoutubeLesson ? 0.6 : 0.8}
-                >
-                  {isYoutubeLesson ? (
-                    <>
-                      <Download color="#475569" size={15} />
-                      <Text style={[styles.quickActionPillText, { color: '#64748B' }]}>
-                        Không tải YT
-                      </Text>
-                    </>
-                  ) : downloadedLessonIds.has(activeLesson.id) ? (
-                    <>
-                      <HardDrive color="#10B981" size={15} />
-                      <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
-                    </>
-                  ) : activeDownloads[activeLesson.id] !== undefined ? (
-                    <>
-                      <ActivityIndicator size="small" color="#38BDF8" />
-                      <Text style={styles.quickActionPillText}>
-                        Đang tải {activeDownloads[activeLesson.id]}%
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Download color="#818CF8" size={15} />
-                      <Text style={styles.quickActionPillText}>Tải offline</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                {/* 2. Nút Tải bài giảng về học offline - ẨN HOÀN TOÀN NẾU LÀ VIDEO YOUTUBE */}
+                {!isYoutubeLesson && (
+                  <TouchableOpacity
+                    style={[
+                      styles.quickActionPill,
+                      downloadedLessonIds.has(activeLesson.id) && styles.quickActionPillSuccess,
+                    ]}
+                    onPress={handleToggleDownload}
+                    activeOpacity={0.8}
+                  >
+                    {downloadedLessonIds.has(activeLesson.id) ? (
+                      <>
+                        <HardDrive color="#10B981" size={15} />
+                        <Text style={[styles.quickActionPillText, { color: '#10B981' }]}>Đã tải offline</Text>
+                      </>
+                    ) : activeDownloads[activeLesson.id] !== undefined ? (
+                      <>
+                        <ActivityIndicator size="small" color="#38BDF8" />
+                        <Text style={styles.quickActionPillText}>
+                          Đang tải {activeDownloads[activeLesson.id]}%
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Download color="#818CF8" size={15} />
+                        <Text style={styles.quickActionPillText}>Tải offline</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
 
                 {/* 3. Nút Lưu mốc video */}
                 <TouchableOpacity
