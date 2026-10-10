@@ -13,14 +13,16 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import YoutubePlayer, { YoutubeIframeRef, PLAYER_STATES } from 'react-native-youtube-iframe';
 import { Maximize2, AlertCircle, PictureInPicture, Youtube, ExternalLink } from 'lucide-react-native';
 import { downloadManager } from '../../services/downloadManager';
+import { downloadRepository } from '../../db/repositories/downloadRepository';
 import { autoSyncEngine } from '../../services/autoSyncEngine';
 import { catalogApi } from '../../services/catalogApi';
-import { parseVideoUrl } from '../../types/media.types';
+import { parseVideoUrl, extractYoutubeVideoId, LessonMediaInfo } from '../../types/media.types';
 
 interface HybridVideoPlayerProps {
   lessonId: number;
   onlineStreamUrl?: string;
   videoUrl?: string;
+  mediaInfo?: LessonMediaInfo | null;
   durationSeconds?: number;
   seekTimestamp?: number;
   onCompleted?: () => void;
@@ -33,6 +35,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
   lessonId,
   onlineStreamUrl,
   videoUrl,
+  mediaInfo,
   durationSeconds = 120,
   seekTimestamp,
   onCompleted,
@@ -71,7 +74,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     }
   };
 
-  // 1. Phân giải nguồn phát: Ưu tiên file offline -> YouTube link -> Azure Media Stream
+  // 1. Phân giải nguồn phát: Ưu tiên YouTube -> File offline trong máy -> Azure Media Stream
   useEffect(() => {
     let isMounted = true;
     setIsLoadingSource(true);
@@ -80,7 +83,89 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
 
     const resolveStream = async () => {
       try {
-        // Ưu tiên 1: Kiểm tra ngay file tải ngoại tuyến trong máy (0ms, không phụ thuộc mạng)
+        // BƯỚC 1: Thu thập tất cả URL ứng viên từ props và mediaInfo đã biết
+        let streamTargetUrl = onlineStreamUrl || videoUrl;
+        const candidateUrls = [
+          streamTargetUrl,
+          mediaInfo?.externalUrl,
+          mediaInfo?.embedUrl,
+          mediaInfo?.streamUrl,
+        ].filter(Boolean) as string[];
+
+        // Kiểm tra xem đã có Video ID YouTube từ props hoặc mediaInfo chưa
+        let detectedYtId: string | null = null;
+        if (mediaInfo?.sourceType === 'youtube') {
+          detectedYtId =
+            extractYoutubeVideoId(mediaInfo.externalUrl || '') ||
+            extractYoutubeVideoId(mediaInfo.embedUrl || '') ||
+            extractYoutubeVideoId(mediaInfo.streamUrl || '');
+        }
+
+        if (!detectedYtId) {
+          for (const url of candidateUrls) {
+            const ytId = extractYoutubeVideoId(url);
+            if (ytId) {
+              detectedYtId = ytId;
+              break;
+            }
+          }
+        }
+
+        // BƯỚC 2: Nếu chưa phát hiện YouTube và chưa có mediaInfo đầy đủ, truy vấn trực tiếp từ Backend
+        let activeMediaInfo = mediaInfo;
+        if (!detectedYtId && !activeMediaInfo) {
+          try {
+            activeMediaInfo = await catalogApi.getLessonMediaInfo(lessonId);
+          } catch {
+            // Bỏ qua lỗi mạng
+          }
+        }
+
+        if (activeMediaInfo) {
+          if (activeMediaInfo.sourceType === 'youtube') {
+            detectedYtId =
+              extractYoutubeVideoId(activeMediaInfo.externalUrl || '') ||
+              extractYoutubeVideoId(activeMediaInfo.embedUrl || '') ||
+              extractYoutubeVideoId(activeMediaInfo.streamUrl || '');
+          }
+
+          if (!detectedYtId) {
+            const apiUrls = [
+              activeMediaInfo.externalUrl,
+              activeMediaInfo.embedUrl,
+              activeMediaInfo.streamUrl,
+            ].filter(Boolean) as string[];
+
+            for (const url of apiUrls) {
+              const ytId = extractYoutubeVideoId(url);
+              if (ytId) {
+                detectedYtId = ytId;
+                break;
+              }
+            }
+          }
+
+          if (!streamTargetUrl) {
+            streamTargetUrl = activeMediaInfo.streamUrl || activeMediaInfo.externalUrl || undefined;
+          }
+        }
+
+        // BƯỚC 3: XỬ LÝ NGUỒN PHÁT
+        // 3.1. NẾU LÀ YOUTUBE: Luôn luôn kích hoạt YouTube IFrame Player!
+        if (detectedYtId) {
+          // Xóa dọn dẹp file offline / record tải nhầm nếu trước đó từng tải test.mp4 vào máy
+          downloadRepository.deleteDownloadByLessonId(lessonId).catch(() => {});
+
+          if (isMounted) {
+            setPlayerMode('youtube');
+            setYoutubeVideoId(detectedYtId);
+            setSourceUri(null);
+            setIsLoadingSource(false);
+          }
+          return;
+        }
+
+        // 3.2. NẾU LÀ VIDEO TRỰC TIẾP / AZURE BLOB: Kiểm tra file ngoại tuyến đã tải trong máy (0ms)
         const offlineCheck = await downloadManager.resolvePlayableVideoUri(lessonId);
         if (offlineCheck.isOffline && offlineCheck.uri) {
           if (isMounted) {
@@ -90,71 +175,6 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
             setIsLoadingSource(false);
           }
           return;
-        }
-
-        // Ưu tiên 2: Kiểm tra nguồn từ props (onlineStreamUrl hoặc videoUrl)
-        let streamTargetUrl = onlineStreamUrl || videoUrl;
-
-        // Nếu props chứa link YouTube trực tiếp
-        if (streamTargetUrl) {
-          const parsed = parseVideoUrl(streamTargetUrl);
-          if (parsed.sourceType === 'youtube' && parsed.videoId) {
-            if (isMounted) {
-              setPlayerMode('youtube');
-              setYoutubeVideoId(parsed.videoId);
-              setSourceUri(null);
-              setIsLoadingSource(false);
-            }
-            return;
-          }
-        }
-
-        // Nếu chưa có hoặc chưa rõ, truy vấn chi tiết nguồn Media từ Backend API
-        let mediaInfoResult = null;
-        try {
-          mediaInfoResult = await catalogApi.getLessonMediaInfo(lessonId);
-        } catch {
-          // Bỏ qua lỗi mạng
-        }
-
-        if (mediaInfoResult) {
-          // Quét tất cả URL liên quan xem có link YouTube không
-          const testUrls = [
-            streamTargetUrl,
-            mediaInfoResult.externalUrl,
-            mediaInfoResult.streamUrl,
-            mediaInfoResult.embedUrl,
-          ].filter(Boolean) as string[];
-
-          for (const testUrl of testUrls) {
-            const parsed = parseVideoUrl(testUrl);
-            if (parsed.sourceType === 'youtube' && parsed.videoId) {
-              if (isMounted) {
-                setPlayerMode('youtube');
-                setYoutubeVideoId(parsed.videoId);
-                setSourceUri(null);
-                setIsLoadingSource(false);
-              }
-              return;
-            }
-          }
-
-          if (mediaInfoResult.sourceType === 'youtube') {
-            const ytId =
-              mediaInfoResult.embedUrl?.split('embed/')?.[1]?.split('?')?.[0] ||
-              mediaInfoResult.externalUrl?.split('v=')?.[1]?.substring(0, 11);
-            if (ytId && isMounted) {
-              setPlayerMode('youtube');
-              setYoutubeVideoId(ytId);
-              setSourceUri(null);
-              setIsLoadingSource(false);
-              return;
-            }
-          }
-
-          if (!streamTargetUrl) {
-            streamTargetUrl = mediaInfoResult.streamUrl || mediaInfoResult.externalUrl || undefined;
-          }
         }
 
         // Tự động phân giải endpoint stream Azure chuẩn nếu chưa có URL
@@ -186,7 +206,7 @@ export const HybridVideoPlayer: React.FC<HybridVideoPlayerProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [lessonId, onlineStreamUrl, videoUrl]);
+  }, [lessonId, onlineStreamUrl, videoUrl, mediaInfo]);
 
   // 2. Khởi tạo native player với expo-video (chỉ nạp URI khi playerMode === 'native')
   const nativePlayerUri = playerMode === 'native' ? sourceUri : null;
