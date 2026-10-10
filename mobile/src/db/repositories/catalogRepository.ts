@@ -177,7 +177,19 @@ export const catalogRepository = {
 
   async getLessonById(lessonId: number): Promise<Lesson | null> {
     const db = await getSQLiteDatabase();
-    const lesson = await db.getFirstAsync<Lesson>(`SELECT * FROM LocalLessons WHERE id = ?`, [lessonId]);
-    return lesson || null;
+    const lesson = await db.getFirstAsync<any>(`SELECT * FROM LocalLessons WHERE id = ?`, [lessonId]);
+    if (!lesson) return null;
+    return {
+      ...lesson,
+      hasQuiz: Boolean(lesson.hasQuiz),
+      isPublished: Boolean(lesson.isPublished),
+    };
+  },
+
+  async updateLessonQuizStatus(lessonId: number, hasQuiz: boolean): Promise<void> {
+    try {
+      const db = await getSQLiteDatabase();
+      await db.runAsync(`UPDATE LocalLessons SET hasQuiz = ? WHERE id = ?`, [hasQuiz ? 1 : 0, lessonId]);
+    } catch {}
   },
 };

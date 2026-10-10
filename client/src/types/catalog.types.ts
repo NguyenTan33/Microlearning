@@ -135,6 +135,7 @@ export interface QuizOption {
   id: number;
   optionText: string;
   sortOrder: number;
+  isCorrect?: boolean;
 }
 
 export interface QuizQuestion {

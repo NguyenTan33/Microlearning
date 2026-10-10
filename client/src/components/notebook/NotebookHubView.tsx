@@ -33,8 +33,9 @@ import {
 } from 'lucide-react';
 import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
+import { attachmentApi } from '../../services/attachmentApi';
 import { ttsApi } from '../../services/ttsApi';
-import type { Course, Lesson } from '../../types/catalog.types';
+import type { Course, Lesson, LessonAttachment } from '../../types/catalog.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 
 interface NotebookHubViewProps {
@@ -79,6 +80,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
     syncCurrentLessonFull,
     uploadFileSource,
     attachSourceToNotebook,
+    attachCourseAttachmentToNotebook,
     detachSourceFromNotebook,
     removeSource,
     viewSourceDetail,
@@ -98,9 +100,32 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   const [sourceAddMode, setSourceAddMode] = useState<'UPLOAD' | 'TEXT' | 'LESSON'>('UPLOAD');
   const [targetNotebookId, setTargetNotebookId] = useState<string>('');
 
-  // Existing source attachment modal
+  // Existing source attachment modal & Course attachments state
   const [isExistingSourceModalOpen, setIsExistingSourceModalOpen] = useState<boolean>(false);
   const [existingSourceSearch, setExistingSourceSearch] = useState<string>('');
+  const [existingSourceTab, setExistingSourceTab] = useState<'COURSE_DOCS' | 'ALL_SOURCES'>('COURSE_DOCS');
+  const [courseAttachments, setCourseAttachments] = useState<LessonAttachment[]>([]);
+  const [isLoadingCourseDocs, setIsLoadingCourseDocs] = useState<boolean>(false);
+  const [attachingDocId, setAttachingDocId] = useState<number | null>(null);
+  const [attachedDocNotice, setAttachedDocNotice] = useState<string | null>(null);
+
+  // Tự động tải danh sách tài liệu khóa học khi mở modal gắn Source
+  useEffect(() => {
+    if (isExistingSourceModalOpen && currentCourse?.id) {
+      setIsLoadingCourseDocs(true);
+      setAttachedDocNotice(null);
+      attachmentApi.getCourseAttachments(currentCourse.id)
+        .then((docs) => {
+          setCourseAttachments(docs);
+        })
+        .catch(() => {
+          setCourseAttachments([]);
+        })
+        .finally(() => {
+          setIsLoadingCourseDocs(false);
+        });
+    }
+  }, [isExistingSourceModalOpen, currentCourse?.id]);
 
   // Source form states
   const [newSourceTitle, setNewSourceTitle] = useState<string>('');
@@ -1984,7 +2009,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
       ========================================================================= */}
       {isExistingSourceModalOpen && activeNotebook && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0f1423] border border-white/10 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+          <div className="bg-[#0f1423] border border-white/10 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[88vh] flex flex-col">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="space-y-0.5">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1993,16 +2018,63 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 </h3>
                 <p className="text-[11px] text-slate-400">
                   Sổ tay đích: <span className="font-semibold text-purple-300">{activeNotebook.name}</span>
+                  {currentCourse && (
+                    <span className="ml-2 text-indigo-400">• Khóa học: {currentCourse.title}</span>
+                  )}
                 </p>
               </div>
               <button
                 onClick={() => {
                   setIsExistingSourceModalOpen(false);
                   setExistingSourceSearch('');
+                  setAttachedDocNotice(null);
                 }}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1 text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thông báo gắn thành công */}
+            {attachedDocNotice && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{attachedDocNotice}</span>
+              </div>
+            )}
+
+            {/* Chuyển tab giữa Tài liệu khóa học đã tải lên & Kho Source tổng */}
+            <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+              <button
+                type="button"
+                onClick={() => setExistingSourceTab('COURSE_DOCS')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  existingSourceTab === 'COURSE_DOCS'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>Tài liệu đã tải của Khóa học</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-white">
+                  {courseAttachments.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExistingSourceTab('ALL_SOURCES')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  existingSourceTab === 'ALL_SOURCES'
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Kho Source hệ thống</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-white">
+                  {allSources.filter((s) => !sources.some((existing) => existing.id === s.id)).length}
+                </span>
               </button>
             </div>
 
@@ -2012,47 +2084,170 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 type="text"
                 value={existingSourceSearch}
                 onChange={(e) => setExistingSourceSearch(e.target.value)}
-                placeholder="Tìm tài liệu theo tên..."
+                placeholder={
+                  existingSourceTab === 'COURSE_DOCS'
+                    ? 'Tìm tài liệu Word / PDF đã tải lên...'
+                    : 'Tìm tài liệu trong hệ thống theo tên...'
+                }
                 className="w-full px-3.5 py-2 pl-9 rounded-xl bg-slate-900 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
             </div>
 
-            {/* Danh sách các source chưa gắn */}
-            {(() => {
-              const unattachedSources = allSources
-                .filter((s) => !sources.some((existing) => existing.id === s.id))
-                .filter((s) =>
-                  existingSourceSearch.trim()
-                    ? s.title.toLowerCase().includes(existingSourceSearch.toLowerCase())
-                    : true
-                );
-
-              if (unattachedSources.length === 0) {
-                return (
-                  <div className="py-8 text-center text-slate-500 text-xs space-y-2">
-                    <FileText className="w-8 h-8 mx-auto opacity-30" />
-                    <p>
-                      {existingSourceSearch
-                        ? 'Không tìm thấy tài liệu phù hợp.'
-                        : 'Tất cả tài liệu trong hệ thống đã được gắn vào sổ tay này, hoặc chưa có tài liệu nào khác.'}
-                    </p>
-                    <button
-                      onClick={() => {
-                        setIsExistingSourceModalOpen(false);
-                        openAddSourceModal(activeNotebook.id, 'UPLOAD');
-                      }}
-                      className="text-emerald-400 hover:text-emerald-300 font-semibold"
-                    >
-                      + Tải file mới vào Sổ tay này ngay
-                    </button>
+            {/* TAB 1: TÀI LIỆU KHÓA HỌC ĐÃ TẢI LÊN */}
+            {existingSourceTab === 'COURSE_DOCS' && (
+              <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar max-h-72 pr-1">
+                {isLoadingCourseDocs ? (
+                  <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                    <span>Đang kiểm tra tài liệu đã tải lên của khóa học...</span>
                   </div>
-                );
-              }
+                ) : (() => {
+                  const query = existingSourceSearch.trim().toLowerCase();
+                  const filteredDocs = courseAttachments.filter((doc) => {
+                    const name = (doc.originalFileName || doc.fileName || '').toLowerCase();
+                    return query ? name.includes(query) : true;
+                  });
 
-              return (
-                <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar max-h-72 pr-1">
-                  {unattachedSources.map((s) => {
+                  if (filteredDocs.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-slate-500 text-xs space-y-2">
+                        <FileText className="w-8 h-8 mx-auto opacity-30 text-slate-400" />
+                        <p>
+                          {existingSourceSearch
+                            ? 'Không tìm thấy tài liệu nào khớp với từ khóa tìm kiếm.'
+                            : 'Khóa học này hiện chưa có tài liệu Word hoặc PDF nào được tải lên.'}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Bạn có thể dùng tab <strong>"Kho Source hệ thống"</strong> hoặc tải trực tiếp file mới vào sổ tay.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExistingSourceModalOpen(false);
+                            openAddSourceModal(activeNotebook.id, 'UPLOAD');
+                          }}
+                          className="text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
+                        >
+                          + Tải file mới vào Sổ tay này ngay
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return filteredDocs.map((doc) => {
+                    const fileName = doc.originalFileName || doc.fileName;
+                    const isAlreadyAttached = sources.some(
+                      (s) =>
+                        s.title.toLowerCase().includes(fileName.toLowerCase()) ||
+                        (doc.originalFileName && s.title.toLowerCase().includes(doc.originalFileName.toLowerCase()))
+                    );
+                    const isAttaching = attachingDocId === doc.id;
+                    const fileSizeKb = doc.fileSizeBytes
+                      ? (doc.fileSizeBytes / 1024).toFixed(1)
+                      : 'N/A';
+
+                    return (
+                      <div
+                        key={doc.id}
+                        className="p-3 rounded-xl bg-slate-900/90 border border-white/5 hover:border-emerald-500/40 flex items-center justify-between gap-3 transition-all"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0 ${
+                                doc.fileType === 'PDF'
+                                  ? 'bg-rose-950/80 border border-rose-500/30 text-rose-300'
+                                  : 'bg-blue-950/80 border border-blue-500/30 text-blue-300'
+                              }`}
+                            >
+                              {doc.fileType}
+                            </span>
+                            <h4 className="text-xs font-bold text-white truncate" title={fileName}>
+                              {fileName}
+                            </h4>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span>{fileSizeKb} KB</span>
+                            <span>•</span>
+                            <span>{new Date(doc.createdAt).toLocaleDateString('vi-VN')}</span>
+                          </div>
+                        </div>
+
+                        {isAlreadyAttached ? (
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold flex items-center gap-1 shrink-0">
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Đã gắn</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setAttachingDocId(doc.id);
+                              try {
+                                await attachCourseAttachmentToNotebook(doc, activeNotebook.id, currentCourse);
+                                setAttachedDocNotice(`Đã gắn tài liệu "${fileName}" vào Sổ tay AI thành công!`);
+                              } catch (err: unknown) {
+                                alert(err instanceof Error ? err.message : 'Có lỗi khi gắn tài liệu vào Sổ tay.');
+                              } finally {
+                                setAttachingDocId(null);
+                              }
+                            }}
+                            disabled={isAttaching || isSyncing}
+                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shrink-0 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
+                          >
+                            {isAttaching ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Plus className="w-3.5 h-3.5" />
+                            )}
+                            <span>Gắn vào AI</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+
+            {/* TAB 2: KHO SOURCE HỆ THỐNG */}
+            {existingSourceTab === 'ALL_SOURCES' && (
+              <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar max-h-72 pr-1">
+                {(() => {
+                  const unattachedSources = allSources
+                    .filter((s) => !sources.some((existing) => existing.id === s.id))
+                    .filter((s) =>
+                      existingSourceSearch.trim()
+                        ? s.title.toLowerCase().includes(existingSourceSearch.toLowerCase())
+                        : true
+                    );
+
+                  if (unattachedSources.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-slate-500 text-xs space-y-2">
+                        <FileText className="w-8 h-8 mx-auto opacity-30" />
+                        <p>
+                          {existingSourceSearch
+                            ? 'Không tìm thấy tài liệu phù hợp trong hệ thống.'
+                            : 'Tất cả tài liệu hệ thống đã được gắn vào sổ tay này, hoặc chưa có tài liệu nào khác.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsExistingSourceModalOpen(false);
+                            openAddSourceModal(activeNotebook.id, 'UPLOAD');
+                          }}
+                          className="text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
+                        >
+                          + Tải file mới vào Sổ tay này ngay
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return unattachedSources.map((s) => {
                     const fileName = s.asset?.file_path ? s.asset.file_path.split('/').pop() : null;
                     const fileExt = fileName ? fileName.split('.').pop()?.toUpperCase() : (s.asset ? 'FILE' : 'TEXT');
                     return (
@@ -2077,21 +2272,22 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                         </div>
 
                         <button
+                          type="button"
                           onClick={async () => {
                             await attachSourceToNotebook(s.id, activeNotebook.id);
                           }}
                           disabled={isSyncing}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shrink-0 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shrink-0 flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>Gắn vào Sổ tay</span>
                         </button>
                       </div>
                     );
-                  })}
-                </div>
-              );
-            })()}
+                  });
+                })()}
+              </div>
+            )}
 
             <div className="pt-2 border-t border-white/10 flex justify-end">
               <button
@@ -2099,8 +2295,9 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                 onClick={() => {
                   setIsExistingSourceModalOpen(false);
                   setExistingSourceSearch('');
+                  setAttachedDocNotice(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-all"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-all cursor-pointer"
               >
                 Đóng
               </button>

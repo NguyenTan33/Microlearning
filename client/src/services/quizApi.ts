@@ -32,19 +32,26 @@ export const quizApi = {
    */
   async getQuizByLesson(lessonId: number): Promise<QuizDetail | null> {
     try {
-      const res = await fetch(`/api/quizzes/lesson/${lessonId}`, {
-        headers: getAuthHeaders(),
+      const res = await fetch(`/api/quizzes/lesson/${lessonId}?_t=${Date.now()}`, {
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
       });
-      if (res.status === 404) {
-        return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
+      if (res.status === 404 || res.status === 400) {
+        return null;
       }
-      const data = await handleResponse<QuizDetail>(res);
-      if (data && data.questions && data.questions.length > 0) {
-        return data;
+      if (!res.ok) {
+        return null;
       }
-      return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
+      const data = await res.json();
+      if (data && Array.isArray(data.questions) && data.questions.length > 0) {
+        return data as QuizDetail;
+      }
+      return null;
     } catch {
-      return SAMPLE_QUIZZES[lessonId] || getSampleQuizByLesson(lessonId);
+      return null;
     }
   },
 

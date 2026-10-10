@@ -9,7 +9,7 @@ import type {
   EpisodeProfile,
   SearchResult,
 } from '../types/notebook.types';
-import type { Course, Lesson } from '../types/catalog.types';
+import type { Course, Lesson, LessonAttachment } from '../types/catalog.types';
 
 export type NotebookTab = 'SOURCES' | 'NOTEBOOKS' | 'ASK_SEARCH' | 'PODCASTS';
 
@@ -270,6 +270,58 @@ export function useNotebook(options: UseNotebookOptions = {}) {
       }
     },
     [activeNotebook]
+  );
+
+  const attachCourseAttachmentToNotebook = useCallback(
+    async (attachment: LessonAttachment, targetNotebookId?: string, course?: Course) => {
+      const nbId = targetNotebookId || activeNotebook?.id;
+      setIsSyncing(true);
+      setError(null);
+      try {
+        const fileName = attachment.originalFileName || attachment.fileName;
+        const docTitle = `[Tài liệu] ${fileName}`;
+        const content = [
+          `TÀI LIỆU KHÓA HỌC: ${fileName}`,
+          `Khóa học: ${course?.title || currentCourse?.title || 'Chưa xác định'}`,
+          `Loại tài liệu: ${attachment.fileType}`,
+          `Kích thước: ${(attachment.fileSizeBytes / 1024).toFixed(1)} KB`,
+          `Đường dẫn tệp gốc: ${attachment.fileUrl}`,
+          `Mã bài học liên kết: ${attachment.lessonId}`,
+          `Thời gian tải lên: ${new Date(attachment.createdAt).toLocaleString('vi-VN')}`,
+          `Nội dung tài liệu học tập chính thức do giảng viên đính kèm. AI có thể sử dụng thông tin này để trả lời câu hỏi và giải đáp thắc mắc chuyên sâu cho học viên.`,
+        ].join('\n');
+
+        const newSource = await notebookService.addLessonSource(
+          nbId,
+          docTitle,
+          content,
+          attachment.lessonId,
+          course?.id || currentCourse?.id,
+          fileName,
+          course?.title || currentCourse?.title
+        );
+
+        setAllSources((prev) => [newSource, ...prev.filter((s) => s.id !== newSource.id)]);
+        if (nbId && (!activeNotebook || activeNotebook.id === nbId)) {
+          setSources((prev) => [newSource, ...prev.filter((s) => s.id !== newSource.id)]);
+        }
+        if (nbId) {
+          setNotebooks((prev) =>
+            prev.map((nb) =>
+              nb.id === nbId ? { ...nb, source_count: (nb.source_count || 0) + 1 } : nb
+            )
+          );
+        }
+        return newSource;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Không thể gắn tài liệu vào Sổ tay';
+        setError(msg);
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [activeNotebook, currentCourse]
   );
 
   const uploadFileSource = useCallback(
@@ -612,6 +664,7 @@ export function useNotebook(options: UseNotebookOptions = {}) {
     syncCurrentLessonFull,
     uploadFileSource,
     attachSourceToNotebook,
+    attachCourseAttachmentToNotebook,
     detachSourceFromNotebook,
     loadNotebookDetail: loadNotebookSources,
     removeSource,
