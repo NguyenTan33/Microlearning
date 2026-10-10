@@ -410,11 +410,14 @@ export const notebookService = {
       ? await getStoredSourcesByNotebook(notebookId)
       : await getAllStoredSources();
 
+    // Nếu sổ tay cụ thể chưa gắn source, tự động nạp kho tài liệu đã lưu trên máy để AI luôn có dữ liệu trả lời
+    const effectiveSources = localSources.length > 0 ? localSources : await getAllStoredSources();
+
     const localContextText =
-      localSources.length > 0
-        ? localSources
-            .slice(0, 5)
-            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 800)}`)
+      effectiveSources.length > 0
+        ? effectiveSources
+            .slice(0, 8)
+            .map((s) => `[Tài liệu: ${s.title}]\n${(s.full_text || '').substring(0, 3500)}`)
             .join('\n\n')
         : '';
 
@@ -462,8 +465,8 @@ export const notebookService = {
     }
 
     // Bước 2: Offline Fallback với tài liệu đã lưu
-    if (localSources.length > 0) {
-      const matched = localSources.find(
+    if (effectiveSources.length > 0) {
+      const matched = effectiveSources.find(
         (s) =>
           s.title.toLowerCase().includes(question.toLowerCase().substring(0, 15)) ||
           (s.full_text && s.full_text.toLowerCase().includes(question.toLowerCase().substring(0, 20)))
