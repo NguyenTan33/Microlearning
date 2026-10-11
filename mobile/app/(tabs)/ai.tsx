@@ -42,7 +42,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { parseDocxQuizFromUri } from '../../src/utils/docxQuizParser';
-import { extractTextFromFileUri, formatExtractedDocumentContent } from '../../src/utils/documentExtractor';
+import { extractTextFromFileUri, extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../../src/utils/documentExtractor';
 import { attachmentApi } from '../../src/services/attachmentApi';
 import { notebookService } from '../../src/services/notebookService';
 import { catalogApi } from '../../src/services/catalogApi';
@@ -571,7 +571,7 @@ export default function AiNotebookScreen() {
     }
   };
 
-  // 8. Tạo tập Podcast tóm tắt âm thanh
+  // 8. Tạo tập Podcast tóm tắt âm thanh từ tài liệu nguồn thực tế
   const handleCreatePodcast = async () => {
     if (!sources || sources.length === 0) {
       Alert.alert('Thông báo', 'Cần có ít nhất 1 tài liệu trong sổ tay để sinh Podcast tóm tắt.');
@@ -580,19 +580,54 @@ export default function AiNotebookScreen() {
 
     try {
       setIsLoadingData(true);
-      const sampleText = sources
-        .slice(0, 3)
-        .map((s) => `${s.title}: ${s.full_text || ''}`)
+
+      // Tự động kiểm tra và hồi phục nội dung (Auto-hydrate) nếu tài liệu mới chỉ lưu placeholder URL
+      for (const src of sources) {
+        const isMissing =
+          !src.full_text ||
+          src.full_text.length < 500 ||
+          (src.full_text.includes('Đường dẫn tài liệu: http') && !src.full_text.includes('--- NỘI DUNG VĂN BẢN TRÍCH XUẤT ---'));
+
+        if (isMissing) {
+          const urlMatch = (src.full_text || '').match(/Đường dẫn tài liệu:\s*(https?:\/\/[^\s\n\r]+)/i);
+          if (urlMatch && urlMatch[1]) {
+            try {
+              const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
+              if (rawExtracted && rawExtracted.trim().length > 20) {
+                src.full_text = formatExtractedDocumentContent(src.title.replace(/^\[Tài liệu\]\s*/i, ''), rawExtracted, {
+                  lessonTitle: src.lesson_title,
+                  courseTitle: src.course_title,
+                  fileUrl: urlMatch[1],
+                });
+              }
+            } catch (healErr) {
+              console.warn('[AiNotebook] Auto-hydrate failed for podcast:', healErr);
+            }
+          }
+        }
+      }
+
+      const validSources = sources.filter((s) => s.full_text && s.full_text.trim().length > 20);
+      if (validSources.length === 0) {
+        Alert.alert('Thông báo', 'Các tài liệu trong sổ tay chưa có nội dung văn bản. Vui lòng kiểm tra lại tài liệu!');
+        return;
+      }
+
+      const sourcesText = validSources
+        .slice(0, 5)
+        .map((s, idx) => `=== TÀI LIỆU NGUỒN ${idx + 1}: ${s.title} ===\n${(s.full_text || '').substring(0, 5000)}`)
         .join('\n\n');
 
+      const sampleText = `=== TỔNG HỢP TOÀN BỘ TÀI LIỆU HỌC TẬP TỪ SỔ TAY "${activeNotebook?.name || 'Khóa học'}" ===\n\n${sourcesText}`;
+
       const ep = await notebookService.generatePodcast(
-        `Tóm tắt AI - ${activeNotebook?.name || 'MicroLearning'}`,
+        `[Podcast] ${activeNotebook?.name || 'Tổng hợp'}`,
         sampleText
       );
 
       setPodcasts((prev) => [ep, ...prev]);
       setActiveTab('PODCASTS');
-      Alert.alert('Thành công', 'Tập Podcast tóm tắt AI đã được tạo!');
+      Alert.alert('Thành công 🎉', `Đã tạo Podcast AI từ ${validSources.length} tài liệu trong sổ tay "${activeNotebook?.name}"! Bạn có thể bấm phát để nghe ngay.`);
     } catch {
       Alert.alert('Lỗi', 'Không thể tạo tập Podcast');
     } finally {

@@ -553,10 +553,15 @@ export const notebookService = {
     try {
       const cleanText = script
         .replace(/^#{1,6}\s+.*$/gm, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/\(.*?\)/g, '')
         .replace(/\*\*(.*?)\*\*/g, '$1')
-        .substring(0, 1500);
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 
-      const res = await ttsApi.synthesizeSpeech(cleanText, voiceName);
+      const textToSynthesize = cleanText.length > 2000 ? cleanText.slice(0, 2000) : cleanText;
+      const res = await ttsApi.synthesizeSpeech(textToSynthesize, voiceName);
       if (res?.audioUrl) {
         audioUrl = res.audioUrl;
       }
