@@ -63,10 +63,12 @@ jobs:
 
       - name: 💾 Configure Swap Space & Maximize Build Memory
         run: |
-          sudo fallocate -l 6G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=6144
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          sudo swapoff -a || true
+          sudo rm -f /swapfile /mnt/swapfile || true
+          sudo fallocate -l 6G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=6144
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
           free -h
 
       - name: ⚙️ Generate Native Android Code (Expo Prebuild)
