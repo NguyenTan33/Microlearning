@@ -78,11 +78,11 @@ jobs:
       - name: 🚀 Build Release APK with Gradle
         working-directory: mobile/android
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3584m -Dorg.gradle.parallel=false -Dorg.gradle.vfs.watch=false"
-          CMAKE_BUILD_PARALLEL_LEVEL: "2"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=512m -Dkotlin.daemon.jvm.options=-Xmx1024m -Dorg.gradle.parallel=false -Dorg.gradle.vfs.watch=false"
+          CMAKE_BUILD_PARALLEL_LEVEL: "1"
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --max-workers=2
+          ./gradlew assembleRelease --no-daemon --max-workers=1 -Dorg.gradle.workers.max=1 --stacktrace
 
       - name: 🏷️ Prepare APK Artifact
         id: prepare_apk
