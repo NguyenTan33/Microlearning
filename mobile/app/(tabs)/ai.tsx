@@ -46,6 +46,7 @@ import { extractTextFromFileUri, extractTextFromRemoteUrl, formatExtractedDocume
 import { attachmentApi } from '../../src/services/attachmentApi';
 import { notebookService } from '../../src/services/notebookService';
 import { catalogApi } from '../../src/services/catalogApi';
+import { PodcastAudioPlayer } from '../../src/components/player/PodcastAudioPlayer';
 import type {
   Notebook,
   NotebookSource,
@@ -1208,12 +1209,12 @@ export default function AiNotebookScreen() {
                         {pod.transcript}
                       </Text>
                     )}
-                    {pod.audio_url && (
-                      <View style={styles.audioBadge}>
-                        <CheckCircle2 color="#10B981" size={12} />
-                        <Text style={styles.audioBadgeText}>Đã tạo file âm thanh AI</Text>
-                      </View>
-                    )}
+                    {/* Trình phát âm thanh Podcast AI tích hợp */}
+                    <PodcastAudioPlayer
+                      audioUrl={pod.audio_url}
+                      transcript={pod.transcript}
+                      title={pod.name}
+                    />
                   </View>
                 ))
               )}
