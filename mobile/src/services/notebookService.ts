@@ -575,7 +575,7 @@ export const notebookService = {
       status: 'completed',
       created: new Date().toISOString(),
       audio_url: audioUrl || undefined,
-      transcript: content,
+      transcript: script,
       lesson_id: lessonMeta?.lessonId,
       course_id: lessonMeta?.courseId,
       lesson_title: lessonMeta?.lessonTitle,

@@ -118,12 +118,14 @@ export const PodcastAudioPlayer: React.FC<PodcastAudioPlayerProps> = ({
   }, [player, onEnded]);
 
   const togglePlay = () => {
-    if (!player || !audioUrl) return;
+    if (!player || !activeAudioUrl) return;
     try {
       if (isPlaying) {
         player.pause();
+        setIsPlaying(false);
       } else {
         player.play();
+        setIsPlaying(true);
       }
     } catch (err) {
       console.warn('[PodcastAudioPlayer] Toggle error:', err);
@@ -239,10 +241,12 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   hiddenVideo: {
-    width: 0,
-    height: 0,
-    opacity: 0,
+    width: 1,
+    height: 1,
+    opacity: 0.01,
     position: 'absolute',
+    top: -100,
+    left: -100,
   },
   progressTrack: {
     height: 4,
