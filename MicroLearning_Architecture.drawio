@@ -1,0 +1,152 @@
+<mxfile host="app.diagrams.net" modified="2026-10-11T07:45:00.000Z" agent="Antigravity" version="24.7.17">
+  <diagram id="MicroLearning_Architecture" name="Architecture Diagram">
+    <mxGraphModel dx="1422" dy="880" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1350" pageHeight="1450" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ================= LAYER 1: CLIENT ================= -->
+        <mxCell id="layer_client" value="TẦNG CLIENT (NGƯỜI DÙNG)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FFF8E1;strokeColor=#FBC02D;strokeWidth=2;fontStyle=1;fontSize=15;fontColor=#4E342E;rounded=1;arcSize=6;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="40" width="600" height="290" as="geometry" />
+        </mxCell>
+
+        <!-- Web App Box -->
+        <mxCell id="client_web" value="&lt;b&gt;🌐 Web App&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#1565C0&quot;&gt;(React 18 + TypeScript + Tailwind)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #BBDEFB;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 11px; padding: 4px;&quot;&gt;• Study Dashboard &amp;amp; Studio&lt;br&gt;• Video Player &amp;amp; Bookmarks&lt;br&gt;• RAG AI Notebook Hub&lt;br&gt;• Quiz Practice &amp;amp; Flashcard&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1976D2;strokeWidth=1.5;fontSize=12;fontColor=#0D47A1;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_client">
+          <mxGeometry x="40" y="55" width="230" height="205" as="geometry" />
+        </mxCell>
+
+        <!-- Mobile App Box -->
+        <mxCell id="client_mobile" value="&lt;b&gt;📱 Mobile App&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2E7D32&quot;&gt;(React Native + Expo 52)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #C8E6C9;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 11px; padding: 4px;&quot;&gt;• SQLite Local DB (7 Repos)&lt;br&gt;• Download Manager (BG Task)&lt;br&gt;• Hybrid Player (Local / YouTube)&lt;br&gt;• AutoSync Engine (Outbox / CDC)&lt;br&gt;• Offline-First Architecture&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;strokeWidth=1.5;fontSize=12;fontColor=#1B5E20;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_client">
+          <mxGeometry x="330" y="55" width="230" height="205" as="geometry" />
+        </mxCell>
+
+
+        <!-- ================= LAYER 2: GATEWAY & SECURITY + LOCAL DB ================= -->
+        <mxCell id="layer_gateway" value="API GATEWAY &amp; SECURITY" style="swimlane;whiteSpace=wrap;html=1;startSize=28;fillColor=#FFF8E1;strokeColor=#FBC02D;strokeWidth=2;fontStyle=1;fontSize=14;fontColor=#4E342E;rounded=1;arcSize=6;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="500" y="410" width="360" height="250" as="geometry" />
+        </mxCell>
+
+        <!-- Gateway Box -->
+        <mxCell id="gateway_box" value="&lt;b&gt;🛡️ ASP.NET Core 8 Kestrel&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #FFE082;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 11px; padding: 2px;&quot;&gt;• Fixed Window Rate Limiting (Redis)&lt;br&gt;• JWT Bearer &amp;amp; Refresh Token Auth&lt;br&gt;• Global Exception Handling Middleware&lt;br&gt;• Multipart Form 500MB Upload Limit&lt;br&gt;• CORS &amp;amp; Security Headers Policy&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F57F17;strokeWidth=1.5;fontSize=12;fontColor=#3E2723;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_gateway">
+          <mxGeometry x="30" y="45" width="300" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Local SQLite Box (Side) -->
+        <mxCell id="sqlite_box" value="&lt;b&gt;💾 SQLite Local DB&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#5E35B1&quot;&gt;(expo-sqlite)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #D1C4E9;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px; padding: 2px;&quot;&gt;• Offline Cache Storage&lt;br&gt;• Local Progress Tracking&lt;br&gt;• Delta Sync Queue (Outbox)&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#EDE7F6;strokeColor=#673AB7;strokeWidth=1.5;fontSize=11;fontColor=#311B92;align=center;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="430" width="180" height="150" as="geometry" />
+        </mxCell>
+
+
+        <!-- ================= LAYER 3: MODULAR MONOLITH BACKEND ================= -->
+        <mxCell id="layer_backend" value="MODULAR MONOLITH BACKEND (.NET 8 WEB API)" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FFF8E1;strokeColor=#FBC02D;strokeWidth=2;fontStyle=1;fontSize=15;fontColor=#4E342E;rounded=1;arcSize=6;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="730" width="1270" height="270" as="geometry" />
+        </mxCell>
+
+        <!-- Module 1: Media -->
+        <mxCell id="mod_media" value="&lt;b&gt;Areas / Media&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #BBDEFB;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• 500MB Azure Blob Streaming&lt;br&gt;• Background FFmpeg Worker&lt;br&gt;• Neural Text-to-Speech (TTS)&lt;br&gt;• Range Request (206 Partial)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1976D2;strokeWidth=1.5;fontSize=11;fontColor=#0D47A1;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="20" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 2: Auth -->
+        <mxCell id="mod_auth" value="&lt;b&gt;Areas / Auth&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #C8E6C9;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• SMS OTP (SpeedSMS / Twilio)&lt;br&gt;• OAuth2 Google &amp;amp; FB Sign-In&lt;br&gt;• Token &amp;amp; Hash Services&lt;br&gt;• Refresh Token Rotation&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;strokeWidth=1.5;fontSize=11;fontColor=#1B5E20;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="175" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 3: Sync & Device -->
+        <mxCell id="mod_sync" value="&lt;b&gt;Areas / Sync &amp; Device&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #FFE0B2;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• Sequence CDC Delta Pull&lt;br&gt;• Idempotent Outbox Batch Push&lt;br&gt;• Tombstone Soft-Delete&lt;br&gt;• Conflict Auto-Resolution&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F57C00;strokeWidth=1.5;fontSize=11;fontColor=#E65100;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="330" y="55" width="145" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 4: AI & Gemini -->
+        <mxCell id="mod_ai" value="&lt;b&gt;Areas / AI&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #E1BEE7;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• Google Gemini Pro / Flash&lt;br&gt;• Vector Search &amp;amp; Embedding&lt;br&gt;• RAG Course Context Builder&lt;br&gt;• Smart Note &amp;amp; Flashcard Gen&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#8E24AA;strokeWidth=1.5;fontSize=11;fontColor=#4A148C;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="495" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 5: Catalog -->
+        <mxCell id="mod_catalog" value="&lt;b&gt;Areas / Catalog&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #B2EBF2;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• Courses &amp;amp; Subjects Mgmt&lt;br&gt;• Micro-Lessons &amp;amp; Attachments&lt;br&gt;• Course Access &amp;amp; Permissions&lt;br&gt;• Content Versioning&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F7FA;strokeColor=#00ACC1;strokeWidth=1.5;fontSize=11;fontColor=#006064;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="650" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 6: Admin -->
+        <mxCell id="mod_admin" value="&lt;b&gt;Areas / Admin&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #FFCDD2;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• User &amp;amp; Role Management&lt;br&gt;• Student Progress Analytics&lt;br&gt;• Audit Log &amp;amp; System Monitor&lt;br&gt;• Report Export Services&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#E53935;strokeWidth=1.5;fontSize=11;fontColor=#B71C1C;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="805" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 7: Quiz -->
+        <mxCell id="mod_quiz" value="&lt;b&gt;Areas / Quiz&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #D1C4E9;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• Word .docx Quiz Parser&lt;br&gt;• Auto Scoring Engine&lt;br&gt;• Mistake Vault Engine&lt;br&gt;• Spaced Repetition (SM-2)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7F6;strokeColor=#5E35B1;strokeWidth=1.5;fontSize=11;fontColor=#311B92;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="960" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- Module 8: Progress & Gamification -->
+        <mxCell id="mod_progress" value="&lt;b&gt;Areas / Gamification&lt;/b&gt;&lt;hr style=&quot;border-top: 1px dashed #C5CAE9;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10px;&quot;&gt;• Strict Coverage (Anti-skip &amp;gt; 80%)&lt;br&gt;• Daily Learning Streaks&lt;br&gt;• XP, Badges &amp;amp; Leaderboards&lt;br&gt;• Milestone Notifications&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#3949AB;strokeWidth=1.5;fontSize=11;fontColor=#1A237E;align=center;verticalAlign=top;spacingTop=6;shadow=1;" vertex="1" parent="layer_backend">
+          <mxGeometry x="1115" y="55" width="135" height="190" as="geometry" />
+        </mxCell>
+
+
+        <!-- ================= LAYER 4: CLOUD INFRASTRUCTURE & STORAGE ================= -->
+        <mxCell id="layer_cloud" value="HẠ TẦNG CLOUD &amp; STORAGE" style="swimlane;whiteSpace=wrap;html=1;startSize=32;fillColor=#FFF8E1;strokeColor=#FBC02D;strokeWidth=2;fontStyle=1;fontSize=15;fontColor=#4E342E;rounded=1;arcSize=6;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1070" width="640" height="300" as="geometry" />
+        </mxCell>
+
+        <!-- Cloud 1: Azure SQL -->
+        <mxCell id="cloud_sql" value="&lt;b&gt;🗄️ Azure SQL Database&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#0078D4&quot;&gt;(Serverless Tier)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #BBDEFB;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10.5px; padding: 2px;&quot;&gt;• 2 vCores Auto-Scale / Auto-pause&lt;br&gt;• 3NF Normalized Relational Schema&lt;br&gt;• B-Tree Composite Indexes&lt;br&gt;• Change Data Capture (CDC)&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#E3F2FD;strokeColor=#0288D1;strokeWidth=1.5;fontSize=11;fontColor=#01579B;align=center;shadow=1;" vertex="1" parent="layer_cloud">
+          <mxGeometry x="30" y="60" width="175" height="210" as="geometry" />
+        </mxCell>
+
+        <!-- Cloud 2: Azure Blob -->
+        <mxCell id="cloud_blob" value="&lt;b&gt;📦 Azure Blob Storage&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#0078D4&quot;&gt;(Standard Hot/Cool)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #BBDEFB;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10.5px; padding: 2px;&quot;&gt;• Video Streaming (HTTP 206)&lt;br&gt;• Audio TTS &amp;amp; Docs (.docx, .pdf)&lt;br&gt;• SHA-256 Checksum Verification&lt;br&gt;• CDN Edge Distribution&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#E1F5FE;strokeColor=#039BE5;strokeWidth=1.5;fontSize=11;fontColor=#0277BD;align=center;shadow=1;" vertex="1" parent="layer_cloud">
+          <mxGeometry x="235" y="60" width="175" height="210" as="geometry" />
+        </mxCell>
+
+        <!-- Cloud 3: Google Gemini AI -->
+        <mxCell id="cloud_ai" value="&lt;b&gt;🧠 Google Gemini Cloud&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#C2185B&quot;&gt;(AI Studio / Vertex API)&lt;/font&gt;&lt;hr style=&quot;border-top: 1px dashed #F8BBD0;&quot;&gt;&lt;div align=&quot;left&quot; style=&quot;font-size: 10.5px; padding: 2px;&quot;&gt;• Gemini Pro 1.5 Inference&lt;br&gt;• Text Embeddings Vector Model&lt;br&gt;• Multimodal Context Support&lt;br&gt;• High Throughput Rate Limit&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#FCE4EC;strokeColor=#D81B60;strokeWidth=1.5;fontSize=11;fontColor=#880E4F;align=center;shadow=1;" vertex="1" parent="layer_cloud">
+          <mxGeometry x="435" y="60" width="175" height="210" as="geometry" />
+        </mxCell>
+
+
+        <!-- ================= CONNECTORS / ARROWS ================= -->
+
+        <!-- Client Web -> Gateway -->
+        <mxCell id="flow_web_gw" value="REST API / HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.25;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#1976D2;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#0D47A1;" edge="1" parent="1" source="client_web" target="layer_gateway">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="535" y="360" />
+              <mxPoint x="590" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Client Mobile -> Gateway -->
+        <mxCell id="flow_mobile_gw" value="REST API / Delta Sync" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#388E3C;strokeWidth=2;fontSize=11;fontStyle=1;fontColor=#1B5E20;" edge="1" parent="1" source="client_mobile" target="layer_gateway">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="825" y="360" />
+              <mxPoint x="770" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Client Mobile -> SQLite -->
+        <mxCell id="flow_mobile_sqlite" value="Lưu trữ Offline" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.85;exitY=1;exitDx=0;exitDy=0;strokeColor=#673AB7;strokeWidth=2;strokeDashArray=3 3;fontSize=11;fontStyle=1;fontColor=#512DA8;" edge="1" parent="1" source="client_mobile" target="sqlite_box">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="906" y="370" />
+              <mxPoint x="1020" y="370" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Gateway -> Backend Monolith -->
+        <mxCell id="flow_gw_backend" value="In-Process Controller &amp; Services Dispatch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#F57F17;strokeWidth=2.5;fontSize=12;fontStyle=1;fontColor=#E65100;" edge="1" parent="1" source="layer_gateway" target="layer_backend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Backend Monolith -> Cloud Infra -->
+        <mxCell id="flow_backend_cloud" value="EF Core 8 / Azure SDK / Google Gemini API" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#4E342E;strokeWidth=2.5;fontSize=12;fontStyle=1;fontColor=#3E2723;" edge="1" parent="1" source="layer_backend" target="layer_cloud">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
