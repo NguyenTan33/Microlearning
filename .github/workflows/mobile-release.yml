@@ -61,15 +61,26 @@ jobs:
         working-directory: mobile
         run: npx tsc --noEmit
 
+      - name: 💾 Configure Swap Space & Maximize Build Memory
+        run: |
+          sudo fallocate -l 6G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=6144
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: ⚙️ Generate Native Android Code (Expo Prebuild)
         working-directory: mobile
         run: npx expo prebuild --platform android --clean
 
       - name: 🚀 Build Release APK with Gradle
         working-directory: mobile/android
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3584m -Dorg.gradle.parallel=false -Dorg.gradle.vfs.watch=false"
+          CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+          ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: 🏷️ Prepare APK Artifact
         id: prepare_apk
