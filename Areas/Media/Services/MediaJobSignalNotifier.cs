@@ -30,7 +30,7 @@ namespace Microlearning.Areas.Media.Services
         }
 
         /// <summary>
-        /// Chờ tín hiệu có job mới hoặc hết thời gian timeout (Mặc định khi rảnh là 5 phút)
+        /// Chờ tín hiệu có job mới hoặc hết thời gian timeout (Mặc định khi rảnh là 30 giây)
         /// </summary>
         public static async Task WaitAsync(TimeSpan timeout, CancellationToken cancellationToken)
         {

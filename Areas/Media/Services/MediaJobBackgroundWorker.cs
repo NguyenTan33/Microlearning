@@ -45,9 +45,9 @@ namespace Microlearning.Areas.Media.Services
                 }
                 else
                 {
-                    // Khi ứng dụng rảnh (không có tác vụ media nào chờ), ngủ sâu 5 phút 
+                    // Khi ứng dụng rảnh (không có tác vụ media nào chờ), chờ tối đa 30 giây 
                     // hoặc thức dậy ngay tức thì (0ms) khi nhận tín hiệu từ MediaJobSignalNotifier.NotifyNewJob()
-                    await MediaJobSignalNotifier.WaitAsync(TimeSpan.FromMinutes(5), stoppingToken);
+                    await MediaJobSignalNotifier.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
                 }
             }
 

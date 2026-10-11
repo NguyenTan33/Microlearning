@@ -38,10 +38,10 @@ export const autoSyncEngine = {
       }
     });
 
-    // 3. Heartbeat timer 3 phút
+    // 3. Heartbeat timer 30 giây (Nâng cấp từ 3 phút - đồng bộ dữ liệu ngoại tuyến tức thời)
     setInterval(() => {
       this.triggerSyncWithDebounce(0);
-    }, 3 * 60 * 1000);
+    }, 30 * 1000);
   },
 
   /**

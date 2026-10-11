@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 1000 * 60 * 5, // 5 mins
+      staleTime: 1000 * 30, // 30s (Nâng cấp từ 5 phút - Tận dụng Azure SQL 24/7 phản hồi tức thì)
     },
   },
 });
