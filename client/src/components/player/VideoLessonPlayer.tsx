@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Globe,
   ExternalLink,
+  PictureInPicture,
 } from 'lucide-react';
 import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { catalogApi } from '../../services/catalogApi';
@@ -565,6 +566,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       containerRef.current.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const handleTogglePiP = async () => {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (videoRef.current && document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.warn('Picture-in-Picture error:', err);
     }
   };
 
@@ -1148,6 +1161,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               <Gauge className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-cyan-400" />
               <span>{playbackSpeed}x</span>
             </button>
+
+            {/* Nút Thu nhỏ hình trong hình (Picture-in-Picture) */}
+            {(!mediaInfo || (mediaInfo.sourceType !== 'youtube' && mediaInfo.sourceType !== 'vimeo')) && (
+              <button
+                type="button"
+                onClick={handleTogglePiP}
+                title="Thu nhỏ ra ngoài (Hình trong hình - PiP)"
+                className="p-1.5 sm:p-2 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-slate-400 hover:text-cyan-400 transition-all cursor-pointer"
+              >
+                <PictureInPicture className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+              </button>
+            )}
 
             {/* Nút phóng to toàn màn hình */}
             <button

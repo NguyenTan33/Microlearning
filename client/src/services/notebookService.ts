@@ -715,8 +715,8 @@ export const notebookService = {
             const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
             if (rawExtracted && rawExtracted.trim().length > 20) {
               src.full_text = formatExtractedDocumentContent(src.title.replace(/^\[Tài liệu\]\s*/i, ''), rawExtracted, {
-                lessonTitle: src.lessonTitle,
-                courseTitle: src.courseTitle,
+                lessonTitle: src.lesson_title,
+                courseTitle: src.course_title,
                 fileUrl: urlMatch[1],
               });
               hasUpdatedSource = true;
