@@ -903,8 +903,8 @@ export const notebookService = {
       const srcs = getLocalSourcesByNotebook(notebookId);
       if (srcs.length > 0) {
         lessonContext = srcs
-          .slice(0, 3)
-          .map((s) => `${s.title}:\n${(s.full_text || '').substring(0, 600)}`)
+          .slice(0, 5)
+          .map((s, idx) => `=== TÀI LIỆU NGUỒN ${idx + 1}: ${s.title} ===\n${(s.full_text || '').substring(0, 5000)}`)
           .join('\n\n');
       }
     }
@@ -924,12 +924,13 @@ export const notebookService = {
         const cleanText = script
           .replace(/^#{1,6}\s+.*$/gm, '')
           .replace(/\[.*?\]/g, '')
+          .replace(/\(.*?\)/g, '')
           .replace(/\*\*(.*?)\*\*/g, '$1')
           .replace(/\*(.*?)\*/g, '$1')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
 
-        const textToSynthesize = cleanText.length > 1900 ? cleanText.slice(0, 1900) : cleanText;
+        const textToSynthesize = cleanText.length > 2000 ? cleanText.slice(0, 2000) : cleanText;
         if (textToSynthesize) {
           const ttsRes = await ttsApi.synthesizeSpeech(textToSynthesize, voiceName);
           if (ttsRes?.audioUrl) {
