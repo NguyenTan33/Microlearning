@@ -10,10 +10,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   FlatList,
   Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -46,7 +46,7 @@ import { extractTextFromFileUri, extractTextFromRemoteUrl, formatExtractedDocume
 import { attachmentApi } from '../../src/services/attachmentApi';
 import { notebookService } from '../../src/services/notebookService';
 import { catalogApi } from '../../src/services/catalogApi';
-import { PodcastAudioPlayer } from '../../src/components/player/PodcastAudioPlayer';
+import { PodcastAudioPlayer } from '../../src/components/player';
 import type {
   Notebook,
   NotebookSource,
