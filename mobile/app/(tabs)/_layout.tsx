@@ -1,8 +1,21 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BookOpen, Compass, Download, User, Sparkles } from 'lucide-react-native';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
+  // Tự động tính toán chiều cao và khoảng đệm an toàn theo thanh điều hướng thiết bị (Android & iOS):
+  // - Máy Android dùng 3 phím ảo (Back / Home / Recent): insets.bottom thường từ 40 - 56dp.
+  // - Máy Android dùng cử chỉ vuốt (Gesture bar): insets.bottom ~16 - 24dp.
+  // - Máy không có phím ảo trên màn hình: insets.bottom = 0.
+  // - iOS tai thỏ / Dynamic Island: insets.bottom ~34dp.
+  const bottomInset = insets.bottom;
+  const tabHeight = 60 + bottomInset;
+  const paddingBottom = bottomInset > 0 ? bottomInset + 4 : (Platform.OS === 'android' ? 8 : 8);
+
   return (
     <Tabs
       screenOptions={{
@@ -12,8 +25,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#070B17',
           borderTopColor: '#1E293B',
-          height: 60,
-          paddingBottom: 8,
+          height: tabHeight,
+          paddingBottom: paddingBottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
