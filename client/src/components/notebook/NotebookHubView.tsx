@@ -30,12 +30,15 @@ import {
   Paperclip,
   Check,
   File,
+  AlertTriangle,
 } from 'lucide-react';
 import { useNotebook, type NotebookTab } from '../../hooks/useNotebook';
 import { notebookService } from '../../services/notebookService';
 import { attachmentApi } from '../../services/attachmentApi';
 import { ttsApi } from '../../services/ttsApi';
+import { extractTextFromRemoteUrl, formatExtractedDocumentContent } from '../../utils/documentExtractor';
 import type { Course, CourseDetail, Lesson, LessonAttachment } from '../../types/catalog.types';
+import type { NotebookSource } from '../../types/notebook.types';
 import type { UserTokenPayload } from '../../utils/tokenHelper';
 
 interface NotebookHubViewProps {
@@ -202,6 +205,32 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   const [newPodcastProfile, setNewPodcastProfile] = useState<string>('solo_expert');
   const [newPodcastContent, setNewPodcastContent] = useState<string>('');
   const [podcastTargetNbId, setPodcastTargetNbId] = useState<string>('');
+  const [podcastPreviewSources, setPodcastPreviewSources] = useState<NotebookSource[]>([]);
+  const [isLoadingPodcastSources, setIsLoadingPodcastSources] = useState<boolean>(false);
+
+  // Tự động tải danh sách tài liệu của Sổ tay nguồn để xem trước khi tạo Podcast
+  useEffect(() => {
+    if (isNewModalOpen && modalType === 'PODCAST') {
+      const validNbs = notebooks.filter((nb) => (nb.source_count || 0) > 0);
+      const effectiveId =
+        podcastTargetNbId ||
+        (activeNotebook && (activeNotebook.source_count || 0) > 0
+          ? activeNotebook.id
+          : validNbs[0]?.id || '');
+
+      if (effectiveId) {
+        if (!podcastTargetNbId) setPodcastTargetNbId(effectiveId);
+        setIsLoadingPodcastSources(true);
+        notebookService
+          .getSourcesByNotebook(effectiveId)
+          .then((res) => setPodcastPreviewSources(res))
+          .catch(() => setPodcastPreviewSources([]))
+          .finally(() => setIsLoadingPodcastSources(false));
+      } else {
+        setPodcastPreviewSources([]);
+      }
+    }
+  }, [isNewModalOpen, modalType, podcastTargetNbId, activeNotebook, notebooks]);
 
   // Search & Ask states
   const [searchQueryInput, setSearchQueryInput] = useState<string>('');
@@ -486,24 +515,75 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
         const resolvedSpeaker =
           selectedProfile?.speaker_config_name || selectedProfile?.speaker_config || 'solo_expert';
 
-        // Ưu tiên content người dùng nhập, sau đó lấy từ bài học thực tế
-        let contentToUse = newPodcastContent.trim();
-        if (!contentToUse && activeLesson) {
-          contentToUse = [
-            `Bài giảng: ${activeLesson.title}`,
-            activeLesson.description ? `Nội dung: ${activeLesson.description}` : '',
-            currentCourse ? `Khóa học: ${currentCourse.title}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n');
+        // 1. Xác định Sổ tay mục tiêu (bắt buộc phải có tài liệu)
+        const validNbs = notebooks.filter((nb) => (nb.source_count || 0) > 0);
+        const targetNbId =
+          podcastTargetNbId ||
+          (activeNotebook && (activeNotebook.source_count || 0) > 0 ? activeNotebook.id : validNbs[0]?.id);
+
+        if (!targetNbId) {
+          alert('Vui lòng chọn một Sổ tay có gắn ít nhất 1 tài liệu để AI có dữ liệu tạo Podcast!');
+          return;
+        }
+
+        const targetNb = notebooks.find((nb) => nb.id === targetNbId) || activeNotebook;
+
+        // 2. Lấy toàn bộ tài liệu nguồn từ Sổ tay đó
+        let nbSources = await notebookService.getSourcesByNotebook(targetNbId);
+
+        // 3. Tự động phục hồi nội dung (Auto-hydrate) nếu tài liệu mới chỉ lưu placeholder URL
+        for (const src of nbSources) {
+          const isMissing =
+            !src.full_text ||
+            src.full_text.length < 500 ||
+            (src.full_text.includes('Đường dẫn tệp gốc: http') && !src.full_text.includes('--- NỘI DUNG VĂN BẢN TRÍCH XUẤT ---'));
+
+          if (isMissing) {
+            const urlMatch = (src.full_text || '').match(/Đường dẫn tệp gốc:\s*(https?:\/\/[^\s\n\r]+)/i);
+            if (urlMatch && urlMatch[1]) {
+              try {
+                const rawExtracted = await extractTextFromRemoteUrl(urlMatch[1], src.title);
+                if (rawExtracted && rawExtracted.trim().length > 20) {
+                  src.full_text = formatExtractedDocumentContent(
+                    src.title.replace(/^\[Tài liệu\]\s*/i, ''),
+                    rawExtracted,
+                    {
+                      courseTitle: currentCourse?.title,
+                      fileUrl: urlMatch[1],
+                    }
+                  );
+                }
+              } catch (healErr) {
+                console.warn('Auto-hydrate failed in podcast submit:', healErr);
+              }
+            }
+          }
+        }
+
+        const validSources = nbSources.filter((s) => s.full_text && s.full_text.trim().length > 20);
+        if (validSources.length === 0) {
+          alert(`Sổ tay "${targetNb?.name}" chưa có nội dung tài liệu thực tế. Vui lòng gắn ít nhất 1 tệp tài liệu trước khi tạo Podcast!`);
+          return;
+        }
+
+        // 4. Định dạng toàn bộ tài liệu nguồn với dung lượng đầy đủ (tối đa 5.000 ký tự mỗi tệp)
+        const sourcesText = validSources
+          .slice(0, 5)
+          .map((s, idx) => `=== TÀI LIỆU NGUỒN ${idx + 1}: ${s.title} ===\n${(s.full_text || '').substring(0, 5000)}`)
+          .join('\n\n');
+
+        let contentToUse = `=== TỔNG HỢP TOÀN BỘ TÀI LIỆU HỌC TẬP TỪ SỔ TAY: "${targetNb?.name || 'Khóa học'}" ===\n\n${sourcesText}`;
+
+        if (newPodcastContent.trim()) {
+          contentToUse += `\n\n=== GHI CHÚ / YÊU CẦU ĐẶC BIỆT CỦA HỌC VIÊN ===\n${newPodcastContent.trim()}`;
         }
 
         await createPodcast(
           newPodcastName.trim(),
           newPodcastProfile,
           resolvedSpeaker,
-          contentToUse || undefined,
-          podcastTargetNbId || activeNotebook?.id || undefined,
+          contentToUse,
+          targetNbId,
           newPodcastVoice
         );
         setNewPodcastName('');
@@ -2040,33 +2120,109 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Lấy tài liệu từ Sổ tay (Tùy chọn)
-                    </label>
-                    <select
-                      value={podcastTargetNbId}
-                      onChange={(e) => setPodcastTargetNbId(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
-                    >
-                      <option value="">{activeNotebook ? `Mặc định Sổ tay: ${activeNotebook.name}` : 'Tất cả tài liệu / Nhập riêng bên dưới'}</option>
-                      {notebooks.map((nb) => (
-                        <option key={nb.id} value={nb.id}>
-                          {nb.name} ({nb.source_count || 0} tài liệu)
-                        </option>
-                      ))}
-                    </select>
+                  {/* CHỌN SỔ TAY TÀI LIỆU NGUỒN (BẮT BUỘC CÓ ÍT NHẤT 1 TÀI LIỆU) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Chọn Sổ tay tài liệu nguồn (Bắt buộc có ít nhất 1 tài liệu) *
+                      </label>
+                      <span className="text-[10px] text-pink-400 font-medium">AI đọc trực tiếp file tài liệu</span>
+                    </div>
+
+                    {(() => {
+                      const validNbs = notebooks.filter((nb) => (nb.source_count || 0) > 0);
+
+                      if (validNbs.length === 0) {
+                        return (
+                          <div className="p-3.5 rounded-xl bg-amber-950/70 border border-amber-500/40 text-amber-200 text-xs space-y-2">
+                            <div className="flex items-center gap-2 font-bold text-amber-300">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span>Chưa có Sổ tay nào có tài liệu đính kèm</span>
+                            </div>
+                            <p className="text-[11px] leading-relaxed text-slate-300">
+                              Để AI có thể biên soạn kịch bản và đọc Podcast chuẩn xác, bạn cần gắn ít nhất 1 tài liệu (Word .docx/.doc, PDF, TXT) vào một Sổ tay.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsNewModalOpen(false);
+                                if (activeNotebook) {
+                                  setIsExistingSourceModalOpen(true);
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Gắn tài liệu vào Sổ tay hiện tại ngay</span>
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <select
+                            value={
+                              podcastTargetNbId ||
+                              (activeNotebook && (activeNotebook.source_count || 0) > 0
+                                ? activeNotebook.id
+                                : validNbs[0]?.id)
+                            }
+                            onChange={(e) => setPodcastTargetNbId(e.target.value)}
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-indigo-500/40 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400"
+                          >
+                            {validNbs.map((nb) => (
+                              <option key={nb.id} value={nb.id}>
+                                📚 Sổ tay: {nb.name} ({nb.source_count} tài liệu đã gắn)
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* KHUNG XEM TRƯỚC TÀI LIỆU SẼ ĐƯỢC AI ĐỌC */}
+                          <div className="p-3 rounded-xl bg-slate-900/90 border border-white/10 space-y-2">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Tài liệu nguồn sẽ được gửi vào AI để biên soạn Podcast:</span>
+                              </span>
+                              {isLoadingPodcastSources && (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                              )}
+                            </div>
+
+                            {podcastPreviewSources.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar pr-1">
+                                {podcastPreviewSources.map((s) => (
+                                  <span
+                                    key={s.id}
+                                    className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-500/40 text-purple-200 font-medium"
+                                    title={s.title}
+                                  >
+                                    <span>📄</span>
+                                    <span className="truncate max-w-[200px]">{s.title.replace(/^\[Tài liệu\]\s*/i, '')}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-400 italic">
+                                {isLoadingPodcastSources ? 'Đang tải danh sách tài liệu...' : 'Đang chuẩn bị dữ liệu tài liệu...'}
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Ghi chú / Chủ đề thảo luận (Tùy chọn)
+                      Ghi chú / Yêu cầu thảo luận bổ sung (Tùy chọn)
                     </label>
                     <textarea
                       value={newPodcastContent}
                       onChange={(e) => setNewPodcastContent(e.target.value)}
-                      placeholder={activeLesson ? `Mặc định sẽ lấy nội dung bài giảng: "${activeLesson.title}"...` : 'Nhập trọng tâm để AI biên soạn hội thoại...'}
-                      rows={3}
+                      placeholder="Ví dụ: Nhấn mạnh bài học thực tế, phong cách hài hước và đúc kết 3 hành động quan trọng..."
+                      rows={2}
                       className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-white/10 text-xs text-white focus:outline-none focus:ring-1 focus:ring-pink-400 placeholder-slate-500"
                     />
                   </div>
