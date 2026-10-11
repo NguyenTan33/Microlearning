@@ -588,8 +588,24 @@ export function useNotebook(options: UseNotebookOptions = {}) {
           speakerProfile || ep?.speaker_config_name || ep?.speaker_config || 'solo_expert';
         const targetNbId = customNotebookId || activeNotebook?.id;
 
-        // Nếu không có content, tự động lấy từ bài học hiện tại + sources
+        // Ưu tiên nạp tài liệu từ Notebook được chọn nếu chưa có finalContent
         let finalContent = content;
+        if (!finalContent && targetNbId) {
+          try {
+            const nbSources = await notebookService.getSourcesByNotebook(targetNbId);
+            const valid = nbSources.filter((s) => s.full_text && s.full_text.trim().length > 20);
+            if (valid.length > 0) {
+              finalContent = valid
+                .slice(0, 5)
+                .map((s, idx) => `=== TÀI LIỆU NGUỒN ${idx + 1}: ${s.title} ===\n${(s.full_text || '').substring(0, 5000)}`)
+                .join('\n\n');
+            }
+          } catch (e) {
+            console.warn('[useNotebook] Failed to read notebook sources for podcast:', e);
+          }
+        }
+
+        // Nếu vẫn chưa có content, mới lấy từ bài học hiện tại
         if (!finalContent && activeLesson) {
           finalContent = [
             `Bài học: ${activeLesson.title}`,
