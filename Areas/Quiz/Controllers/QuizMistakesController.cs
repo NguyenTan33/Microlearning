@@ -19,7 +19,7 @@ namespace Microlearning.Areas.Quiz.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách các câu hỏi quiz từng trả lời sai trong sổ tay cá nhân
+        /// Lấy danh sách câu hỏi làm sai phẳng của cá nhân
         /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetMyMistakes([FromQuery] bool includeResolved, CancellationToken cancellationToken)
@@ -35,10 +35,10 @@ namespace Microlearning.Areas.Quiz.Controllers
         }
 
         /// <summary>
-        /// Tạo phiên ôn luyện các câu làm sai (có thể lọc theo bài học cụ thể)
+        /// Lấy danh sách Sổ câu sai phân cấp theo Khóa học -> Bài học để học viên chọn bài luyện tập
         /// </summary>
-        [HttpGet("practice")]
-        public async Task<IActionResult> GeneratePracticeSession([FromQuery] int? lessonId, CancellationToken cancellationToken)
+        [HttpGet("grouped")]
+        public async Task<IActionResult> GetGroupedMistakes([FromQuery] bool includeResolved, CancellationToken cancellationToken)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
@@ -46,7 +46,26 @@ namespace Microlearning.Areas.Quiz.Controllers
                 return Unauthorized();
             }
 
-            var session = await _mistakeService.GenerateReviewSessionAsync(userId, lessonId, cancellationToken);
+            var result = await _mistakeService.GetGroupedMistakesAsync(userId, includeResolved, cancellationToken);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Tạo phiên ôn luyện các câu làm sai (hỗ trợ lọc theo bài học hoặc khóa học cụ thể)
+        /// </summary>
+        [HttpGet("practice")]
+        public async Task<IActionResult> GeneratePracticeSession(
+            [FromQuery] int? lessonId,
+            [FromQuery] int? courseId,
+            CancellationToken cancellationToken)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized();
+            }
+
+            var session = await _mistakeService.GenerateReviewSessionAsync(userId, lessonId, courseId, cancellationToken);
             return Ok(session);
         }
 

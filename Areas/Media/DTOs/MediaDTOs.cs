@@ -81,6 +81,8 @@ namespace Microlearning.Areas.Media.DTOs
         string? ExternalUrl,
         string? EmbedUrl,
         string ContentType,
-        long FileSizeBytes
+        long FileSizeBytes,
+        string? SlideUrl = null,
+        string? SlideType = null
     );
 }

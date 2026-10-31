@@ -14,6 +14,9 @@ namespace Microlearning.Areas.Quiz.DTOs
         int QuizId,
         int LessonId,
         string LessonTitle,
+        int CourseId,
+        string CourseTitle,
+        string SubjectTitle,
         int SelectedOptionId,
         int FailedCount,
         bool IsResolved,
@@ -22,9 +25,32 @@ namespace Microlearning.Areas.Quiz.DTOs
         List<QuizMistakeOptionDto> Options
     );
 
+    public record LessonMistakeGroupDto(
+        int LessonId,
+        string LessonTitle,
+        int CourseId,
+        string CourseTitle,
+        string SubjectTitle,
+        int TotalMistakes,
+        int UnresolvedCount,
+        List<QuizMistakeItemDto> Mistakes
+    );
+
+    public record CourseMistakeGroupDto(
+        int CourseId,
+        string CourseTitle,
+        int TotalMistakes,
+        int UnresolvedCount,
+        List<LessonMistakeGroupDto> Lessons
+    );
+
     public record QuizPracticeSessionDto(
         int TotalMistakes,
-        List<QuizMistakeItemDto> Mistakes
+        List<QuizMistakeItemDto> Mistakes,
+        int? CurrentLessonId = null,
+        string? CurrentLessonTitle = null,
+        int? CurrentCourseId = null,
+        string? CurrentCourseTitle = null
     );
 
     public record SubmitMistakeAnswerRequest(

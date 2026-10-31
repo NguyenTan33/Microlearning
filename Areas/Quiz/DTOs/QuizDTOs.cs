@@ -8,6 +8,12 @@ namespace Microlearning.Areas.Quiz.DTOs
         List<CreateQuestionRequest>? Questions = null
     );
 
+    public record UpdateQuizRequest(
+        string Title,
+        int PassScore = 80,
+        List<CreateQuestionRequest>? Questions = null
+    );
+
     public record CreateQuestionRequest(
         string Content,
         string? Explanation,
@@ -21,6 +27,18 @@ namespace Microlearning.Areas.Quiz.DTOs
         string OptionText,
         bool IsCorrect,
         int SortOrder = 0
+    );
+
+    public record QuizSummaryResponse(
+        int Id,
+        int LessonId,
+        string Title,
+        int PassScore,
+        int Version,
+        int QuestionCount,
+        double? BestScore = null,
+        bool IsPassed = false,
+        int AttemptsCount = 0
     );
 
     public record QuizDetailResponse(

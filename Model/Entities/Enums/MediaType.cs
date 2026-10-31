@@ -5,6 +5,8 @@ namespace Microlearning.Model.Entities.Enums
         Video = 1,
         Thumbnail = 2,
         Subtitle = 3,
-        Audio = 4
+        Audio = 4,
+        Presentation = 5,
+        Canva = 6
     }
 }

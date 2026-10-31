@@ -6,7 +6,9 @@ namespace Microlearning.Areas.Catalog.DTOs
         string? Description = null,
         int DurationSeconds = 0,
         int SortOrder = 0,
-        bool IsPublished = true
+        bool IsPublished = true,
+        string? SlideUrl = null,
+        string? SlideType = null
     );
 
     public record UpdateLessonRequest(
@@ -14,7 +16,9 @@ namespace Microlearning.Areas.Catalog.DTOs
         string? Description = null,
         int DurationSeconds = 0,
         int SortOrder = 0,
-        bool IsPublished = true
+        bool IsPublished = true,
+        string? SlideUrl = null,
+        string? SlideType = null
     );
 
     public record LessonResponse(
@@ -30,6 +34,9 @@ namespace Microlearning.Areas.Catalog.DTOs
         DateTime? UpdatedAt,
         bool HasQuiz = false,
         int MediaAssetCount = 0,
-        string? VideoUrl = null
+        string? VideoUrl = null,
+        string? SlideUrl = null,
+        string? SlideType = null,
+        int QuizCount = 0
     );
 }

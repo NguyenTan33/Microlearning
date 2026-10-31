@@ -19,11 +19,34 @@ namespace Microlearning.Areas.Quiz.Controllers
         }
 
         /// <summary>
-        /// Lấy đề thi trắc nghiệm của bài học (Đã ẩn hoàn toàn trường IsCorrect để chống lộ đề)
+        /// Lấy toàn bộ danh sách các đề thi trắc nghiệm của bài học kèm trạng thái đã hoàn thành (nếu có Token)
+        /// </summary>
+        [HttpGet("lesson/{lessonId}/all")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetQuizzesByLessonId(int lessonId)
+        {
+            var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var quizzes = await _quizService.GetQuizzesByLessonIdAsync(lessonId, accountId);
+            return Ok(quizzes);
+        }
+
+        /// <summary>
+        /// Lấy chi tiết một đề thi trắc nghiệm theo QuizId (ẩn IsCorrect chống lộ đề)
+        /// </summary>
+        [HttpGet("{id:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetQuizById(int id)
+        {
+            var quiz = await _quizService.GetQuizByIdAsync(id);
+            return Ok(quiz);
+        }
+
+        /// <summary>
+        /// Lấy đề thi trắc nghiệm đầu tiên của bài học (Tương thích ngược)
         /// </summary>
         [HttpGet("lesson/{lessonId}")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetQuizByLessonId(int lessonId)
+        public async Task<IActionResult> GetFirstQuizByLessonId(int lessonId)
         {
             var quiz = await _quizService.GetQuizByLessonIdAsync(lessonId);
             return Ok(quiz);
@@ -49,7 +72,7 @@ namespace Microlearning.Areas.Quiz.Controllers
         /// <summary>
         /// Xem lịch sử các lần thi trắc nghiệm của học viên
         /// </summary>
-        [HttpGet("{quizId}/history")]
+        [HttpGet("{quizId:int}/history")]
         [Authorize]
         public async Task<IActionResult> GetQuizHistory(int quizId)
         {
@@ -64,14 +87,40 @@ namespace Microlearning.Areas.Quiz.Controllers
         }
 
         /// <summary>
-        /// Tạo đề thi cho bài học kèm các câu hỏi và đáp án (Yêu cầu quyền Admin hoặc Giáo viên)
+        /// Tạo đề thi cho bài học (Hỗ trợ 1 bài học có nhiều bài tập Quiz)
         /// </summary>
-        [HttpPost("lesson/{lessonId}")]
+        [HttpPost("lesson/{lessonId:int}")]
         [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> CreateQuiz(int lessonId, [FromBody] CreateQuizRequest request)
         {
             var result = await _quizService.CreateQuizAsync(lessonId, request);
-            return CreatedAtAction(nameof(GetQuizByLessonId), new { lessonId = lessonId }, result);
+            return CreatedAtAction(nameof(GetQuizById), new { id = result.Id }, result);
+        }
+
+        /// <summary>
+        /// Cập nhật nội dung một đề thi trắc nghiệm
+        /// </summary>
+        [HttpPut("{id:int}")]
+        [Authorize(Roles = "Admin,Teacher")]
+        public async Task<IActionResult> UpdateQuiz(int id, [FromBody] UpdateQuizRequest request)
+        {
+            var result = await _quizService.UpdateQuizAsync(id, request);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Xóa một đề thi trắc nghiệm
+        /// </summary>
+        [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Admin,Teacher")]
+        public async Task<IActionResult> DeleteQuiz(int id)
+        {
+            var success = await _quizService.DeleteQuizAsync(id);
+            if (!success)
+            {
+                return NotFound();
+            }
+            return NoContent();
         }
     }
 }

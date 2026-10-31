@@ -27,6 +27,8 @@ namespace Microlearning.Areas.Quiz.Services
                 .Include(m => m.Question)
                     .ThenInclude(q => q.QuizOptions)
                 .Include(m => m.Lesson)
+                    .ThenInclude(l => l.Subject)
+                        .ThenInclude(s => s.Course)
                 .Where(m => m.AccountId == userId);
 
             if (!includeResolved)
@@ -44,6 +46,9 @@ namespace Microlearning.Areas.Quiz.Services
                     m.QuizId,
                     m.LessonId,
                     m.Lesson.Title,
+                    m.Lesson.Subject != null && m.Lesson.Subject.Course != null ? m.Lesson.Subject.Course.Id : 0,
+                    m.Lesson.Subject != null && m.Lesson.Subject.Course != null ? m.Lesson.Subject.Course.Title : "Chưa phân khóa",
+                    m.Lesson.Subject != null ? m.Lesson.Subject.Title : "Chưa phân môn",
                     m.SelectedOptionId,
                     m.FailedCount,
                     m.IsResolved,
@@ -59,18 +64,71 @@ namespace Microlearning.Areas.Quiz.Services
             return mistakes;
         }
 
-        public async Task<QuizPracticeSessionDto> GenerateReviewSessionAsync(string userId, int? lessonId = null, CancellationToken cancellationToken = default)
+        public async Task<List<CourseMistakeGroupDto>> GetGroupedMistakesAsync(string userId, bool includeResolved = false, CancellationToken cancellationToken = default)
+        {
+            var rawMistakes = await GetMyMistakesAsync(userId, includeResolved, cancellationToken);
+            if (!rawMistakes.Any())
+            {
+                return new List<CourseMistakeGroupDto>();
+            }
+
+            var courseGroups = rawMistakes
+                .GroupBy(m => new { m.CourseId, m.CourseTitle })
+                .Select(cg =>
+                {
+                    var lessonGroups = cg
+                        .GroupBy(m => new { m.LessonId, m.LessonTitle, m.SubjectTitle })
+                        .Select(lg => new LessonMistakeGroupDto(
+                            lg.Key.LessonId,
+                            lg.Key.LessonTitle,
+                            cg.Key.CourseId,
+                            cg.Key.CourseTitle,
+                            lg.Key.SubjectTitle,
+                            lg.Count(),
+                            lg.Count(x => !x.IsResolved),
+                            lg.OrderByDescending(x => x.FailedCount).ThenByDescending(x => x.LastFailedAt).ToList()
+                        ))
+                        .OrderByDescending(l => l.UnresolvedCount)
+                        .ThenBy(l => l.LessonTitle)
+                        .ToList();
+
+                    return new CourseMistakeGroupDto(
+                        cg.Key.CourseId,
+                        cg.Key.CourseTitle,
+                        cg.Count(),
+                        cg.Count(x => !x.IsResolved),
+                        lessonGroups
+                    );
+                })
+                .OrderByDescending(c => c.UnresolvedCount)
+                .ThenBy(c => c.CourseTitle)
+                .ToList();
+
+            return courseGroups;
+        }
+
+        public async Task<QuizPracticeSessionDto> GenerateReviewSessionAsync(
+            string userId,
+            int? lessonId = null,
+            int? courseId = null,
+            CancellationToken cancellationToken = default)
         {
             var query = _dbContext.UserQuizMistakes
                 .AsNoTracking()
                 .Include(m => m.Question)
                     .ThenInclude(q => q.QuizOptions)
                 .Include(m => m.Lesson)
+                    .ThenInclude(l => l.Subject)
+                        .ThenInclude(s => s.Course)
                 .Where(m => m.AccountId == userId && !m.IsResolved);
 
             if (lessonId.HasValue && lessonId.Value > 0)
             {
                 query = query.Where(m => m.LessonId == lessonId.Value);
+            }
+            else if (courseId.HasValue && courseId.Value > 0)
+            {
+                query = query.Where(m => m.Lesson.Subject.CourseId == courseId.Value);
             }
 
             var mistakes = await query
@@ -84,6 +142,9 @@ namespace Microlearning.Areas.Quiz.Services
                     m.QuizId,
                     m.LessonId,
                     m.Lesson.Title,
+                    m.Lesson.Subject != null && m.Lesson.Subject.Course != null ? m.Lesson.Subject.Course.Id : 0,
+                    m.Lesson.Subject != null && m.Lesson.Subject.Course != null ? m.Lesson.Subject.Course.Title : "Chưa phân khóa",
+                    m.Lesson.Subject != null ? m.Lesson.Subject.Title : "Chưa phân môn",
                     m.SelectedOptionId,
                     m.FailedCount,
                     m.IsResolved,
@@ -96,7 +157,24 @@ namespace Microlearning.Areas.Quiz.Services
                 ))
                 .ToListAsync(cancellationToken);
 
-            return new QuizPracticeSessionDto(mistakes.Count, mistakes);
+            string? lessonTitle = null;
+            string? courseTitle = null;
+
+            if (mistakes.Any())
+            {
+                var first = mistakes.First();
+                lessonTitle = lessonId.HasValue ? first.LessonTitle : null;
+                courseTitle = courseId.HasValue ? first.CourseTitle : null;
+            }
+
+            return new QuizPracticeSessionDto(
+                mistakes.Count,
+                mistakes,
+                lessonId,
+                lessonTitle,
+                courseId,
+                courseTitle
+            );
         }
 
         public async Task<MistakeAnswerResultDto> SubmitPracticeAnswerAsync(string userId, long mistakeId, int selectedOptionId, CancellationToken cancellationToken = default)
@@ -132,7 +210,7 @@ namespace Microlearning.Areas.Quiz.Services
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             string feedback = isCorrect
-                ? "Chính xác! Bạn đã hiểu bài và khắc phục thành công lỗi sai này."
+                ? "Chính xác! Bạn đã hiểu bài và khắc phục thành công câu hỏi sai này."
                 : "Rất tiếc, câu trả lời vẫn chưa đúng. Hãy đọc kỹ phần giải thích để củng cố kiến thức!";
 
             return new MistakeAnswerResultDto(
