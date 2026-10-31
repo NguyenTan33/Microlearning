@@ -32,6 +32,9 @@ export interface QuizMistakeItem {
   quizId: number;
   lessonId: number;
   lessonTitle: string;
+  courseId: number;
+  courseTitle: string;
+  subjectTitle: string;
   selectedOptionId: number;
   failedCount: number;
   isResolved: boolean;
@@ -40,9 +43,32 @@ export interface QuizMistakeItem {
   options: QuizMistakeOption[];
 }
 
+export interface LessonMistakeGroup {
+  lessonId: number;
+  lessonTitle: string;
+  courseId: number;
+  courseTitle: string;
+  subjectTitle: string;
+  totalMistakes: number;
+  unresolvedCount: number;
+  mistakes: QuizMistakeItem[];
+}
+
+export interface CourseMistakeGroup {
+  courseId: number;
+  courseTitle: string;
+  totalMistakes: number;
+  unresolvedCount: number;
+  lessons: LessonMistakeGroup[];
+}
+
 export interface QuizPracticeSession {
   totalMistakes: number;
   mistakes: QuizMistakeItem[];
+  currentLessonId?: number | null;
+  currentLessonTitle?: string | null;
+  currentCourseId?: number | null;
+  currentCourseTitle?: string | null;
 }
 
 export interface MistakeAnswerResult {
@@ -72,11 +98,29 @@ export const mistakeVaultApi = {
   },
 
   /**
-   * Tạo phiên ôn luyện các câu làm sai (có thể lọc theo bài học cụ thể)
+   * Lấy danh sách Sổ câu sai phân cấp theo Khóa học -> Bài học
    */
-  async generatePracticeSession(lessonId?: number): Promise<QuizPracticeSession> {
+  async getGroupedMistakes(includeResolved = false): Promise<CourseMistakeGroup[]> {
     try {
-      const url = lessonId ? `/api/quiz/mistakes/practice?lessonId=${lessonId}` : '/api/quiz/mistakes/practice';
+      const res = await fetch(`/api/quiz/mistakes/grouped?includeResolved=${includeResolved}`, {
+        headers: getAuthHeaders(),
+      });
+      return await handleResponse<CourseMistakeGroup[]>(res);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Tạo phiên ôn luyện các câu làm sai (hỗ trợ lọc theo bài học hoặc khóa học cụ thể)
+   */
+  async generatePracticeSession(lessonId?: number, courseId?: number): Promise<QuizPracticeSession> {
+    try {
+      const params = new URLSearchParams();
+      if (lessonId) params.append('lessonId', lessonId.toString());
+      if (courseId) params.append('courseId', courseId.toString());
+      const queryString = params.toString();
+      const url = `/api/quiz/mistakes/practice${queryString ? `?${queryString}` : ''}`;
       const res = await fetch(url, {
         headers: getAuthHeaders(),
       });

@@ -25,6 +25,9 @@ export interface CourseOverviewMetrics {
   totalLessons: number;
   averageProgressPercent: number;
   completedStudentsCount: number;
+  totalQuizzesInCourse: number;
+  averageCourseQuizScore: number;
+  studentsCompletedAllQuizzesCount: number;
 }
 
 export interface StudentProgressDetail {
@@ -35,8 +38,34 @@ export interface StudentProgressDetail {
   completedLessons: number;
   totalLessons: number;
   progressPercent: number;
+  totalQuizzesInCourse: number;
+  completedQuizzes: number;
+  quizCompletionPercent: number;
+  averageQuizScore: number;
+  hasPassedAllQuizzes: boolean;
   lastActiveAt?: string | null;
   hasCompletedCourse: boolean;
+}
+
+export interface StudentQuizPerformance {
+  quizId: number;
+  quizTitle: string;
+  passScore: number;
+  bestScore: number;
+  isPassed: boolean;
+  attemptsCount: number;
+  lastAttemptAt?: string | null;
+}
+
+export interface StudentLessonQuizDetail {
+  lessonId: number;
+  lessonTitle: string;
+  subjectTitle: string;
+  durationSeconds: number;
+  watchedSeconds: number;
+  videoPercent: number;
+  isVideoCompleted: boolean;
+  quizzes: StudentQuizPerformance[];
 }
 
 export interface PagedResult<T> {
@@ -52,11 +81,12 @@ export interface StudentProgressFilter {
   pageNumber?: number;
   pageSize?: number;
   onlyCompleted?: boolean;
+  onlyCompletedQuizzes?: boolean;
 }
 
 export const studentAnalyticsApi = {
   /**
-   * Lấy số liệu thống kê tổng quan của khóa học
+   * Lấy số liệu thống kê tổng quan của khóa học (video + bài tập)
    */
   async getCourseOverview(courseId: number): Promise<CourseOverviewMetrics> {
     const res = await fetch(`/api/admin/courses/${courseId}/analytics/overview`, {
@@ -66,7 +96,7 @@ export const studentAnalyticsApi = {
   },
 
   /**
-   * Lấy danh sách học viên và % tiến độ hoàn thành trong khóa học
+   * Lấy danh sách học viên và % tiến độ hoàn thành video + bài tập trong khóa học
    */
   async getStudentsProgress(courseId: number, filter?: StudentProgressFilter): Promise<PagedResult<StudentProgressDetail>> {
     const params = new URLSearchParams();
@@ -74,6 +104,7 @@ export const studentAnalyticsApi = {
     if (filter?.pageNumber) params.append('pageNumber', filter.pageNumber.toString());
     if (filter?.pageSize) params.append('pageSize', filter.pageSize.toString());
     if (filter?.onlyCompleted !== undefined) params.append('onlyCompleted', filter.onlyCompleted.toString());
+    if (filter?.onlyCompletedQuizzes !== undefined) params.append('onlyCompletedQuizzes', filter.onlyCompletedQuizzes.toString());
 
     const queryString = params.toString();
     const url = `/api/admin/courses/${courseId}/analytics/students-progress${queryString ? `?${queryString}` : ''}`;
@@ -82,5 +113,15 @@ export const studentAnalyticsApi = {
       headers: getAuthHeaders(),
     });
     return await handleResponse<PagedResult<StudentProgressDetail>>(res);
+  },
+
+  /**
+   * Lấy chi tiết từng bài học (video % + điểm các bài quiz) của một sinh viên cụ thể trong khóa học
+   */
+  async getStudentCourseDetail(courseId: number, studentId: string): Promise<StudentLessonQuizDetail[]> {
+    const res = await fetch(`/api/admin/courses/${courseId}/analytics/students/${studentId}/detail`, {
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse<StudentLessonQuizDetail[]>(res);
   },
 };

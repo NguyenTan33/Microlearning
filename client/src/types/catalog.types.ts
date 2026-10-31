@@ -53,6 +53,22 @@ export interface Lesson {
   updatedAt?: string;
   hasQuiz: boolean;
   mediaAssetCount: number;
+  videoUrl?: string | null;
+  slideUrl?: string | null;
+  slideType?: string | null;
+  quizCount?: number;
+}
+
+export interface QuizSummary {
+  id: number;
+  lessonId: number;
+  title: string;
+  passScore: number;
+  version: number;
+  questionCount: number;
+  bestScore?: number | null;
+  isPassed?: boolean;
+  attemptsCount?: number;
 }
 
 export interface LessonPackageMediaAsset {

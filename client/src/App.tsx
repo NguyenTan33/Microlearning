@@ -81,7 +81,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold tracking-tight text-white">
-            MicroLearn
+            EduSync
           </span>
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">
             Nền tảng học thông minh

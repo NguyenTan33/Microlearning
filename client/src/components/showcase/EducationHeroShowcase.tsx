@@ -37,7 +37,7 @@ export const EducationHeroShowcase: React.FC = () => {
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">
-                MicroLearn
+                EduSync
               </span>
               <span className="text-[11px] font-semibold px-3 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 shadow-sm backdrop-blur-md">
                 Nền tảng học tập thông minh
@@ -58,7 +58,7 @@ export const EducationHeroShowcase: React.FC = () => {
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl font-normal">
-            Những bài học ngắn gọn, dễ hiểu, cùng bài kiểm tra tương tác và theo dõi tiến độ học tập. MicroLearn đồng hành cùng học sinh trên mọi môn học, từ Toán, Ngữ văn, Tiếng Anh đến Khoa học, Lịch sử và nhiều lĩnh vực kiến thức khác.
+            Những bài học ngắn gọn, dễ hiểu, cùng bài kiểm tra tương tác và theo dõi tiến độ học tập. EduSync đồng hành cùng học sinh trên mọi môn học, từ Toán, Ngữ văn, Tiếng Anh đến Khoa học, Lịch sử và nhiều lĩnh vực kiến thức khác.
           </p>
         </div>
       </div>

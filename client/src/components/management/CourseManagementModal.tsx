@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FolderPlus,
+  FileQuestion,
   FilePlus,
   ArrowLeft,
   Video,
@@ -94,8 +95,17 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     description: '',
     durationSeconds: 180,
     sortOrder: 1,
+    slideUrl: '',
+    slideType: 'Presentation',
   });
   const [lessonVideoFile, setLessonVideoFile] = useState<File | null>(null);
+  const [lessonSlideFile, setLessonSlideFile] = useState<File | null>(null);
+
+  // Multi-quiz management modal state (Feature 3)
+  const [showQuizListModal, setShowQuizListModal] = useState<boolean>(false);
+  const [lessonQuizList, setLessonQuizList] = useState<any[]>([]);
+  const [loadingQuizList, setLoadingQuizList] = useState<boolean>(false);
+  const [editingQuizId, setEditingQuizId] = useState<number | null>(null);
 
   // Dedicated Video Upload / Embed Modal
   const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
@@ -599,6 +609,87 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       showToast('error', err instanceof Error ? err.message : 'Lỗi khi gắn liên kết video.');
     } finally {
       setLinkingExternalVideo(false);
+    }
+  };
+
+
+  // =================== MULTI-QUIZ MANAGEMENT (FEATURE 3) ===================
+  const handleOpenQuizManager = async (lesson: Lesson) => {
+    setTargetLessonForQuiz(lesson);
+    setShowQuizListModal(true);
+    setLoadingQuizList(true);
+    try {
+      const list = await quizApi.getAllQuizzesByLesson(lesson.id);
+      setLessonQuizList(list);
+    } catch {
+      setLessonQuizList([]);
+    } finally {
+      setLoadingQuizList(false);
+    }
+  };
+
+  const handleStartCreateQuiz = () => {
+    if (!targetLessonForQuiz) return;
+    setEditingQuizId(null);
+    setQuizTitle(`Bài kiểm tra ${(lessonQuizList.length + 1)}: ${targetLessonForQuiz.title}`);
+    setQuizPassScore(80);
+    setQuizQuestions([
+      {
+        content: 'Khái niệm chính của bài học này là gì?',
+        explanation: 'Đây là đáp án chính xác theo nội dung bài học.',
+        points: 50,
+        options: [
+          { optionText: 'Phương án A (Đáp án đúng)', isCorrect: true },
+          { optionText: 'Phương án B', isCorrect: false },
+          { optionText: 'Phương án C', isCorrect: false },
+          { optionText: 'Phương án D', isCorrect: false },
+        ],
+      },
+    ]);
+    setShowQuizModal(true);
+  };
+
+  const handleStartEditQuiz = async (quizItem: any) => {
+    if (!targetLessonForQuiz) return;
+    setEditingQuizId(quizItem.id);
+    setQuizTitle(quizItem.title || 'Bài kiểm tra đánh giá');
+    setQuizPassScore(quizItem.passScore || 80);
+    setActionLoading(true);
+    setShowQuizModal(true);
+    try {
+      const detail = await quizApi.getQuizById(quizItem.id);
+      if (detail && Array.isArray(detail.questions) && detail.questions.length > 0) {
+        setQuizQuestions(
+          detail.questions.map((q) => ({
+            content: q.content,
+            explanation: q.explanation || '',
+            points: q.points || Math.max(1, Math.round(100 / detail.questions.length)),
+            options: (q.options || []).map((opt) => ({
+              optionText: opt.optionText,
+              isCorrect: Boolean(opt.isCorrect),
+            })),
+          }))
+        );
+      }
+    } catch {
+      // keep
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteQuizItem = async (quizId: number) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa bài quiz này không?')) return;
+    try {
+      await quizApi.deleteQuiz(quizId);
+      showToast('success', 'Đã xóa bài quiz thành công.');
+      if (targetLessonForQuiz) {
+        const list = await quizApi.getAllQuizzesByLesson(targetLessonForQuiz.id);
+        setLessonQuizList(list);
+      }
+      if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
+    } catch (err: any) {
+      showToast('error', err?.message || 'Lỗi khi xóa bài quiz.');
     }
   };
 
@@ -1212,11 +1303,13 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                                 setTargetSubjectId(subj.id);
                                 setEditingLesson(null);
                                 setLessonForm({
-                                  title: '',
-                                  description: '',
-                                  durationSeconds: 180,
-                                  sortOrder: (subj.lessons?.length || 0) + 1,
-                                });
+    title: '',
+    description: '',
+    durationSeconds: 180,
+    sortOrder: (subj.lessons?.length || 0) + 1,
+    slideUrl: '',
+    slideType: 'Presentation',
+  });
                                 setLessonVideoFile(null);
                                 setShowLessonModal(true);
                               }}
@@ -1330,7 +1423,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
 
                                   {/* Tạo / Soạn Đề thi trắc nghiệm */}
                                   <button
-                                    onClick={() => handleOpenQuizModal(lesson)}
+                                    onClick={() => handleOpenQuizManager(lesson)}
                                     className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
                                       lesson.hasQuiz
                                         ? 'bg-purple-900/80 border-purple-500/50 hover:bg-purple-800 text-purple-200'
@@ -1358,11 +1451,13 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                                       setTargetSubjectId(subj.id);
                                       setEditingLesson(lesson);
                                       setLessonForm({
-                                        title: lesson.title,
-                                        description: lesson.description || '',
-                                        durationSeconds: lesson.durationSeconds,
-                                        sortOrder: lesson.sortOrder,
-                                      });
+    title: lesson.title,
+    description: lesson.description || '',
+    durationSeconds: lesson.durationSeconds,
+    sortOrder: lesson.sortOrder,
+    slideUrl: lesson.slideUrl || '',
+    slideType: lesson.slideType || 'Presentation',
+  });
                                       setLessonVideoFile(null);
                                       setShowLessonModal(true);
                                     }}
@@ -1505,6 +1600,68 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                     </div>
                   </div>
                 )}
+              </div>
+
+
+              {/* Đính kèm Slide trình chiếu (PowerPoint / Canva) - Feature 4 */}
+              <div className="space-y-2 pt-1 border-t border-white/5">
+                <label className="block text-slate-300 font-medium">
+                  📊 Slide Trình Chiếu (Canva hoặc PowerPoint .ppt/.pptx)
+                </label>
+                
+                {/* Nhập liên kết Canva */}
+                <div>
+                  <input
+                    type="url"
+                    placeholder="Dán link Canva (vd: https://www.canva.com/design/...)"
+                    value={lessonForm.slideUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLessonForm({
+                        ...lessonForm,
+                        slideUrl: val,
+                        slideType: val.includes('canva.com') ? 'Canva' : 'Presentation',
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Hỗ trợ link Canva trình chiếu (tự động nhúng trực quan và tự chạy slide).
+                  </span>
+                </div>
+
+                {/* Hoặc tải file PPT / PPTX */}
+                <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
+                  <input
+                    type="file"
+                    accept=".ppt,.pptx,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setLessonSlideFile(file);
+                        setLessonForm((prev) => ({
+                          ...prev,
+                          slideType: 'Presentation',
+                        }));
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  {lessonSlideFile ? (
+                    <div className="flex items-center justify-center gap-2 text-indigo-300 py-1">
+                      <FileText className="w-4 h-4 text-indigo-400" />
+                      <span className="font-semibold text-xs truncate max-w-[200px]">{lessonSlideFile.name}</span>
+                      <span className="text-[10px] text-slate-400">
+                        ({(lessonSlideFile.size / (1024 * 1024)).toFixed(1)} MB)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
+                      <Upload className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs">Hoặc tải lên tệp PowerPoint (.ppt, .pptx, .pdf)</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">
@@ -1995,6 +2152,118 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               </div>
             </form>
           )}
+          </div>
+        </div>
+      )}
+
+
+      {/* DIALOG E1: MULTI-QUIZ MANAGEMENT (DANH SÁCH BÀI QUIZ CỦA BÀI HỌC - FEATURE 3) */}
+      {showQuizListModal && targetLessonForQuiz && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl bg-[#090D1A] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="space-y-0.5">
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-indigo-400" />
+                  <span>Quản lý bài kiểm tra trắc nghiệm (Quiz)</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Bài học: <strong className="text-white">{targetLessonForQuiz.title}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuizListModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-slate-300">
+                Danh sách đề trắc nghiệm ({lessonQuizList.length} bài)
+              </span>
+              <button
+                type="button"
+                onClick={handleStartCreateQuiz}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-indigo-600/30 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Thêm bài Quiz mới</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              {loadingQuizList ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+                  <span className="text-xs">Đang tải danh sách bài quiz...</span>
+                </div>
+              ) : lessonQuizList.length === 0 ? (
+                <div className="py-10 text-center rounded-xl bg-slate-900/60 border border-white/5 p-6 space-y-2">
+                  <FileQuestion className="w-10 h-10 text-slate-600 mx-auto" />
+                  <p className="text-xs text-slate-400">Bài học này chưa có bài trắc nghiệm nào.</p>
+                  <button
+                    type="button"
+                    onClick={handleStartCreateQuiz}
+                    className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo bài Quiz đầu tiên</span>
+                  </button>
+                </div>
+              ) : (
+                lessonQuizList.map((q, idx) => (
+                  <div
+                    key={q.id || idx}
+                    className="p-3.5 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-between gap-3 hover:border-white/20 transition-all"
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">
+                          Quiz #{idx + 1}
+                        </span>
+                        <h4 className="text-xs font-bold text-white truncate">{q.title}</h4>
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                        <span>Điểm đạt: <strong className="text-emerald-400">{q.passScore || 80}%</strong></span>
+                        <span>•</span>
+                        <span>Số câu hỏi: <strong className="text-white">{q.totalQuestions || q.questionCount || 0} câu</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditQuiz(q)}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-semibold transition-all cursor-pointer"
+                      >
+                        Sửa đề
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteQuizItem(q.id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-semibold transition-all cursor-pointer"
+                        title="Xóa đề trắc nghiệm này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-white/10 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowQuizListModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

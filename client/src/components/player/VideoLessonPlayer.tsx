@@ -126,6 +126,8 @@ interface VideoLessonPlayerProps {
   lessonTitle: string;
   courseId?: number;
   courseTitle?: string;
+  slideUrl?: string | null;
+  slideType?: string | null;
   initialSeekTime?: number | null;
   onOpenNotebookView?: () => void;
   onOpenBookmarksView?: () => void;
@@ -139,6 +141,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   lessonTitle,
   courseId,
   courseTitle,
+  slideUrl,
+  slideType,
   initialSeekTime,
   onOpenNotebookView,
   onOpenBookmarksView,
@@ -167,6 +171,64 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [flagTitleInput, setFlagTitleInput] = useState<string>('');
   const [flagNoteInput, setFlagNoteInput] = useState<string>('');
   const [flagTimestamp, setFlagTimestamp] = useState<number>(0);
+
+  // Slide Presentation state (Feature 4: Canva & PowerPoint)
+  const effectiveSlideUrl = slideUrl || ((mediaInfo?.sourceType as string) === 'presentation' ? mediaInfo?.streamUrl : null);
+  const effectiveSlideType = slideType || (effectiveSlideUrl?.includes('canva.com') ? 'Canva' : 'Presentation');
+  const [contentMode, setContentMode] = useState<'video' | 'slide'>('video');
+  const [currentSlide, setCurrentSlide] = useState<number>(1);
+  const [totalSlides, setTotalSlides] = useState<number>(12);
+  const [isAutoPlaySlide, setIsAutoPlaySlide] = useState<boolean>(false);
+  const [slideFullscreen, setSlideFullscreen] = useState<boolean>(false);
+
+  // Initialize content mode if only slide is available
+  useEffect(() => {
+    if (effectiveSlideUrl && !videoSrc && (!mediaInfo || (!mediaInfo.streamUrl && !mediaInfo.embedUrl))) {
+      setContentMode('slide');
+    }
+  }, [effectiveSlideUrl, videoSrc, mediaInfo]);
+
+  // Auto-play slideshow timer (tu dong chuyen trang sau moi 4 giay)
+  useEffect(() => {
+    if (!isAutoPlaySlide || contentMode !== 'slide') return;
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => {
+        const next = prev >= totalSlides ? 1 : prev + 1;
+        const pct = Math.min(100, Math.round((next / totalSlides) * 100));
+        if (onWatchedPercentChange) onWatchedPercentChange(pct);
+        if (pct >= 60 && onProgressSaved && !isCompletionNotifiedRef.current) {
+          isCompletionNotifiedRef.current = true;
+          onProgressSaved(true);
+        }
+        return next;
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [isAutoPlaySlide, contentMode, totalSlides, onWatchedPercentChange, onProgressSaved]);
+
+  const handleSlideChange = (newSlide: number) => {
+    const clamped = Math.max(1, Math.min(totalSlides, newSlide));
+    setCurrentSlide(clamped);
+    const pct = Math.min(100, Math.round((clamped / totalSlides) * 100));
+    if (onWatchedPercentChange) onWatchedPercentChange(pct);
+    if (pct >= 60 && onProgressSaved && !isCompletionNotifiedRef.current) {
+      isCompletionNotifiedRef.current = true;
+      onProgressSaved(true);
+    }
+  };
+
+  const getCanvaEmbedUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('/view?embed')) return url;
+    if (url.includes('/view')) return url.replace('/view', '/view?embed');
+    return url.includes('?') ? url + '&embed=true' : url + '?embed=true';
+  };
+
+  const getOfficeViewerUrl = (url: string) => {
+    if (!url) return '';
+    const full = url.startsWith('http') ? url : window.location.origin + url;
+    return 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(full);
+  };
 
   // Anti-cheat Interval Union tracking (Feature 2) & Bottom Tabs (Feature 1)
   const [antiCheatWarning, setAntiCheatWarning] = useState<string | null>(null);

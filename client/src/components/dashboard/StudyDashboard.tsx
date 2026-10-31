@@ -695,7 +695,7 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
             </div>
             <div className="hidden sm:block">
               <span className="text-base font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
-                MicroLearn
+                EduSync
               </span>
               <p className="text-[10px] text-slate-400 hidden 2xl:block leading-none mt-0.5">
                 Học tập &amp; Đánh giá Năng lực
@@ -1251,6 +1251,8 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
                     lessonTitle={effectiveLesson.title}
                     courseId={effectiveCourse?.id}
                     courseTitle={effectiveCourse?.title}
+                    slideUrl={effectiveLesson.slideUrl}
+                    slideType={effectiveLesson.slideType}
                     initialSeekTime={initialSeekTimestamp}
                     onOpenNotebookView={() => setCurrentView('NOTEBOOK')}
                     onOpenBookmarksView={() => setCurrentView('BOOKMARKS')}
