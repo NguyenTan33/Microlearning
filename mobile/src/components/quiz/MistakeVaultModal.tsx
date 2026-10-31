@@ -18,11 +18,16 @@ import {
   Sparkles,
   BookOpen,
   Award,
+  ArrowLeft,
+  ChevronRight,
+  Flame,
 } from 'lucide-react-native';
 import {
   mistakeVaultApi,
   type QuizMistakeItem,
   type MistakeAnswerResult,
+  type CourseMistakeGroup,
+  type LessonMistakeGroup,
 } from '../../services/mistakeVaultApi';
 
 interface MistakeVaultModalProps {
@@ -31,23 +36,24 @@ interface MistakeVaultModalProps {
 }
 
 export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ visible, onClose }) => {
-  const [mistakes, setMistakes] = useState<QuizMistakeItem[]>([]);
+  const [courseGroups, setCourseGroups] = useState<CourseMistakeGroup[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Chế độ làm bài liên tục cho bài học được chọn (Feature 5)
+  const [activeLessonGroup, setActiveLessonGroup] = useState<LessonMistakeGroup | null>(null);
+  const [practiceMistakes, setPracticeMistakes] = useState<QuizMistakeItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOptionId, setSelectedOptionId] = useState<number | null>(null);
   const [answerResult, setAnswerResult] = useState<MistakeAnswerResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchMistakes = useCallback(async () => {
+  const fetchGroupedMistakes = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await mistakeVaultApi.getMyMistakes(false);
-      setMistakes(data);
-      setCurrentIndex(0);
-      setSelectedOptionId(null);
-      setAnswerResult(null);
+      const data = await mistakeVaultApi.getGroupedMistakes(false);
+      setCourseGroups(data);
     } catch {
-      // fallback
+      setCourseGroups([]);
     } finally {
       setLoading(false);
     }
@@ -55,286 +61,512 @@ export const MistakeVaultModal: React.FC<MistakeVaultModalProps> = ({ visible, o
 
   useEffect(() => {
     if (visible) {
-      fetchMistakes();
+      setActiveLessonGroup(null);
+      fetchGroupedMistakes();
     }
-  }, [visible, fetchMistakes]);
+  }, [visible, fetchGroupedMistakes]);
 
-  const currentMistake = mistakes[currentIndex] || null;
-
-  const handleAnswerSubmit = async () => {
-    if (!currentMistake || selectedOptionId === null) {
-      Alert.alert('Chú ý', 'Vui lòng chọn 1 phương án trước khi kiểm tra.');
-      return;
+  // Bắt đầu làm bài liên tục cho 1 bài học cụ thể
+  const handleStartPracticeLesson = async (lessonGroup: LessonMistakeGroup) => {
+    setActiveLessonGroup(lessonGroup);
+    setLoading(true);
+    try {
+      const session = await mistakeVaultApi.generatePracticeSession(
+        lessonGroup.lessonId,
+        lessonGroup.courseId
+      );
+      setPracticeMistakes(session.mistakes || lessonGroup.mistakes || []);
+      setCurrentIndex(0);
+      setSelectedOptionId(null);
+      setAnswerResult(null);
+    } catch {
+      setPracticeMistakes(lessonGroup.mistakes || []);
+      setCurrentIndex(0);
+      setSelectedOptionId(null);
+      setAnswerResult(null);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  const handleExitPractice = () => {
+    setActiveLessonGroup(null);
+    fetchGroupedMistakes();
+  };
+
+  const handleSelectOption = (optionId: number) => {
+    if (answerResult) return;
+    setSelectedOptionId(optionId);
+  };
+
+  const handleSubmitAnswer = async () => {
+    if (!selectedOptionId || !currentMistake) return;
     setSubmitting(true);
     try {
-      const res = await mistakeVaultApi.submitPracticeAnswer(currentMistake.id, selectedOptionId);
+      const res = await mistakeVaultApi.answerMistakeQuestion(currentMistake.id, selectedOptionId);
       setAnswerResult(res);
-    } catch {
-      // Offline fallback simulation
-      const isCorrect = selectedOptionId !== currentMistake.selectedOptionId;
-      setAnswerResult({
-        mistakeId: currentMistake.id,
-        questionId: currentMistake.questionId,
-        isCorrect,
-        correctOptionId: selectedOptionId,
-        isResolved: isCorrect,
-        failedCount: currentMistake.failedCount,
-        feedbackMessage: isCorrect ? 'Chính xác! Bạn đã ghi nhớ kiến thức rất tốt.' : 'Chưa đúng! Hãy đọc kỹ giải thích.',
-        explanation: currentMistake.explanation || 'Hãy đối chiếu lại nội dung trong bài giảng video.',
-      });
+    } catch (err: any) {
+      Alert.alert('Thông báo', err?.message || 'Có lỗi khi kiểm tra đáp án.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleNextQuestion = () => {
-    setSelectedOptionId(null);
-    setAnswerResult(null);
-    if (currentIndex < mistakes.length - 1) {
+    if (currentIndex < practiceMistakes.length - 1) {
       setCurrentIndex((prev) => prev + 1);
+      setSelectedOptionId(null);
+      setAnswerResult(null);
     } else {
-      Alert.alert('Hoàn thành', 'Bạn đã ôn tập hết các câu hỏi làm sai trong danh sách!');
-      fetchMistakes();
+      Alert.alert('Tuyệt vời!', 'Bạn đã hoàn thành các câu hỏi làm sai của bài học này!', [
+        { text: 'Quay lại sổ câu sai', onPress: handleExitPractice },
+      ]);
     }
   };
 
+  const currentMistake = practiceMistakes[currentIndex];
+  const totalMistakesCount = courseGroups.reduce((acc, c) => acc + c.unresolvedMistakes, 0);
+
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <View style={styles.iconBox}>
-              <HelpCircle color="#F59E0B" size={20} />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>Sổ Tay Ôn Luyện Câu Sai</Text>
-              <Text style={styles.headerSubtitle}>Tập trung củng cố các lỗ hổng kiến thức đã từng sai</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-            <X color="#94A3B8" size={22} />
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#F59E0B" />
-            <Text style={styles.loadingText}>Đang nạp các câu hỏi làm sai từ Azure...</Text>
-          </View>
-        ) : mistakes.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Award color="#10B981" size={54} />
-            <Text style={styles.emptyTitle}>Tuyệt vời! Không có câu hỏi nào bị sai</Text>
-            <Text style={styles.emptyDesc}>
-              Bạn đã hoàn thành chính xác tất cả các bài trắc nghiệm đã làm hoặc đã khắc phục hết các câu sai.
-            </Text>
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Progress counter */}
-            <View style={styles.metaRow}>
-              <View style={styles.metaBadge}>
-                <Text style={styles.metaBadgeText}>
-                  CÂU {currentIndex + 1} / {mistakes.length}
-                </Text>
-              </View>
-              <Text style={styles.failedCountText}>Đã từng sai {currentMistake?.failedCount || 1} lần</Text>
-            </View>
-
-            {/* Question Card */}
-            <View style={styles.questionCard}>
-              <Text style={styles.lessonMetaText}>{currentMistake?.lessonTitle}</Text>
-              <Text style={styles.questionTitle}>{currentMistake?.questionText}</Text>
-            </View>
-
-            {/* Options */}
-            <View style={styles.optionsList}>
-              {currentMistake?.options?.map((opt, idx) => {
-                const isSelected = selectedOptionId === opt.id;
-                let optionStyle = [styles.optionCard, isSelected && styles.optionCardSelected];
-
-                if (answerResult) {
-                  if (opt.id === answerResult.correctOptionId) {
-                    optionStyle = [styles.optionCard, styles.optionCorrect];
-                  } else if (isSelected && !answerResult.isCorrect) {
-                    optionStyle = [styles.optionCard, styles.optionWrong];
-                  }
-                }
-
-                return (
-                  <TouchableOpacity
-                    key={opt.id}
-                    style={optionStyle}
-                    onPress={() => !answerResult && setSelectedOptionId(opt.id)}
-                    activeOpacity={0.8}
-                    disabled={Boolean(answerResult)}
-                  >
-                    <View style={styles.optLetterBox}>
-                      <Text style={styles.optLetterText}>{String.fromCharCode(65 + idx)}</Text>
-                    </View>
-                    <Text style={styles.optText}>{opt.optionText}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Result feedback */}
-            {answerResult && (
-              <View
-                style={[
-                  styles.resultBox,
-                  answerResult.isCorrect ? styles.resultBoxCorrect : styles.resultBoxWrong,
-                ]}
-              >
-                <View style={styles.resultHeader}>
-                  {answerResult.isCorrect ? (
-                    <CheckCircle2 color="#10B981" size={20} />
-                  ) : (
-                    <XCircle color="#EF4444" size={20} />
-                  )}
-                  <Text
-                    style={[
-                      styles.resultTitle,
-                      { color: answerResult.isCorrect ? '#10B981' : '#EF4444' },
-                    ]}
-                  >
-                    {answerResult.feedbackMessage}
-                  </Text>
-                </View>
-
-                {answerResult.explanation ? (
-                  <Text style={styles.explanationText}>Giải thích: {answerResult.explanation}</Text>
-                ) : null}
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          {/* Header */}
+          <View style={styles.headerRow}>
+            {activeLessonGroup ? (
+              <TouchableOpacity style={styles.exitButton} onPress={handleExitPractice}>
+                <ArrowLeft color="#38BDF8" size={18} />
+                <Text style={styles.exitButtonText}>Thoát luyện tập</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.titleWithIcon}>
+                <BookOpen color="#38BDF8" size={20} />
+                <Text style={styles.modalTitle}>Sổ Câu Sai ({totalMistakesCount} câu)</Text>
               </View>
             )}
 
-            {/* Action buttons */}
-            <View style={styles.bottomActions}>
-              {!answerResult ? (
-                <TouchableOpacity
-                  style={styles.submitBtn}
-                  onPress={handleAnswerSubmit}
-                  disabled={submitting || selectedOptionId === null}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.submitBtnText}>Kiểm tra câu trả lời</Text>
-                  )}
-                </TouchableOpacity>
+            <TouchableOpacity style={styles.closeIcon} onPress={onClose}>
+              <X color="#94A3B8" size={20} />
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator color="#38BDF8" style={{ marginVertical: 40 }} />
+          ) : !activeLessonGroup ? (
+            /* VIEW 1: PHÂN CẤP THEO KHÓA HỌC -> BÀI HỌC (FEATURE 5) */
+            <ScrollView style={styles.scrollView}>
+              {courseGroups.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Sparkles color="#10B981" size={36} />
+                  <Text style={styles.emptyTitle}>Sổ câu sai hoàn toàn trống!</Text>
+                  <Text style={styles.emptyDesc}>
+                    Bạn chưa có câu trả lời sai nào hoặc đã sửa đúng toàn bộ các câu hỏi.
+                  </Text>
+                </View>
               ) : (
-                <TouchableOpacity style={styles.nextBtn} onPress={handleNextQuestion}>
-                  <Text style={styles.nextBtnText}>Câu tiếp theo</Text>
-                </TouchableOpacity>
+                courseGroups.map((cg) => (
+                  <View key={cg.courseId} style={styles.courseGroupCard}>
+                    <View style={styles.courseGroupHeader}>
+                      <Text style={styles.courseGroupTitle}>{cg.courseTitle}</Text>
+                      <Text style={styles.courseMistakeBadge}>{cg.unresolvedMistakes} câu sai</Text>
+                    </View>
+
+                    <View style={styles.lessonListContainer}>
+                      {cg.lessons.map((lg) => (
+                        <View key={lg.lessonId} style={styles.lessonRow}>
+                          <View style={styles.lessonInfo}>
+                            <Text style={styles.lessonTitleText} numberOfLines={1}>
+                              {lg.lessonTitle}
+                            </Text>
+                            <Text style={styles.lessonMistakeCountText}>
+                              Chứa {lg.unresolvedMistakes} câu làm sai
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            style={styles.practiceBtn}
+                            onPress={() => handleStartPracticeLesson(lg)}
+                          >
+                            <Text style={styles.practiceBtnText}>Làm liên tục</Text>
+                            <ChevronRight color="#FFFFFF" size={14} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))
               )}
-            </View>
-          </ScrollView>
-        )}
+            </ScrollView>
+          ) : (
+            /* VIEW 2: LÀM BÀI LIÊN TỤC CHO BÀI HỌC CỤ THỂ */
+            <ScrollView style={styles.scrollView}>
+              <View style={styles.practiceHeaderInfo}>
+                <Text style={styles.activeLessonTitle}>
+                  Bài: {activeLessonGroup.lessonTitle}
+                </Text>
+                <Text style={styles.progressCounter}>
+                  Câu {currentIndex + 1} / {practiceMistakes.length}
+                </Text>
+              </View>
+
+              {currentMistake ? (
+                <View style={styles.questionCard}>
+                  <Text style={styles.questionText}>{currentMistake.questionText}</Text>
+
+                  {/* Options */}
+                  <View style={styles.optionsContainer}>
+                    {currentMistake.options.map((opt) => {
+                      const isSelected = selectedOptionId === opt.id;
+                      let optionStyle = styles.optionNormal;
+                      let textColor = '#F8FAFC';
+
+                      if (isSelected) {
+                        optionStyle = styles.optionSelected;
+                        textColor = '#38BDF8';
+                      }
+
+                      if (answerResult) {
+                        if (opt.id === answerResult.correctOptionId) {
+                          optionStyle = styles.optionCorrect;
+                          textColor = '#10B981';
+                        } else if (isSelected && !answerResult.isCorrect) {
+                          optionStyle = styles.optionWrong;
+                          textColor = '#EF4444';
+                        }
+                      }
+
+                      return (
+                        <TouchableOpacity
+                          key={opt.id}
+                          style={[styles.optionBase, optionStyle]}
+                          disabled={Boolean(answerResult)}
+                          onPress={() => handleSelectOption(opt.id)}
+                        >
+                          <Text style={[styles.optionText, { color: textColor }]}>
+                            {opt.optionText}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Feedback Explanation */}
+                  {answerResult && (
+                    <View
+                      style={[
+                        styles.feedbackBox,
+                        answerResult.isCorrect ? styles.feedbackCorrect : styles.feedbackWrong,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.feedbackTitle,
+                          answerResult.isCorrect ? styles.feedbackTextCorrect : styles.feedbackTextWrong,
+                        ]}
+                      >
+                        {answerResult.isCorrect ? '✅ Chính xác!' : '❌ Chưa chính xác!'}
+                      </Text>
+                      {answerResult.explanation ? (
+                        <Text style={styles.explanationText}>
+                          Giải thích: {answerResult.explanation}
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
+
+                  {/* Actions */}
+                  <View style={styles.actionRow}>
+                    {!answerResult ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.submitBtn,
+                          (!selectedOptionId || submitting) && styles.btnDisabled,
+                        ]}
+                        disabled={!selectedOptionId || submitting}
+                        onPress={handleSubmitAnswer}
+                      >
+                        <Text style={styles.submitBtnText}>
+                          {submitting ? 'Đang chấm...' : 'Kiểm tra đáp án'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={styles.nextBtn} onPress={handleNextQuestion}>
+                        <Text style={styles.nextBtnText}>
+                          {currentIndex < practiceMistakes.length - 1 ? 'Câu tiếp theo' : 'Hoàn thành bài'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              ) : null}
+            </ScrollView>
+          )}
+        </View>
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#070B17' },
-  header: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '85%',
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 16,
+  },
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 48,
-    paddingBottom: 14,
-    backgroundColor: '#0F172A',
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
+    marginBottom: 12,
   },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700' },
-  headerSubtitle: { color: '#94A3B8', fontSize: 11 },
-  closeBtn: { padding: 4 },
-  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
-  loadingText: { color: '#94A3B8', fontSize: 13 },
-  emptyTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  emptyDesc: { color: '#64748B', fontSize: 13, textAlign: 'center', lineHeight: 18 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  metaBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  metaBadgeText: { color: '#F59E0B', fontSize: 11, fontWeight: '700' },
-  failedCountText: { color: '#EF4444', fontSize: 12, fontWeight: '600' },
-  questionCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    marginBottom: 16,
-  },
-  lessonMetaText: { color: '#818CF8', fontSize: 12, fontWeight: '600', marginBottom: 6 },
-  questionTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '700', lineHeight: 22 },
-  optionsList: { gap: 10, marginBottom: 16 },
-  optionCard: {
+  titleWithIcon: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
   },
-  optionCardSelected: { borderColor: '#6366F1', backgroundColor: 'rgba(99, 102, 241, 0.15)' },
-  optionCorrect: { borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.15)' },
-  optionWrong: { borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.15)' },
-  optLetterBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginLeft: 8,
+  },
+  exitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  exitButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#38BDF8',
+    marginLeft: 6,
+  },
+  closeIcon: {
+    padding: 4,
+  },
+  scrollView: {
+    flexGrow: 0,
+  },
+  emptyCard: {
+    padding: 32,
+    alignItems: 'center',
     backgroundColor: '#1E293B',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 16,
+    marginVertical: 16,
   },
-  optLetterText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700' },
-  optText: { color: '#F8FAFC', fontSize: 13, flex: 1, lineHeight: 18 },
-  resultBox: {
-    padding: 14,
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginTop: 12,
+  },
+  emptyDesc: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  courseGroupCard: {
+    backgroundColor: '#1E293B',
     borderRadius: 14,
-    marginBottom: 16,
+    padding: 12,
+    marginBottom: 12,
+  },
+  courseGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  courseGroupTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    flex: 1,
+    marginRight: 8,
+  },
+  courseMistakeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F43F5E',
+    backgroundColor: 'rgba(244,63,94,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  lessonListContainer: {
+    gap: 8,
+  },
+  lessonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    padding: 10,
+    borderRadius: 10,
+  },
+  lessonInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  lessonTitleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E2E8F0',
+  },
+  lessonMistakeCountText: {
+    fontSize: 11,
+    color: '#F43F5E',
+    marginTop: 2,
+  },
+  practiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 2,
+  },
+  practiceBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  practiceHeaderInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  activeLessonTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#38BDF8',
+    flex: 1,
+    marginRight: 8,
+  },
+  progressCounter: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  questionCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    padding: 14,
+  },
+  questionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  optionsContainer: {
+    gap: 8,
+    marginBottom: 14,
+  },
+  optionBase: {
+    padding: 12,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  resultBoxCorrect: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' },
-  resultBoxWrong: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)' },
-  resultHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  resultTitle: { fontSize: 14, fontWeight: '700' },
-  explanationText: { color: '#CBD5E1', fontSize: 12, lineHeight: 17 },
-  bottomActions: { marginTop: 8 },
+  optionNormal: {
+    backgroundColor: '#0F172A',
+    borderColor: '#334155',
+  },
+  optionSelected: {
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    borderColor: '#38BDF8',
+  },
+  optionCorrect: {
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderColor: '#10B981',
+  },
+  optionWrong: {
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderColor: '#EF4444',
+  },
+  optionText: {
+    fontSize: 13,
+  },
+  feedbackBox: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  feedbackCorrect: {
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderColor: '#10B981',
+  },
+  feedbackWrong: {
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderColor: '#EF4444',
+  },
+  feedbackTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  feedbackTextCorrect: {
+    color: '#10B981',
+  },
+  feedbackTextWrong: {
+    color: '#EF4444',
+  },
+  explanationText: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    lineHeight: 16,
+  },
+  actionRow: {
+    marginTop: 4,
+  },
   submitBtn: {
-    backgroundColor: '#6366F1',
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: '#0284C7',
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  submitBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  submitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  btnDisabled: {
+    opacity: 0.5,
+  },
   nextBtn: {
     backgroundColor: '#10B981',
-    borderRadius: 14,
-    paddingVertical: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  nextBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  nextBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

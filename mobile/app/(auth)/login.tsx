@@ -158,7 +158,7 @@ export default function LoginScreen() {
                 <Sparkles color="#06B6D4" size={32} />
               </View>
             </View>
-            <Text style={styles.appTitle}>MicroLearning</Text>
+            <Text style={styles.appTitle}>EduSync</Text>
             <Text style={styles.appSubtitle}>Hệ thống học tập Micro-lesson Năng lượng cao</Text>
 
             <View style={styles.cyberPill}>

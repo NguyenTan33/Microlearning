@@ -29,6 +29,34 @@ function normalizeQuizPackage(data: any, fallbackLessonId: number): QuizPackage 
 }
 
 export const quizApi = {
+  async getAllQuizzesByLesson(lessonId: number): Promise<Array<{
+    id: number;
+    title: string;
+    passScore: number;
+    totalQuestions: number;
+    isCompleted?: boolean;
+    highestScore?: number | null;
+  }>> {
+    try {
+      const res = await apiClient.get<any[]>(`/api/quizzes/lesson/${lessonId}/all`);
+      return Array.isArray(res.data) ? res.data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async getQuizById(quizId: number): Promise<QuizPackage | null> {
+    try {
+      const res = await apiClient.get<any>(`/api/quizzes/${quizId}`);
+      if (res.data) {
+        return normalizeQuizPackage(res.data, res.data.lessonId || 0);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
   async getQuizPackageByLessonId(lessonId: number): Promise<QuizPackage> {
     try {
       const res = await apiClient.get<any>(`/api/quizzes/lesson/${lessonId}`);

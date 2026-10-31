@@ -18,7 +18,7 @@ import { generateGuid } from '../../src/utils/guidHelper';
 import type { QuizPackage, QuizQuestion } from '../../src/types/quiz.types';
 
 export default function QuizScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, quizId } = useLocalSearchParams<{ id: string; quizId?: string }>();
   const router = useRouter();
   const lessonId = Number(id);
 
@@ -51,7 +51,7 @@ export default function QuizScreen() {
     } finally {
       setLoading(false);
     }
-  }, [lessonId]);
+  }, [lessonId, quizId]);
 
   useEffect(() => {
     loadQuiz();

@@ -240,7 +240,7 @@ export default function StudyHomeScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#070B17" />
       <AppHeader
         title="Học tập"
-        subtitle={user?.fullName || 'Học viên Microlearning'}
+        subtitle={user?.fullName || 'Học viên EduSync'}
         streakCount={streakCount}
         showStreak={true}
         onProfilePress={() => router.push('/(tabs)/profile')}

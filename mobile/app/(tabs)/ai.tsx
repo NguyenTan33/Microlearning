@@ -85,7 +85,7 @@ export default function AiNotebookScreen() {
     {
       id: 'welcome',
       sender: 'assistant',
-      text: 'Xin chào! Tôi là Trợ lý AI MicroLearning. Tôi có thể giúp bạn giải đáp thắc mắc, tóm tắt bài giảng hoặc phân tích tài liệu trong sổ tay.',
+      text: 'Xin chào! Tôi là Trợ lý AI EduSync. Tôi có thể giúp bạn giải đáp thắc mắc, tóm tắt bài giảng hoặc phân tích tài liệu trong sổ tay.',
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -796,7 +796,7 @@ export default function AiNotebookScreen() {
                         <Bot color="#10B981" size={14} />
                       )}
                       <Text style={styles.senderName}>
-                        {item.sender === 'user' ? 'Bạn' : 'Trợ lý MicroLearning AI'}
+                        {item.sender === 'user' ? 'Bạn' : 'Trợ lý EduSync AI'}
                       </Text>
                       <Text style={styles.messageTime}>{item.timestamp}</Text>
                     </View>

@@ -22,6 +22,25 @@ export interface QuizMistakeItem {
   options: QuizMistakeOption[];
 }
 
+export interface LessonMistakeGroup {
+  lessonId: number;
+  lessonTitle: string;
+  courseId: number;
+  courseTitle: string;
+  totalMistakes: number;
+  unresolvedMistakes: number;
+  mistakes: QuizMistakeItem[];
+}
+
+export interface CourseMistakeGroup {
+  courseId: number;
+  courseTitle: string;
+  subjectTitle: string;
+  totalMistakes: number;
+  unresolvedMistakes: number;
+  lessons: LessonMistakeGroup[];
+}
+
 export interface QuizPracticeSession {
   totalMistakes: number;
   mistakes: QuizMistakeItem[];
@@ -40,6 +59,20 @@ export interface MistakeAnswerResult {
 
 export const mistakeVaultApi = {
   /**
+   * Lấy danh sách câu hỏi làm sai phân cấp theo Khóa học -> Bài học
+   */
+  async getGroupedMistakes(includeResolved = false): Promise<CourseMistakeGroup[]> {
+    try {
+      const res = await apiClient.get<CourseMistakeGroup[]>(
+        `/api/quiz/mistakes/grouped?includeResolved=${includeResolved}`
+      );
+      return Array.isArray(res.data) ? res.data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Lấy danh sách câu hỏi làm sai trong sổ tay cá nhân từ Azure
    */
   async getMyMistakes(includeResolved = false): Promise<QuizMistakeItem[]> {
@@ -54,14 +87,16 @@ export const mistakeVaultApi = {
   },
 
   /**
-   * Tạo phiên ôn luyện các câu làm sai
+   * Tạo phiên ôn luyện các câu làm sai (hỗ trợ lọc theo bài học / khóa học)
    */
-  async generatePracticeSession(lessonId?: number): Promise<QuizPracticeSession> {
+  async generatePracticeSession(lessonId?: number, courseId?: number): Promise<QuizPracticeSession> {
     try {
-      const url = lessonId
-        ? `/api/quiz/mistakes/practice?lessonId=${lessonId}`
-        : '/api/quiz/mistakes/practice';
-      const res = await apiClient.get<QuizPracticeSession>(url);
+      const params = new URLSearchParams();
+      if (lessonId) params.append('lessonId', lessonId.toString());
+      if (courseId) params.append('courseId', courseId.toString());
+      const query = params.toString() ? `?${params.toString()}` : '';
+
+      const res = await apiClient.get<QuizPracticeSession>(`/api/quiz/mistakes/practice${query}`);
       return res.data;
     } catch {
       return { totalMistakes: 0, mistakes: [] };
@@ -69,9 +104,9 @@ export const mistakeVaultApi = {
   },
 
   /**
-   * Nộp câu trả lời ôn tập lại câu hỏi sai và nhận phản hồi chi tiết
+   * Trả lời câu hỏi trong phiên ôn tập
    */
-  async submitPracticeAnswer(
+  async answerMistakeQuestion(
     mistakeId: number,
     selectedOptionId: number
   ): Promise<MistakeAnswerResult> {

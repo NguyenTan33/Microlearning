@@ -64,6 +64,7 @@ export default function LessonScreen() {
   const [showStreakModal, setShowStreakModal] = useState(false);
   const [currentStreakCount, setCurrentStreakCount] = useState(1);
   const [hasQuizAvailable, setHasQuizAvailable] = useState<boolean>(false);
+  const [quizList, setQuizList] = useState<any[]>([]);
 
   const isOfflineReady = downloadedLessonIds.has(lessonId);
 
@@ -73,7 +74,10 @@ export default function LessonScreen() {
       let item = await catalogRepository.getLessonById(lessonId);
       if (item) {
         setLesson(item);
-        if (item.hasQuiz) setHasQuizAvailable(true);
+        if (item.hasQuiz) {
+          setHasQuizAvailable(true);
+          quizApi.getAllQuizzesByLesson(lessonId).then((ql) => setQuizList(ql)).catch(() => {});
+        }
       }
 
       // 2. Tải trực tiếp từ Azure API
@@ -333,6 +337,16 @@ export default function LessonScreen() {
   }
 
   const canTakeQuiz = isCompleted || watchedPercent >= 60;
+  useEffect(() => {
+    if (canTakeQuiz && quizList.length === 0) {
+      quizApi.getAllQuizzesByLesson(lessonId).then((ql) => {
+        if (ql && ql.length > 0) {
+          setQuizList(ql);
+          setHasQuizAvailable(true);
+        }
+      }).catch(() => {});
+    }
+  }, [canTakeQuiz, lessonId]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

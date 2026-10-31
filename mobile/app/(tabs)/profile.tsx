@@ -312,7 +312,7 @@ export default function ProfileScreen() {
 
         <View style={styles.summaryInfo}>
           <Text style={styles.userName} numberOfLines={1}>
-            {fullName || user?.fullName || 'Học viên Microlearning'}
+            {fullName || user?.fullName || 'Học viên EduSync'}
           </Text>
           <Text style={styles.userPhone}>{phoneNumber || user?.phoneNumber || '09xxxxxx'}</Text>
           <View style={[styles.roleBadge, { backgroundColor: `${roleColor}25`, borderColor: `${roleColor}60` }]}>

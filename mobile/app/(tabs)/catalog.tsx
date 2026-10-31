@@ -152,7 +152,7 @@ export default function CatalogScreen() {
     <SafeAreaView style={styles.safeArea}>
       <AppHeader
         title="Khám phá"
-        subtitle="Khóa học Microlearning chuẩn thực chiến"
+        subtitle="Khóa học EduSync chuẩn thực chiến"
         onProfilePress={() => router.push('/(tabs)/profile')}
         onLogoutPress={handleLogout}
       />
