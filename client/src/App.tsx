@@ -14,6 +14,22 @@ const App: React.FC = () => {
     return Boolean(localStorage.getItem('accessToken'));
   });
   const [isProcessingOAuth, setIsProcessingOAuth] = useState<boolean>(false);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
+
+  // Lắng nghe sự kiện hết hạn phiên làm việc từ Interceptor để tự động chuyển về trang đăng nhập
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setIsAuthenticated(false);
+      setSessionExpiredNotice('Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục sử dụng hệ thống.');
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
+  }, []);
 
   // Tự động nhận diện và hoàn tất đăng nhập Google khi chuyển hướng quay trở lại (Đặc biệt trên Mobile Web)
   useEffect(() => {
@@ -39,6 +55,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    setSessionExpiredNotice(null);
     setIsAuthenticated(false);
   };
 
@@ -94,7 +111,7 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10 xl:gap-14 w-full items-center">
           {/* Right Column: Clean Dark Academic Auth Card (~40%) - Hiển thị lên ĐẦU TIÊN trên Mobile (order-1) */}
           <div className="order-1 lg:order-2 lg:col-span-5 xl:col-span-5 w-full flex justify-center">
-            <AuthActionCard />
+            <AuthActionCard initialNotice={sessionExpiredNotice} />
           </div>
 
           {/* Left Column: Education Hero & Interactive Tablet Showcase (~60%) - Hiển thị sau trên Mobile (order-2) */}

@@ -1,6 +1,7 @@
-import axios from 'axios';
-import { API_BASE_URL, AZURE_CLOUD_URL, STORAGE_KEYS } from '../utils/constants';
+﻿import axios from 'axios';
+import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
+import { isTokenExpired } from '../utils/tokenHelper';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -49,6 +50,27 @@ export function getApiBaseUrl(): string {
 // Auto init on module load
 initializeApiBaseUrl();
 
+type SessionExpiredCallback = () => void;
+const sessionExpiredCallbacks: SessionExpiredCallback[] = [];
+
+export function onSessionExpired(cb: SessionExpiredCallback) {
+  sessionExpiredCallbacks.push(cb);
+  return () => {
+    const idx = sessionExpiredCallbacks.indexOf(cb);
+    if (idx > -1) sessionExpiredCallbacks.splice(idx, 1);
+  };
+}
+
+export function notifySessionExpired() {
+  sessionExpiredCallbacks.forEach((cb) => {
+    try {
+      cb();
+    } catch (e) {
+      console.error('[apiClient] Session expired callback error:', e);
+    }
+  });
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;
@@ -66,10 +88,45 @@ const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue = [];
 };
 
-// Request Interceptor: Attach Bearer Token & Ensure baseURL
+const isAuthBypassUrl = (url?: string): boolean => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('/api/auth/login') ||
+    lower.includes('/api/auth/register') ||
+    lower.includes('/api/auth/refresh') ||
+    lower.includes('/api/auth/verify-otp') ||
+    lower.includes('/api/auth/forgot-password') ||
+    lower.includes('/api/auth/reset-password')
+  );
+};
+
+// Request Interceptor: Attach Bearer Token & Proactive Refresh if expired
 apiClient.interceptors.request.use(
   async (config) => {
-    const token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    let token = await secureStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+
+    // Kiểm tra chủ động trước khi gửi: nếu token đã hết hạn và có refreshToken -> silent refresh trước
+    if (token && !isAuthBypassUrl(config.url) && isTokenExpired(token) && !isRefreshing) {
+      const refreshToken = await secureStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      if (refreshToken) {
+        try {
+          const currentBase = getApiBaseUrl();
+          const res = await axios.post(`${currentBase}/api/Auth/refresh`, { refreshToken });
+          if (res.data?.accessToken) {
+            token = res.data.accessToken as string;
+            await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token as string);
+            if (res.data.refreshToken) {
+              await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, res.data.refreshToken);
+            }
+            apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
+          }
+        } catch {
+          // Bỏ qua lỗi proactive, để request tiếp tục và xử lý ở response interceptor nếu 401
+        }
+      }
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -78,58 +135,73 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Auto Refresh Token on 401
+// Response Interceptor: Auto Refresh Token on 401 & Auto Logout when expired
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return apiClient(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
+    if (error.response?.status === 401) {
+      if (isAuthBypassUrl(originalRequest?.url)) {
+        return Promise.reject(error);
       }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = await secureStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
+      if (!originalRequest._retry) {
+        if (isRefreshing) {
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          })
+            .then((token) => {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              return apiClient(originalRequest);
+            })
+            .catch((err) => Promise.reject(err));
         }
 
-        const currentBase = getApiBaseUrl();
-        const res = await axios.post(`${currentBase}/api/Auth/refresh`, {
-          refreshToken,
-        });
+        originalRequest._retry = true;
+        isRefreshing = true;
 
-        const newAccessToken = res.data.accessToken;
-        const newRefreshToken = res.data.refreshToken;
+        try {
+          const refreshToken = await secureStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+          if (!refreshToken) {
+            throw new Error('No refresh token available');
+          }
 
-        await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
-        if (newRefreshToken) {
-          await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+          const currentBase = getApiBaseUrl();
+          const res = await axios.post(`${currentBase}/api/Auth/refresh`, {
+            refreshToken,
+          });
+
+          const newAccessToken = res.data.accessToken;
+          const newRefreshToken = res.data.refreshToken;
+
+          await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
+          if (newRefreshToken) {
+            await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+          }
+
+          apiClient.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+          processQueue(null, newAccessToken);
+          return apiClient(originalRequest);
+        } catch (refreshErr) {
+          processQueue(refreshErr, null);
+          await secureStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+          await secureStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+          delete apiClient.defaults.headers.common.Authorization;
+          notifySessionExpired();
+          return Promise.reject(new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'));
+        } finally {
+          isRefreshing = false;
         }
-
-        apiClient.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-        processQueue(null, newAccessToken);
-        return apiClient(originalRequest);
-      } catch (refreshErr) {
-        processQueue(refreshErr, null);
+      } else {
+        // Đã thử lại nhưng vẫn 401 -> Session không còn hợp lệ
         await secureStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
         await secureStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-        return Promise.reject(refreshErr);
-      } finally {
-        isRefreshing = false;
+        delete apiClient.defaults.headers.common.Authorization;
+        notifySessionExpired();
+        return Promise.reject(new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'));
       }
     }
 

@@ -25,6 +25,8 @@ import {
 } from 'lucide-react-native';
 import { LoadingIndicator } from '../../src/components/common/LoadingIndicator';
 import { HybridVideoPlayer } from '../../src/components/player/HybridVideoPlayer';
+import { SlidePresentationViewer } from '../../src/components/player/SlidePresentationViewer';
+import { Presentation, Video as VideoIcon } from 'lucide-react-native';
 import { AudioTtsPlayer } from '../../src/components/player/AudioTtsPlayer';
 import { LessonAttachmentsModal } from '../../src/components/player/LessonAttachmentsModal';
 import { NotebookModal } from '../../src/components/notebook/NotebookModal';
@@ -65,6 +67,13 @@ export default function LessonScreen() {
   const [currentStreakCount, setCurrentStreakCount] = useState(1);
   const [hasQuizAvailable, setHasQuizAvailable] = useState<boolean>(false);
   const [quizList, setQuizList] = useState<any[]>([]);
+  const [mediaTab, setMediaTab] = useState<'video' | 'slide'>('video');
+
+  useEffect(() => {
+    if (lesson?.slideUrl && !lesson?.videoUrl) {
+      setMediaTab('slide');
+    }
+  }, [lesson?.slideUrl, lesson?.videoUrl]);
 
   const isOfflineReady = downloadedLessonIds.has(lessonId);
 
@@ -579,6 +588,84 @@ export default function LessonScreen() {
 }
 
 const styles = StyleSheet.create({
+  mediaTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  mediaTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  mediaTabBtnActive: {
+    backgroundColor: '#6366F1',
+  },
+  mediaTabText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mediaTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  quizContainer: {
+    marginTop: 14,
+    gap: 8,
+  },
+  multiQuizList: {
+    gap: 8,
+    paddingTop: 4,
+  },
+  quizListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  quizListItemTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  quizListItemSub: {
+    color: '#94A3B8',
+    fontSize: 11,
+  },
+  quizListItemBtn: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  quizListItemBtnPassed: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  quizListItemBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  quizListItemBtnTextPassed: {
+    color: '#10B981',
+  },
+
   safeArea: { flex: 1, backgroundColor: '#070B17' },
   header: {
     flexDirection: 'row',

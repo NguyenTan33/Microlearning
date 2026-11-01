@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Course,
   CourseDetail,
   Subject,
@@ -193,7 +193,38 @@ export const catalogApi = {
       }
 
       return courseDetail;
-    } catch {
+    } catch (err) {
+      // Fallback tự phục hồi: Tái cấu trúc courseDetail từ danh mục và live subjects nếu endpoint chi tiết gặp sự cố
+      try {
+        const allCourses = await catalogApi.getAllCourses(includeUnpublished);
+        const match = allCourses.find((c) => c.id === courseId);
+        if (match) {
+          const liveSubjects = await catalogApi.getSubjectsByCourse(courseId);
+          const subjectsWithLessons = await Promise.all(
+            (liveSubjects || []).map(async (subj) => {
+              try {
+                const liveLessons = await catalogApi.getLessonsBySubject(subj.id, includeUnpublished);
+                return {
+                  ...subj,
+                  totalLessons: Array.isArray(liveLessons) ? liveLessons.length : 0,
+                  lessons: Array.isArray(liveLessons) ? liveLessons : [],
+                };
+              } catch {
+                return { ...subj, lessons: subj.lessons || [] };
+              }
+            })
+          );
+          return {
+            ...match,
+            subjects: subjectsWithLessons,
+            totalSubjects: subjectsWithLessons.length,
+            hasAccess: true,
+          };
+        }
+      } catch {
+        // ignore fallback errors
+      }
+
       const locallyCreated = getLocallyCreatedCourses().find((c) => c.id === courseId);
       if (locallyCreated) {
         return {

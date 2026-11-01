@@ -40,7 +40,8 @@ export default function QuizScreen() {
 
       // 2. API fetch if online
       try {
-        pkg = await quizApi.getQuizPackageByLessonId(lessonId);
+        if (quizId) { const specific = await quizApi.getQuizById(Number(quizId)); if (specific) { pkg = specific; } }
+        if (!pkg) { pkg = await quizApi.getQuizPackageByLessonId(lessonId); }
         await quizRepository.saveLocalQuiz(pkg);
         setQuizPkg(pkg);
       } catch {

@@ -1,4 +1,4 @@
-using Microlearning.Areas.Admin.Interfaces;
+﻿using Microlearning.Areas.Admin.Interfaces;
 
 using Microlearning.Areas.Admin.Services;
 
@@ -173,9 +173,39 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
 
         ClockSkew = TimeSpan.Zero
-
     };
 
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            if (context.Exception is SecurityTokenExpiredException)
+            {
+                context.Response.Headers.Append("Token-Expired", "true");
+            }
+            return Task.CompletedTask;
+        },
+        OnChallenge = async context =>
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                var isExpired = context.Response.Headers.ContainsKey("Token-Expired");
+                var message = isExpired
+                    ? "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+                    : "Bạn chưa đăng nhập hoặc không có quyền truy cập tính năng này.";
+                var json = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    message,
+                    code = isExpired ? "TOKEN_EXPIRED" : "UNAUTHORIZED",
+                    statusCode = 401
+                });
+                await context.Response.WriteAsync(json);
+            }
+        }
+    };
 });
 
 
@@ -651,6 +681,60 @@ using (var scope = app.Services.CreateScope())
 
 
             // 1. Tự động tạo bảng & chạy Migration
+
+            
+            // 0. Đảm bảo các cột và cấu trúc mới trong Courses và Lessons luôn tồn tại an toàn trên Azure SQL
+            try
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(@"
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Courses]') AND name = 'AuthorName')
+BEGIN
+    ALTER TABLE [Courses] ADD [AuthorName] NVARCHAR(150) NULL;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Courses]') AND name = 'CreatedByAccountId')
+BEGIN
+    ALTER TABLE [Courses] ADD [CreatedByAccountId] NVARCHAR(450) NULL;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Courses]') AND name = 'IsPrivate')
+BEGIN
+    ALTER TABLE [Courses] ADD [IsPrivate] BIT NOT NULL DEFAULT 0;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Courses]') AND name = 'AccessPasswordHash')
+BEGIN
+    ALTER TABLE [Courses] ADD [AccessPasswordHash] NVARCHAR(500) NULL;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Courses]') AND name = 'PasswordVersion')
+BEGIN
+    ALTER TABLE [Courses] ADD [PasswordVersion] INT NOT NULL DEFAULT 1;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Lessons]') AND name = 'SlideUrl')
+BEGIN
+    ALTER TABLE [Lessons] ADD [SlideUrl] NVARCHAR(1000) NULL;
+END
+
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[Lessons]') AND name = 'SlideType')
+BEGIN
+    ALTER TABLE [Lessons] ADD [SlideType] NVARCHAR(50) NULL;
+END
+
+-- Đảm bảo LessonId trong bảng Quizzes hỗ trợ 1 bài học có nhiều quiz (không bị ràng buộc Unique)
+IF EXISTS (SELECT * FROM sys.indexes WHERE object_id = OBJECT_ID(N'[Quizzes]') AND name = 'IX_Quizzes_LessonId' AND is_unique = 1)
+BEGIN
+    DROP INDEX [IX_Quizzes_LessonId] ON [Quizzes];
+    CREATE INDEX [IX_Quizzes_LessonId] ON [Quizzes] ([LessonId]);
+END
+");
+                logger.LogInformation("Đã đồng bộ an toàn các cột mới trong Courses và Lessons trên Azure SQL.");
+            }
+            catch (Exception exCol)
+            {
+                logger.LogWarning("Kiểm tra/Tạo cột cho Courses/Lessons: {Msg}", exCol.Message);
+            }
 
             await dbContext.Database.MigrateAsync();
 
