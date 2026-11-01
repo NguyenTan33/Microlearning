@@ -189,11 +189,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     mediaInfo?.slideType ||
     (effectiveSlideUrl?.includes('canva.com') ? 'Canva' : 'Presentation');
 
-  const [contentMode, setContentMode] = useState<'video' | 'slide'>('video');
+  const [contentMode, setContentMode] = useState<'video' | 'slide'>(() => (slideUrl ? 'slide' : 'video'));
   const [currentSlide, setCurrentSlide] = useState<number>(1);
   const [totalSlides, setTotalSlides] = useState<number>(12);
   const [isAutoPlaySlide, setIsAutoPlaySlide] = useState<boolean>(false);
   const [slideFullscreen, setSlideFullscreen] = useState<boolean>(false);
+
+  // Luôn ưu tiên hiển thị slide nếu bài học có slide
+  useEffect(() => {
+    if (slideUrl) {
+      setContentMode('slide');
+    }
+  }, [slideUrl, lessonId]);
 
   // Tự động chuyển sang chế độ Slide nếu bài học có Slide và không có video riêng được tải lên
   useEffect(() => {
@@ -286,7 +293,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           setContentMode('slide');
         } else if (info.sourceType === 'direct_url' && info.externalUrl) {
           setVideoSrc(info.externalUrl);
-        } else if (info.sourceType === 'demo' && (slideUrl || info.slideUrl)) {
+        } else if (slideUrl || info.slideUrl) {
           setVideoSrc('');
           setContentMode('slide');
         } else {
@@ -1196,12 +1203,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
                 setContentMode('slide');
                 return;
               }
-              if (videoSrc && !videoSrc.includes('test.mp4')) {
-                setVideoSrc('/videos/test.mp4');
-              } else {
-                setIsPlaying(false);
-                setVideoError('Không thể tải luồng video bài giảng. Vui lòng kiểm tra lại kết nối mạng.');
-              }
+              setIsPlaying(false);
+              setVideoError('Không thể tải luồng video bài giảng. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại.');
             }}
           />
         ) : (
