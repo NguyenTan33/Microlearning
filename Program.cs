@@ -388,18 +388,21 @@ builder.Services.AddHostedService<MediaJobBackgroundWorker>();
 
 
 
-// Cấu hình Bảo mật OWASP: HSTS 365 ngày, Ép buộc HTTPS Redirection 308
-
-builder.Services.AddHsts(options =>
-
+// 1. Cấu hình Cookie chuẩn bảo mật (Xóa cờ Cookie SameSite của ZAP)
+builder.Services.Configure<CookiePolicyOptions>(options =>
 {
+    options.CheckConsentNeeded = context => false;
+    options.MinimumSameSitePolicy = SameSiteMode.Lax;
+    options.HttpOnly = Microsoft.AspNetCore.CookiePolicy.HttpOnlyPolicy.Always;
+    options.Secure = CookieSecurePolicy.Always;
+});
 
+// 2. Cấu hình HSTS (Xóa cờ Strict-Transport-Security của ZAP)
+builder.Services.AddHsts(options =>
+{
     options.Preload = true;
-
     options.IncludeSubDomains = true;
-
-    options.MaxAge = TimeSpan.FromDays(365);
-
+    options.MaxAge = TimeSpan.FromDays(365); // Ép chạy HTTPS trong 1 năm
 });
 
 
@@ -556,67 +559,43 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 
 
-// 3. OWASP Top 10 Security Middleware: Bắt buộc HTTPS 100% & Bổ sung Headers phòng thủ
-
-app.Use(async (context, next) =>
-
-{
-
-    var isHttp = context.Request.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-
-                 string.Equals(context.Request.Headers["X-Forwarded-Proto"], "http", StringComparison.OrdinalIgnoreCase);
-
-
-
-    // Không chuyển hướng trên localhost để tiện debug phát triển cục bộ
-
-    if (isHttp && !context.Request.Host.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) && !context.Request.Host.Host.Equals("127.0.0.1"))
-
-    {
-
-        var httpsUrl = $"https://{context.Request.Host}{context.Request.PathBase}{context.Request.Path}{context.Request.QueryString}";
-
-        context.Response.Redirect(httpsUrl, permanent: true);
-
-        return;
-
-    }
-
-
-
-    // Các tiêu chuẩn Security Headers bắt buộc theo khuyến nghị OWASP
-
-    context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload";
-
-    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-
-    context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
-
-    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
-
-    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-
-    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
-
-
-
-    await next();
-
-});
-
-
-
+// =================== BẮT ĐẦU: BỘ ÁO GIÁP BẢO MẬT (OWASP HEADERS) ===================
+// 1. Bật HSTS trên môi trường Production
 if (!app.Environment.IsDevelopment())
-
 {
-
     app.UseHsts();
-
 }
 
-
-
 app.UseHttpsRedirection();
+app.UseCookiePolicy();
+
+// 2. Chèn bộ Security Headers vào toàn bộ API Response
+app.Use(async (context, next) =>
+{
+    // Chống Clickjacking (Xóa cờ Missing Anti-clickjacking Header)
+    context.Response.Headers.Append("X-Frame-Options", "SAMEORIGIN");
+
+    // Chống MIME-sniffing (Xóa cờ X-Content-Type-Options Header Missing)
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+
+    // Chống rò rỉ thông tin đường dẫn gốc
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+
+    // Tắt các quyền truy cập phần cứng nhạy cảm
+    context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+    // Ép HSTS nếu là HTTPS
+    if (context.Request.IsHttps)
+    {
+        if (!context.Response.Headers.ContainsKey("Strict-Transport-Security"))
+        {
+            context.Response.Headers.Append("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+        }
+    }
+
+    await next();
+});
+// =================== KẾT THÚC: BỘ ÁO GIÁP BẢO MẬT ===================
 
 
 
