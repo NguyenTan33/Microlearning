@@ -119,7 +119,7 @@ namespace Microlearning.Areas.Catalog.Services
             var lesson = await _dbContext.Lessons
                 .AsNoTracking()
                 .Include(l => l.MediaAssets)
-                .Include(l => l.Quiz)
+                .Include(l => l.Quizzes)
                     .ThenInclude(q => q!.Questions.OrderBy(ques => ques.SortOrder))
                         .ThenInclude(ques => ques.QuizOptions.OrderBy(opt => opt.SortOrder))
                 .FirstOrDefaultAsync(l => l.Id == lessonId);
@@ -141,9 +141,10 @@ namespace Microlearning.Areas.Catalog.Services
             )).ToList();
 
             LessonPackageQuizDTO? quizDto = null;
-            if (lesson.Quiz != null)
+            var firstQuiz = lesson.Quizzes?.FirstOrDefault();
+            if (firstQuiz != null)
             {
-                var questionsDto = lesson.Quiz.Questions.Select(q => new LessonPackageQuestionDTO(
+                var questionsDto = firstQuiz.Questions.Select(q => new LessonPackageQuestionDTO(
                     q.Id,
                     q.Content,
                     q.Explanation,
@@ -158,10 +159,10 @@ namespace Microlearning.Areas.Catalog.Services
                 )).ToList();
 
                 quizDto = new LessonPackageQuizDTO(
-                    lesson.Quiz.Id,
-                    lesson.Quiz.Title,
-                    lesson.Quiz.PassScore,
-                    lesson.Quiz.Version,
+                    firstQuiz.Id,
+                    firstQuiz.Title,
+                    firstQuiz.PassScore,
+                    firstQuiz.Version,
                     questionsDto
                 );
             }

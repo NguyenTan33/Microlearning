@@ -140,7 +140,7 @@ namespace Microlearning.Areas.Catalog.Services
                 .AsNoTracking()
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
                     .ThenInclude(s => s.Lessons.Where(l => includeUnpublished || l.IsPublished).OrderBy(l => l.SortOrder))
-                        .ThenInclude(l => l.Quiz)
+                        .ThenInclude(l => l.Quizzes)
                 .Include(c => c.Subjects.OrderBy(s => s.SortOrder))
                     .ThenInclude(s => s.Lessons.Where(l => includeUnpublished || l.IsPublished).OrderBy(l => l.SortOrder))
                         .ThenInclude(l => l.MediaAssets)
@@ -182,7 +182,7 @@ namespace Microlearning.Areas.Catalog.Services
                         l.IsPublished,
                         l.CreatedAt,
                         l.UpdatedAt,
-                        l.Quiz != null,
+                        (l.Quizzes != null && l.Quizzes.Count > 0),
                         l.MediaAssets.Count,
                         videoUrl
                     );

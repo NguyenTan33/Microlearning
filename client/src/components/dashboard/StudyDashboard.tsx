@@ -274,7 +274,10 @@ export const StudyDashboard: React.FC<StudyDashboardProps> = ({ onLogout }) => {
       }
 
       if (!targetCourse) {
-        targetCourse = courses.length > 0 ? { ...courses[0], subjects: [] } : EMPTY_COURSE;
+        const matchedCatalogCourse = targetId ? courses.find((c) => c.id === targetId) : null;
+        targetCourse = matchedCatalogCourse
+          ? { ...matchedCatalogCourse, subjects: [] }
+          : (courses.length > 0 ? { ...courses[0], subjects: [] } : EMPTY_COURSE);
       }
 
       // Lưu lại khóa học đang học để khi F5 / mở lại app không bị nhảy sai khóa và tự động ghi danh

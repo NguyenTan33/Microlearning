@@ -16,7 +16,7 @@ namespace Microlearning.Areas.Catalog.Seeders
             var dummyCourses = await dbContext.Courses
                 .Include(c => c.Subjects)
                     .ThenInclude(s => s.Lessons)
-                        .ThenInclude(l => l.Quiz)
+                        .ThenInclude(l => l.Quizzes)
                 .Include(c => c.Subjects)
                     .ThenInclude(s => s.Lessons)
                         .ThenInclude(l => l.MediaAssets)
@@ -36,8 +36,8 @@ namespace Microlearning.Areas.Catalog.Seeders
 
             // 7. Tự động kiểm tra và bổ sung Đề thi trắc nghiệm (Quiz) cho tất cả các bài học còn thiếu
             var lessonsWithoutQuiz = await dbContext.Lessons
-                .Include(l => l.Quiz)
-                .Where(l => l.Quiz == null)
+                .Include(l => l.Quizzes)
+                .Where(l => !l.Quizzes.Any())
                 .ToListAsync();
 
             foreach (var lesson in lessonsWithoutQuiz)
