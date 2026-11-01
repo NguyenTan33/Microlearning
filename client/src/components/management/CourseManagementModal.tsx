@@ -771,6 +771,34 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     }
   };
 
+  const handleRemoveSlideFromVideoModal = async () => {
+    if (!targetLessonForVideo) return;
+    if (!window.confirm('Bạn có chắc chắn muốn gỡ Slide của bài giảng này không?')) return;
+    setSavingSlide(true);
+    try {
+      await catalogApi.updateLesson(targetLessonForVideo.id, {
+        title: targetLessonForVideo.title,
+        description: targetLessonForVideo.description || '',
+        durationSeconds: targetLessonForVideo.durationSeconds,
+        sortOrder: targetLessonForVideo.sortOrder,
+        slideUrl: '',
+        slideType: '',
+      });
+      showToast('success', 'Đã gỡ Slide bài giảng.');
+      setShowVideoModal(false);
+      setModalSlideFile(null);
+      setModalSlideUrl('');
+      if (selectedCourseDetail) {
+        await loadCourseDetail(selectedCourseDetail.id);
+      }
+      if (onDataChanged) onDataChanged();
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi gỡ slide.');
+    } finally {
+      setSavingSlide(false);
+    }
+  };
+
   // =================== QUIZ BUILDER ACTIONS ===================
   const handleOpenQuizModal = async (lesson: Lesson) => {
     setTargetLessonForQuiz(lesson);
@@ -2183,6 +2211,154 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                     <>
                       <Upload className="w-4 h-4" />
                       <span>Bắt đầu Tải Lên</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 3: SLIDE BÀI GIẢNG (CANVA / POWERPOINT / PDF) */}
+          {videoTab === 'slide' && (
+            <form onSubmit={handleSaveSlideFromVideoModal} className="space-y-4 text-xs">
+              {/* Thông tin slide hiện tại nếu có */}
+              {targetLessonForVideo.slideUrl && (
+                <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <FileCheck className="w-4 h-4 text-purple-400 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-purple-300 font-semibold">Đang sử dụng Slide: </span>
+                      <span className="text-white truncate">{targetLessonForVideo.slideUrl}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveSlideFromVideoModal}
+                    disabled={savingSlide}
+                    className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-semibold shrink-0 cursor-pointer transition-colors"
+                  >
+                    Gỡ Slide
+                  </button>
+                </div>
+              )}
+
+              {/* Tùy chọn 1: Dán link Canva */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>1. Nhúng bài thuyết trình Canva (Tùy chọn A)</span>
+                  <span className="text-[11px] text-purple-400 font-normal">Hỗ trợ Canva link công khai</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="url"
+                    value={modalSlideUrl}
+                    onChange={(e) => {
+                      setModalSlideUrl(e.target.value);
+                      if (e.target.value) setModalSlideFile(null);
+                    }}
+                    placeholder="Dán link Canva (vd: https://www.canva.com/design/.../view)"
+                    className="w-full bg-slate-900 border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                  />
+                  <Globe className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                </div>
+              </div>
+
+              {/* Dấu phân cách HOẶC */}
+              <div className="flex items-center gap-3 my-2">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">HOẶC</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+
+              {/* Tùy chọn 2: Tải file PowerPoint / PDF từ máy tính */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span>2. Tải tệp PowerPoint / PDF từ máy (Tùy chọn B)</span>
+                  <span className="text-[11px] text-indigo-400 font-normal">Hỗ trợ .ppt, .pptx, .pdf (Tối đa 100MB)</span>
+                </label>
+                
+                <div className="relative border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-2xl p-4 bg-slate-900/60 text-center transition-colors">
+                  <input
+                    type="file"
+                    accept=".ppt,.pptx,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setModalSlideFile(f);
+                        setModalSlideUrl('');
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-1.5 text-slate-400">
+                    <Upload className="w-6 h-6 text-purple-400" />
+                    <div>
+                      <p className="text-xs font-semibold text-white">Kéo thả tệp Slide PowerPoint hoặc bấm để chọn tệp</p>
+                      <p className="text-[11px] text-slate-500">Định dạng .ppt, .pptx, .pdf</p>
+                    </div>
+                  </div>
+                </div>
+
+                {modalSlideFile && (
+                  <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 overflow-hidden text-white font-medium">
+                      <FileText className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="truncate">{modalSlideFile.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-purple-300 font-mono text-[11px]">
+                        {(modalSlideFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setModalSlideFile(null)}
+                        className="text-slate-400 hover:text-rose-400 p-1"
+                        title="Hủy chọn file"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/20 text-[11px] text-slate-400 space-y-1 leading-relaxed">
+                <p className="font-semibold text-purple-300 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
+                  Lưu ý khi sử dụng Slide:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                  <li>Học viên có thể lật từng trang trình chiếu hoặc xem ở chế độ toàn màn hình.</li>
+                  <li>Nếu bài giảng có Slide, hệ thống sẽ tự động hiển thị khung trình chiếu Slide thay vì phát video demo.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowVideoModal(false);
+                    setModalSlideFile(null);
+                    setModalSlideUrl('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 border border-white/10 text-slate-300 hover:text-white cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={(!modalSlideUrl.trim() && !modalSlideFile) || savingSlide}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg"
+                >
+                  {savingSlide ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang lưu Slide...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileCheck className="w-4 h-4" />
+                      <span>Lưu Slide Bài Giảng</span>
                     </>
                   )}
                 </button>

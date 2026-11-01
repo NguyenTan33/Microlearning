@@ -176,20 +176,33 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [flagTimestamp, setFlagTimestamp] = useState<number>(0);
 
   // Slide Presentation state (Feature 4: Canva & PowerPoint)
-  const effectiveSlideUrl = slideUrl || ((mediaInfo?.sourceType as string) === 'presentation' ? mediaInfo?.streamUrl : null);
-  const effectiveSlideType = slideType || (effectiveSlideUrl?.includes('canva.com') ? 'Canva' : 'Presentation');
+  const effectiveSlideUrl =
+    slideUrl ||
+    mediaInfo?.slideUrl ||
+    ((mediaInfo?.sourceType as string)?.toLowerCase() === 'presentation' ||
+     (mediaInfo?.sourceType as string)?.toLowerCase() === 'canva'
+      ? (mediaInfo?.externalUrl || mediaInfo?.streamUrl)
+      : null);
+
+  const effectiveSlideType =
+    slideType ||
+    mediaInfo?.slideType ||
+    (effectiveSlideUrl?.includes('canva.com') ? 'Canva' : 'Presentation');
+
   const [contentMode, setContentMode] = useState<'video' | 'slide'>('video');
   const [currentSlide, setCurrentSlide] = useState<number>(1);
   const [totalSlides, setTotalSlides] = useState<number>(12);
   const [isAutoPlaySlide, setIsAutoPlaySlide] = useState<boolean>(false);
   const [slideFullscreen, setSlideFullscreen] = useState<boolean>(false);
 
-  // Initialize content mode if only slide is available
+  // Tự động chuyển sang chế độ Slide nếu bài học có Slide và không có video riêng được tải lên
   useEffect(() => {
-    if (effectiveSlideUrl && !videoSrc && (!mediaInfo || (!mediaInfo.streamUrl && !mediaInfo.embedUrl))) {
-      setContentMode('slide');
+    if (effectiveSlideUrl) {
+      if (!mediaInfo || !mediaInfo.mediaId || mediaInfo.sourceType === 'demo' || mediaInfo.sourceType === 'presentation' || mediaInfo.sourceType === 'canva') {
+        setContentMode('slide');
+      }
     }
-  }, [effectiveSlideUrl, videoSrc, mediaInfo]);
+  }, [effectiveSlideUrl, mediaInfo]);
 
   // Auto-play slideshow timer (tu dong chuyen trang sau moi 4 giay)
   useEffect(() => {
@@ -268,8 +281,14 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         setMediaInfo(info);
         if (info.sourceType === 'youtube' || info.sourceType === 'vimeo') {
           setVideoSrc(''); // Iframe sẽ tự phát
+        } else if (info.sourceType === 'canva' || info.sourceType === 'presentation') {
+          setVideoSrc('');
+          setContentMode('slide');
         } else if (info.sourceType === 'direct_url' && info.externalUrl) {
           setVideoSrc(info.externalUrl);
+        } else if (info.sourceType === 'demo' && (slideUrl || info.slideUrl)) {
+          setVideoSrc('');
+          setContentMode('slide');
         } else {
           setVideoSrc(info.streamUrl || getLessonVideoStreamUrl(streamTargetId));
         }
@@ -990,6 +1009,12 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               allowFullScreen
               allow="fullscreen"
             />
+          ) : effectiveSlideUrl.toLowerCase().endsWith('.pdf') ? (
+            <iframe
+              src={effectiveSlideUrl.startsWith('http') ? effectiveSlideUrl : window.location.origin + effectiveSlideUrl}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+            />
           ) : (
             <iframe
               src={getOfficeViewerUrl(effectiveSlideUrl)}
@@ -1167,6 +1192,10 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
               }
             }}
             onError={() => {
+              if (effectiveSlideUrl) {
+                setContentMode('slide');
+                return;
+              }
               if (videoSrc && !videoSrc.includes('test.mp4')) {
                 setVideoSrc('/videos/test.mp4');
               } else {

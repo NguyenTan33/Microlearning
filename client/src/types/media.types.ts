@@ -1,12 +1,14 @@
 export interface LessonMediaInfo {
   lessonId: number;
   mediaId: number | null;
-  sourceType: 'azure' | 'youtube' | 'vimeo' | 'direct_url' | 'demo';
+  sourceType: 'azure' | 'youtube' | 'vimeo' | 'direct_url' | 'demo' | 'presentation' | 'canva' | (string & {});
   streamUrl: string;
   externalUrl?: string | null;
   embedUrl?: string | null;
   contentType: string;
   fileSizeBytes: number;
+  slideUrl?: string | null;
+  slideType?: string | null;
 }
 
 export interface LinkExternalMediaRequest {
@@ -60,34 +62,29 @@ export function parseVideoUrl(rawUrl: string): {
   // 2. Vimeo
   const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)/i);
   if (vimeoMatch && vimeoMatch[3]) {
-    const videoId = vimeoMatch[3];
     return {
       sourceType: 'vimeo',
-      embedUrl: `https://player.vimeo.com/video/${videoId}?badge=0&autopause=0`,
-      videoId,
+      embedUrl: `https://player.vimeo.com/video/${vimeoMatch[3]}?badge=0&autopause=0`,
+      videoId: vimeoMatch[3],
       platformName: 'Vimeo',
     };
   }
 
-  // 3. Direct URL (MP4, WebM, MOV, v.v.)
-  const lower = url.toLowerCase();
-  if (lower.startsWith('http://') || lower.startsWith('https://')) {
-    if (lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.includes('.mp4?') || lower.includes('blob.core.windows.net')) {
-      return {
-        sourceType: 'direct_url',
-        embedUrl: null,
-        videoId: null,
-        platformName: 'Tệp Video Trực Tiếp (Direct URL)',
-      };
-    }
-
+  // 3. Direct Video URLs
+  const cleanUrl = url.split('?')[0].toLowerCase();
+  if (cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.m3u8')) {
     return {
       sourceType: 'direct_url',
-      embedUrl: null,
+      embedUrl: url,
       videoId: null,
-      platformName: 'Liên kết Video Trực tuyến',
+      platformName: 'Tệp Video Trực tiếp',
     };
   }
 
-  return { sourceType: 'unknown', embedUrl: null, videoId: null, platformName: 'Không hợp lệ' };
+  return {
+    sourceType: 'unknown',
+    embedUrl: null,
+    videoId: null,
+    platformName: 'URL chưa định dạng',
+  };
 }
