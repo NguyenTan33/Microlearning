@@ -484,11 +484,49 @@ export const catalogApi = {
           ...existingLesson,
           mediaAssetCount: (existingLesson.mediaAssetCount || 0) + 1,
           videoUrl: data.url,
+          slideUrl: undefined,
+          slideType: undefined,
         });
       }
     } catch {
       // ignore cache write error
     }
+    return res.data;
+  },
+
+  async uploadLessonSlide(
+    fileUri: string,
+    fileName: string,
+    lessonId: number,
+    fileType: string = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('File', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    } as any);
+    formData.append('LessonId', String(lessonId));
+
+    const res = await apiClient.post(`/api/media/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    try {
+      const existingLesson = await catalogRepository.getLessonById(lessonId);
+      if (existingLesson) {
+        await catalogRepository.saveLesson({
+          ...existingLesson,
+          slideUrl: res.data?.slideUrl || res.data?.streamUrl,
+          slideType: fileName.toLowerCase().endsWith('.pdf') ? 'pdf' : 'pptx',
+        });
+      }
+    } catch {
+      // ignore
+    }
+
     return res.data;
   },
 

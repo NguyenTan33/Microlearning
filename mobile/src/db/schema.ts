@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS LocalLessons (
     mediaAssetCount INTEGER DEFAULT 0,
     videoRemoteUrl TEXT,
     audioTtsUrl TEXT,
+    slideUrl TEXT,
+    slideType TEXT,
     FOREIGN KEY (subjectId) REFERENCES LocalSubjects(id) ON DELETE CASCADE
 );
 
