@@ -97,6 +97,19 @@ export function useNotebook(options: UseNotebookOptions = {}) {
           const chosen = matchByCourse || matchByName || list[0];
           setActiveNotebook(chosen);
           void loadNotebookSources(chosen.id);
+        } else {
+          // Tự động khởi tạo sổ tay mặc định cho khóa học/hệ thống khi truy cập trên thiết bị di động mới
+          const defaultNb: Notebook = {
+            id: currentCourse ? `course-${currentCourse.id}` : 'default-notebook',
+            name: currentCourse ? `Sổ tay: ${currentCourse.title}` : 'Sổ tay AI Tri Thức',
+            description: currentCourse?.description || 'Trợ lý AI và tài liệu học tập toàn diện',
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            source_count: 0,
+            note_count: 0,
+          };
+          setNotebooks([defaultNb]);
+          setActiveNotebook(defaultNb);
         }
       }
 
@@ -488,9 +501,18 @@ export function useNotebook(options: UseNotebookOptions = {}) {
       if (isAskingRef.current) return;
       if (!questionText.trim()) return;
 
-      if (!activeNotebook) {
-        setError('Vui lòng chọn một Sổ tay trước khi đặt câu hỏi!');
-        return;
+      let notebookToUse = activeNotebook;
+      if (!notebookToUse) {
+        notebookToUse = {
+          id: currentCourse ? `course-${currentCourse.id}` : 'default-notebook',
+          name: currentCourse ? `Sổ tay: ${currentCourse.title}` : 'Sổ tay AI Tri Thức',
+          description: currentCourse?.description || 'Trợ lý AI và tài liệu học tập toàn diện',
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+          source_count: 0,
+          note_count: 0,
+        };
+        setActiveNotebook(notebookToUse);
       }
 
       isAskingRef.current = true;
@@ -522,7 +544,7 @@ export function useNotebook(options: UseNotebookOptions = {}) {
 
         // Truyền lessonId, courseId và chatHistory thực tế để backend query SQL & duy trì ngữ cảnh
         const aiAnswer = await notebookService.askQuestion(
-          activeNotebook.id,
+          (activeNotebook?.id || notebookToUse.id),
           questionText,
           activeLesson?.id,    // ID bài học từ SQL
           currentCourse?.id,   // ID khóa học từ SQL

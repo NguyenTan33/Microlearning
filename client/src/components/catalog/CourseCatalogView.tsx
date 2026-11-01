@@ -247,25 +247,13 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-[#090D1A] via-transparent to-transparent" />
 
                   {/* Badges trên Thumbnail */}
-                  <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md border ${
-                        isOffice
-                          ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                          : isIT
-                          ? 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
-                          : 'bg-indigo-950/80 border-indigo-500/40 text-indigo-300'
-                      }`}
-                    >
-                      {isOffice ? 'Tin học văn phòng' : isIT ? 'Lập trình & IT' : 'Khóa học chuyên đề'}
-                    </span>
-
-                    {course.isPrivate && (
+                  {course.isPrivate && (
+                    <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md border bg-amber-950/80 border-amber-500/50 text-amber-300 flex items-center gap-1 shadow-sm">
                         <span>🔒 Riêng tư</span>
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {enrolled && (
                     <div className="absolute top-3 right-3">

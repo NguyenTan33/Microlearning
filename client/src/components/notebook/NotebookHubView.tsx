@@ -603,7 +603,7 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
   ];
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-[#070b18] text-slate-100 rounded-2xl sm:rounded-3xl border border-indigo-500/20 overflow-hidden shadow-2xl h-[calc(100vh-130px)] min-h-[640px] max-h-[960px]">
+    <div className="w-full flex-1 flex flex-col bg-[#070b18] text-slate-100 rounded-2xl sm:rounded-3xl border border-indigo-500/20 overflow-hidden shadow-2xl h-[calc(100vh-140px)] md:h-[calc(100vh-130px)] min-h-[520px] md:min-h-[640px] max-h-[960px]">
       {/* =========================================================================
           TOP ACTION BAR
       ========================================================================= */}
@@ -663,14 +663,62 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
         </div>
       </header>
 
+      {/* MOBILE NAVIGATION BAR: Điều hướng tab ngang mượt mà trên điện thoại */}
+      <div className="md:hidden flex items-center p-2 bg-[#0d121f] border-b border-indigo-500/20 overflow-x-auto gap-1.5 shrink-0 custom-scrollbar">
+        <button
+          onClick={() => setCurrentTab('ASK_SEARCH')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all shadow-sm ${
+            currentTab === 'ASK_SEARCH'
+              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/30'
+              : 'text-indigo-300 hover:text-white bg-indigo-950/70 border border-indigo-500/30'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span>Hỏi đáp RAG AI</span>
+        </button>
+        <button
+          onClick={() => setCurrentTab('NOTEBOOKS')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            currentTab === 'NOTEBOOKS'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-white bg-white/5'
+          }`}
+        >
+          <BookMarked className="w-3.5 h-3.5" />
+          <span>Sổ tay ({notebooks.length})</span>
+        </button>
+        <button
+          onClick={() => setCurrentTab('SOURCES')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            currentTab === 'SOURCES'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-white bg-white/5'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Tài liệu ({allSources.length})</span>
+        </button>
+        <button
+          onClick={() => setCurrentTab('PODCASTS')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            currentTab === 'PODCASTS'
+              ? 'bg-pink-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-white bg-white/5'
+          }`}
+        >
+          <Mic className="w-3.5 h-3.5" />
+          <span>Podcasts ({podcasts.length})</span>
+        </button>
+      </div>
+
       {/* =========================================================================
-          MAIN LAYOUT: SIDEBAR (4 MỤC) + MAIN CONTENT
+          MAIN LAYOUT: SIDEBAR (4 MỤC TRÊN DESKTOP) + MAIN CONTENT
       ========================================================================= */}
       <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
         {/* =========================================================================
-            SIDEBAR GIAO DIỆN NATIVE
+            SIDEBAR GIAO DIỆN NATIVE (ẨN TRÊN MOBILE, HIỆN TRÊN DESKTOP md:)
         ========================================================================= */}
-        <aside className="w-full md:w-64 bg-[#0d121f] border-b md:border-b-0 md:border-r border-indigo-500/20 flex flex-col shrink-0 min-h-0">
+        <aside className="hidden md:flex md:w-64 bg-[#0d121f] border-r border-indigo-500/20 flex-col shrink-0 min-h-0">
           {/* Header macOS Dots + Logo */}
           <div className="p-4 border-b border-white/5 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -762,8 +810,8 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Search className={`w-4 h-4 ${currentTab === 'ASK_SEARCH' ? 'text-cyan-400' : 'text-slate-500'}`} />
-                  <span>Ask and Search</span>
+                  <Sparkles className={`w-4 h-4 ${currentTab === 'ASK_SEARCH' ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
+                  <span>Hỏi đáp RAG (Ask & Search)</span>
                 </button>
               </div>
             </div>
@@ -1268,9 +1316,9 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   {/* Tìm kiếm nhanh */}
-                  <div className="relative">
+                  <div className="relative flex-1 sm:flex-initial">
                     <input
                       type="text"
                       value={searchQueryInput}
@@ -1281,14 +1329,14 @@ export const NotebookHubView: React.FC<NotebookHubViewProps> = ({
                         }
                       }}
                       placeholder="Tìm từ khóa trong tài liệu..."
-                      className="w-48 sm:w-64 px-3 py-1.5 pl-8 rounded-xl bg-slate-900 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      className="w-full sm:w-64 px-3 py-1.5 pl-8 rounded-xl bg-slate-900 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                     />
                     <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                   </div>
                   <button
                     onClick={() => searchKnowledge(searchQueryInput, searchFilterType)}
                     disabled={isSearching}
-                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer shrink-0"
                   >
                     {isSearching ? 'Tìm...' : 'Tìm'}
                   </button>

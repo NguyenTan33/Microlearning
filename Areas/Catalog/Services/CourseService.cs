@@ -63,6 +63,18 @@ namespace Microlearning.Areas.Catalog.Services
             {
                 query = query.Where(c => c.IsPublished);
             }
+            else
+            {
+                // Studio Quản lý: Chỉ Admin thấy toàn bộ, Giáo viên chỉ thấy các khóa học do mình tạo
+                if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
+                {
+                    query = query.Where(c => c.CreatedByAccountId == currentUserId);
+                }
+                else if (!isAdmin && string.IsNullOrEmpty(currentUserId))
+                {
+                    query = query.Where(c => false);
+                }
+            }
 
             var courses = await query
                 .OrderByDescending(c => c.CreatedAt)

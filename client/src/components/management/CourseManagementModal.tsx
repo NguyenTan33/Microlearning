@@ -47,12 +47,14 @@ interface CourseManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDataChanged?: () => void;
+  currentUser?: { userId?: string; roles?: string[]; role?: string; fullName?: string };
 }
 
 export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   isOpen,
   onClose,
   onDataChanged,
+  currentUser,
 }) => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
