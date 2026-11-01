@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -70,7 +70,7 @@ export default function LessonScreen() {
   const [mediaTab, setMediaTab] = useState<'video' | 'slide'>('video');
 
   useEffect(() => {
-    if (lesson?.slideUrl && !lesson?.videoUrl) {
+    if (lesson?.slideUrl) {
       setMediaTab('slide');
     }
   }, [lesson?.slideUrl, lesson?.videoUrl]);

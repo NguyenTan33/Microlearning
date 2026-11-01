@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -21,6 +21,9 @@ import {
   Globe,
   ExternalLink,
   PictureInPicture,
+  Presentation,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { getVideoStreamUrl, getLessonVideoStreamUrl, getOfflineVideoBlob } from '../../services/mediaService';
 import { catalogApi } from '../../services/catalogApi';
@@ -932,7 +935,126 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         </div>
       )}
 
-      {/* Video Screen Area */}
+            {/* Tab Switcher: Slide vs Video (Hiện khi bài học có Slide) */}
+      {effectiveSlideUrl && (
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-[#060913] border-b border-white/10 z-20">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setContentMode('slide');
+                setIsPlaying(false);
+                if (videoRef.current) videoRef.current.pause();
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                contentMode === 'slide'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Presentation className="w-3.5 h-3.5" />
+              <span>Slide Trình Chiếu ({effectiveSlideType === 'Canva' ? 'Canva' : 'PowerPoint'})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setContentMode('video')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                contentMode === 'video'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Video Bài Giảng</span>
+            </button>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400">
+            {contentMode === 'slide' ? (
+              <span className="flex items-center gap-1.5 text-indigo-300 font-medium bg-indigo-950/60 border border-indigo-500/30 px-2 py-0.5 rounded-full">
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                Đạt 60% trang slide để mở bài kiểm tra
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Slide Screen Area vs Video Screen Area */}
+      {contentMode === 'slide' && effectiveSlideUrl ? (
+        <div className="relative aspect-video bg-[#050811] flex flex-col items-center justify-center overflow-hidden">
+          {effectiveSlideType === 'Canva' || effectiveSlideUrl.includes('canva.com') ? (
+            <iframe
+              src={getCanvaEmbedUrl(effectiveSlideUrl)}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              allowFullScreen
+              allow="fullscreen"
+            />
+          ) : (
+            <iframe
+              src={getOfficeViewerUrl(effectiveSlideUrl)}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              allowFullScreen
+              allow="fullscreen"
+            />
+          )}
+
+          {/* Slide Control Bar Overlay at bottom */}
+          <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/95 via-black/75 to-transparent flex items-center justify-between z-10">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSlideChange(currentSlide - 1)}
+                disabled={currentSlide <= 1}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white transition-all cursor-pointer"
+                title="Trang trước"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-semibold text-white px-2.5 py-1 rounded-lg bg-black/60 border border-white/15">
+                Trang {currentSlide} / {totalSlides}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSlideChange(currentSlide + 1)}
+                disabled={currentSlide >= totalSlides}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white transition-all cursor-pointer"
+                title="Trang sau"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+                        {/* Tiến độ % slide */}
+            <div className="flex items-center gap-3">
+              <div className="w-24 sm:w-36 h-2 bg-slate-800 rounded-full overflow-hidden border border-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.round((currentSlide / totalSlides) * 100))}%` }}
+                />
+              </div>
+              <span className="text-xs font-bold text-cyan-300">
+                {Math.min(100, Math.round((currentSlide / totalSlides) * 100))}%
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setIsAutoPlaySlide(!isAutoPlaySlide)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isAutoPlaySlide
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 animate-pulse'
+                    : 'bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white'
+                }`}
+                title="Tự động lướt chuyển slide mỗi 4 giây"
+              >
+                {isAutoPlaySlide ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                <span>{isAutoPlaySlide ? 'Đang tự chạy' : 'Tự chạy slide'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="relative aspect-video bg-black flex items-center justify-center">
         {mediaInfo && mediaInfo.sourceType === 'youtube' && mediaInfo.embedUrl ? (
           <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
@@ -1073,8 +1195,10 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           </button>
         )}
       </div>
+      )}
 
       {/* Thanh điều khiển Video thông minh */}
+      {contentMode !== 'slide' && (
       <div className="p-3 sm:p-4 bg-gradient-to-t from-[#060A14] to-[#0A0F1F] border-t border-white/5 space-y-2.5">
         {/* Scrubber tua video kèm các điểm cắm cờ (Flag Pins) */}
         <div className="relative w-full flex items-center py-1">
@@ -1247,6 +1371,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* Cảnh báo Chống Gian Lận Tua Video (> 30%) */}
       {antiCheatWarning && (

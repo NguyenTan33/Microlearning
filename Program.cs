@@ -526,6 +526,14 @@ builder.Services.AddSwaggerGen(options =>
 
 builder.Services.AddControllers();
 
+// Thiết lập chính sách bảo mật Zero Trust: Mặc định 100% API đều bắt buộc phải đăng nhập
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddHealthChecks();

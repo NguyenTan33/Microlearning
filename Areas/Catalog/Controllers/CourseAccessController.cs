@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Microlearning.Areas.Catalog.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/courses/{courseId:int}/access")]
     public class CourseAccessController : ControllerBase
     {
@@ -21,7 +22,6 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// Kiểm tra quyền truy cập vào khóa học (Hỗ trợ cả Public và Private)
         /// </summary>
         [HttpGet("check")]
-        [AllowAnonymous]
         public async Task<IActionResult> CheckAccess(int courseId, CancellationToken cancellationToken)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

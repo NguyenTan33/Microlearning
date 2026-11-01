@@ -1,4 +1,4 @@
-using Microlearning.Areas.Media.DTOs;
+﻿using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Infrastructure.Factory;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +8,7 @@ namespace Microlearning.Areas.Media.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class MediaController : ControllerBase
     {
         private readonly IMediaService _mediaService;
@@ -48,6 +49,10 @@ namespace Microlearning.Areas.Media.Controllers
             if (mediaInfo.SourceType == "youtube" || mediaInfo.SourceType == "vimeo" || mediaInfo.SourceType == "direct_url")
             {
                 return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
+            }
+            if ((mediaInfo.SourceType == "presentation" || mediaInfo.SourceType == "Canva") && !string.IsNullOrWhiteSpace(mediaInfo.ExternalUrl))
+            {
+                return Redirect(mediaInfo.ExternalUrl);
             }
 
             var (stream, contentType, _, _) = await _mediaService.GetLessonVideoStreamAsync(lessonId);
