@@ -96,6 +96,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
     description: '',
     durationSeconds: 180,
     sortOrder: 1,
+    youtubeUrl: '',
     slideUrl: '',
     slideType: 'Presentation',
   });
@@ -108,9 +109,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const [loadingQuizList, setLoadingQuizList] = useState<boolean>(false);
   const [editingQuizId, setEditingQuizId] = useState<number | null>(null);
 
-  // Dedicated Video Upload / Embed Modal
+  // Dedicated Video & Slide Content Modal
   const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
-  const [videoTab, setVideoTab] = useState<'upload' | 'embed'>('upload');
+  const [videoTab, setVideoTab] = useState<'upload' | 'embed' | 'slide'>('upload');
   const [targetLessonForVideo, setTargetLessonForVideo] = useState<Lesson | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -118,6 +119,9 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const [externalVideoUrl, setExternalVideoUrl] = useState<string>('');
   const [externalVideoTitle, setExternalVideoTitle] = useState<string>('');
   const [linkingExternalVideo, setLinkingExternalVideo] = useState<boolean>(false);
+  const [modalSlideUrl, setModalSlideUrl] = useState<string>('');
+  const [modalSlideFile, setModalSlideFile] = useState<File | null>(null);
+  const [savingSlide, setSavingSlide] = useState<boolean>(false);
 
   // Quiz Builder Modal
   const [showQuizModal, setShowQuizModal] = useState<boolean>(false);
@@ -543,10 +547,19 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   // =================== DEDICATED VIDEO UPLOAD & EMBED ===================
   const handleOpenVideoUpload = (lesson: Lesson) => {
     setTargetLessonForVideo(lesson);
-    setVideoTab('upload');
     setVideoFile(null);
     setExternalVideoUrl('');
     setExternalVideoTitle('');
+    setModalSlideUrl(lesson.slideUrl || '');
+    setModalSlideFile(null);
+    if (lesson.slideUrl) {
+      setVideoTab('slide');
+    } else if (lesson.videoUrl && (lesson.videoUrl.includes('youtu') || lesson.videoUrl.includes('vimeo'))) {
+      setVideoTab('embed');
+      setExternalVideoUrl(lesson.videoUrl);
+    } else {
+      setVideoTab('upload');
+    }
     if (videoPreviewUrl) {
       URL.revokeObjectURL(videoPreviewUrl);
       setVideoPreviewUrl(null);
@@ -711,6 +724,48 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
       if (selectedCourseDetail) await loadCourseDetail(selectedCourseDetail.id);
     } catch (err: any) {
       showToast('error', err?.message || 'Lỗi khi xóa bài quiz.');
+    }
+  };
+
+
+  const handleSaveSlideFromVideoModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetLessonForVideo) return;
+    if (!modalSlideUrl.trim() && !modalSlideFile) {
+      showToast('error', 'Vui lòng dán link Canva hoặc tải file PowerPoint (.ppt/.pptx/pdf).');
+      return;
+    }
+
+    setSavingSlide(true);
+    try {
+      if (modalSlideFile) {
+        showToast('success', 'Đang tải file PowerPoint lên hệ thống...');
+        await catalogApi.uploadLessonSlide(modalSlideFile, targetLessonForVideo.id);
+        showToast('success', 'Đã tải lên và chuyển đổi sang Slide bài giảng thành công!');
+      } else if (modalSlideUrl.trim()) {
+        const slideType = modalSlideUrl.includes('canva.com') ? 'Canva' : 'Presentation';
+        await catalogApi.updateLesson(targetLessonForVideo.id, {
+          title: targetLessonForVideo.title,
+          description: targetLessonForVideo.description || '',
+          durationSeconds: targetLessonForVideo.durationSeconds,
+          sortOrder: targetLessonForVideo.sortOrder,
+          slideUrl: modalSlideUrl.trim(),
+          slideType: slideType,
+        });
+        showToast('success', 'Đã liên kết Slide bài giảng thành công!');
+      }
+
+      setShowVideoModal(false);
+      setModalSlideFile(null);
+      setModalSlideUrl('');
+      if (selectedCourseDetail) {
+        await loadCourseDetail(selectedCourseDetail.id);
+      }
+      if (onDataChanged) onDataChanged();
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi lưu slide bài giảng.');
+    } finally {
+      setSavingSlide(false);
     }
   };
 
@@ -1328,6 +1383,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
     description: '',
     durationSeconds: 180,
     sortOrder: (subj.lessons?.length || 0) + 1,
+    youtubeUrl: '',
     slideUrl: '',
     slideType: 'Presentation',
   });
@@ -1476,6 +1532,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
     description: lesson.description || '',
     durationSeconds: lesson.durationSeconds,
     sortOrder: lesson.sortOrder,
+    youtubeUrl: lesson.videoUrl && (lesson.videoUrl.includes('youtu') || lesson.videoUrl.includes('vimeo')) ? lesson.videoUrl : '',
     slideUrl: lesson.slideUrl || '',
     slideType: lesson.slideType || 'Presentation',
   });
@@ -1558,14 +1615,56 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">URL Ảnh Thumbnail</label>
-                <input
-                  type="text"
-                  placeholder="https://images.unsplash.com/..."
-                  value={courseForm.thumbnailUrl}
-                  onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50"
-                />
+                <label className="block text-slate-300 mb-1 font-medium">Ảnh bìa đại diện (Thumbnail khóa học)</label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Dán link ảnh (https://...) hoặc tải ảnh từ máy tính..."
+                      value={courseForm.thumbnailUrl}
+                      onChange={(e) => setCourseForm({ ...courseForm, thumbnailUrl: e.target.value })}
+                      className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white focus:outline-none focus:border-indigo-500/50 text-xs"
+                    />
+                    <label className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-all shadow-md">
+                      {uploadingThumbnail ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      <span>{uploadingThumbnail ? 'Đang tải...' : 'Tải ảnh lên'}</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleUploadThumbnail}
+                        disabled={uploadingThumbnail}
+                      />
+                    </label>
+                  </div>
+                  {courseForm.thumbnailUrl && (
+                    <div className="relative w-full h-32 rounded-xl overflow-hidden border border-white/10 bg-slate-950 group">
+                      <img
+                        src={courseForm.thumbnailUrl}
+                        alt="Thumbnail Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                      <div className="absolute top-2 right-2">
+                        <button
+                          type="button"
+                          onClick={() => setCourseForm((prev) => ({ ...prev, thumbnailUrl: '' }))}
+                          className="px-2.5 py-1 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white text-[11px] font-semibold flex items-center gap-1 shadow-md"
+                          title="Gỡ ảnh này"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Gỡ ảnh bìa</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Feature 6: Chế độ Khóa học Riêng tư (Private) & Mật khẩu */}
@@ -1780,11 +1879,27 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 </div>
               </div>
 
-              {/* Đính kèm file Video bài giảng */}
-              <div>
-                <label className="block text-slate-300 mb-1 font-medium">
-                  Đính kèm File Video (MP4, WebM - Tùy chọn tải ngay)
+              {/* Đính kèm Video bài giảng (YouTube hoặc file MP4) */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <label className="block text-slate-300 font-medium">
+                  🎬 Video Bài Giảng (Dán link YouTube hoặc Tải tệp MP4)
                 </label>
+
+                {/* Nhập link YouTube */}
+                <div>
+                  <input
+                    type="url"
+                    placeholder="Dán link YouTube (vd: https://www.youtube.com/watch?v=... hoặc https://youtu.be/...)"
+                    value={lessonForm.youtubeUrl}
+                    onChange={(e) => setLessonForm({ ...lessonForm, youtubeUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 text-xs"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Hỗ trợ dán trực tiếp đường dẫn video từ YouTube hoặc Vimeo.
+                  </span>
+                </div>
+
+                {/* Hoặc tải file MP4 */}
                 <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
                   <input
                     type="file"
@@ -1812,8 +1927,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   ) : (
                     <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
                       <Upload className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs">Kéo thả hoặc nhấp để chọn tệp video MP4</span>
-                      <span className="text-[10px] text-slate-500">Dung lượng tối đa 500MB</span>
+                      <span className="text-xs">Hoặc tải lên tệp Video MP4 (Tối đa 500MB)</span>
                     </div>
                   )}
                 </div>
@@ -1933,31 +2047,63 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               </button>
             </div>
 
-            {/* Tab Selector: Tải tệp lên vs Nhúng URL */}
-            <div className="grid grid-cols-2 p-1 bg-slate-900/90 rounded-xl border border-white/10 text-xs font-semibold">
+            {/* Hiển thị học liệu hiện tại của bài học */}
+            <div className="p-2.5 rounded-xl bg-slate-950/80 border border-white/10 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Nội dung đang dùng:</span>
+                {targetLessonForVideo.slideUrl ? (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-950 text-purple-300 font-bold border border-purple-500/30 flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    <span>Slide ({targetLessonForVideo.slideType || 'Canva/PPT'})</span>
+                  </span>
+                ) : targetLessonForVideo.mediaAssetCount > 0 ? (
+                  <span className="px-2 py-0.5 rounded-md bg-indigo-950 text-indigo-300 font-bold border border-indigo-500/30 flex items-center gap-1">
+                    <Video className="w-3 h-3" />
+                    <span>Video ({targetLessonForVideo.videoUrl?.includes('youtu') ? 'YouTube' : 'Tệp MP4'})</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-500 italic">Chưa tải học liệu</span>
+                )}
+              </div>
+            </div>
+
+            {/* Tab Selector: Tải MP4 vs Nhúng YouTube vs Đổi sang Slide */}
+            <div className="grid grid-cols-3 p-1 bg-slate-900/90 rounded-xl border border-white/10 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setVideoTab('upload')}
-                className={`flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all cursor-pointer ${
                   videoTab === 'upload'
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>Tải tệp tin lên</span>
+                <span>Tải Video MP4</span>
               </button>
               <button
                 type="button"
                 onClick={() => setVideoTab('embed')}
-                className={`flex items-center justify-center gap-2 py-2 rounded-lg transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all cursor-pointer ${
                   videoTab === 'embed'
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Link2 className="w-3.5 h-3.5" />
-                <span>Nhúng liên kết URL</span>
+                <span>Nhúng YouTube</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoTab('slide')}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all cursor-pointer ${
+                  videoTab === 'slide'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Slide Canva/PPT</span>
               </button>
             </div>
 

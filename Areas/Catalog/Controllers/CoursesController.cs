@@ -67,14 +67,18 @@ namespace Microlearning.Areas.Catalog.Controllers
         public async Task<IActionResult> CreateCourse([FromBody] CreateCourseRequest request)
         {
             Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
-            var (userId, _, authorName) = GetCurrentUserInfo();
+            var (userId, isAdmin, rawAuthor) = GetCurrentUserInfo();
+            var roleLabel = isAdmin ? "[Admin]" : "[Giáo viên]";
+            var authorName = $"{roleLabel} {rawAuthor}";
 
             if (!string.IsNullOrEmpty(userId))
             {
                 var acc = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-                if (acc != null && !string.IsNullOrWhiteSpace(acc.FullName))
+                if (acc != null)
                 {
-                    authorName = acc.FullName;
+                    var name = !string.IsNullOrWhiteSpace(acc.FullName) ? acc.FullName : acc.UserName;
+                    var contact = !string.IsNullOrWhiteSpace(acc.Email) ? acc.Email : acc.UserName;
+                    authorName = $"{roleLabel} {name} ({contact})";
                 }
             }
 

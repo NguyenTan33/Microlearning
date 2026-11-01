@@ -83,9 +83,27 @@ namespace Microlearning.Areas.Catalog.Services
                 })
                 .ToListAsync();
 
+            var creatorIds = courses.Where(c => !string.IsNullOrEmpty(c.CreatedByAccountId)).Select(c => c.CreatedByAccountId!).Distinct().ToList();
+            var creatorsMap = await _dbContext.Users.AsNoTracking()
+                .Where(u => creatorIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => $"[Giáo viên/Admin] {(!string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : u.UserName)} ({u.Email ?? u.UserName})");
+
             return courses.Select(c =>
             {
                 bool canEdit = isAdmin || (!string.IsNullOrEmpty(currentUserId) && c.CreatedByAccountId == currentUserId);
+                string displayAuthor = c.AuthorName;
+                if (string.IsNullOrWhiteSpace(displayAuthor))
+                {
+                    if (!string.IsNullOrEmpty(c.CreatedByAccountId) && creatorsMap.TryGetValue(c.CreatedByAccountId, out var foundName))
+                    {
+                        displayAuthor = foundName;
+                    }
+                    else
+                    {
+                        displayAuthor = "Nguồn: [Hệ Thống] Ban Quản Trị EduSync";
+                    }
+                }
+
                 return new CourseResponse(
                     c.Id,
                     c.Title,
@@ -97,7 +115,7 @@ namespace Microlearning.Areas.Catalog.Services
                     c.UpdatedAt,
                     c.SubjectsCount,
                     c.IsPrivate,
-                    c.AuthorName ?? "EduSync Master",
+                    displayAuthor,
                     c.CreatedByAccountId,
                     canEdit
                 );
@@ -173,7 +191,7 @@ namespace Microlearning.Areas.Catalog.Services
                 subjectResponses,
                 course.IsPrivate,
                 !course.IsPrivate,
-                course.AuthorName ?? "EduSync Master",
+                !string.IsNullOrWhiteSpace(course.AuthorName) ? course.AuthorName : "Nguồn: [Hệ Thống] Ban Quản Trị EduSync",
                 course.CreatedByAccountId,
                 canEdit
             );

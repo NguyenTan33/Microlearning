@@ -435,6 +435,8 @@ export const catalogApi = {
     description: string;
     durationSeconds: number;
     sortOrder: number;
+    slideUrl?: string;
+    slideType?: string;
   }): Promise<Lesson> {
     const res = await fetch(`/api/lessons/${id}`, {
       method: 'PUT',
