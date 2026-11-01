@@ -134,8 +134,28 @@ export const catalogApi = {
     const timestamp = Date.now();
     const baseParam = includeUnpublished ? 'includeUnpublished=true' : '';
     const query = baseParam ? `?${baseParam}&_t=${timestamp}` : `?_t=${timestamp}`;
-    const res = await apiClient.get<CourseDetail>(`/api/courses/${courseId}${query}`);
-    const courseDetail = res.data;
+    
+    let courseDetail: CourseDetail;
+    try {
+      const res = await apiClient.get<CourseDetail>(`/api/courses/${courseId}${query}`);
+      courseDetail = res.data;
+    } catch (err) {
+      // Fallback: Thử tái cấu trúc từ danh mục và live subjects
+      const allCourses = await this.getAllCourses(includeUnpublished).catch(() => []);
+      const matched = allCourses.find((c) => c.id === courseId);
+      if (matched) {
+        courseDetail = {
+          ...matched,
+          subjects: [],
+          totalSubjects: 0,
+          
+        };
+      } else {
+        const cached = await catalogRepository.getCourseDetailById(courseId);
+        if (cached) return cached;
+        throw err;
+      }
+    }
 
     // Live composition: Tự động tải danh sách live subjects và lessons từ SQL để dữ liệu luôn mới 100%
     try {
