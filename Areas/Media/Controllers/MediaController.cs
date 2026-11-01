@@ -53,8 +53,7 @@ namespace Microlearning.Areas.Media.Controllers
             {
                 return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
             }
-            if ((string.Equals(mediaInfo.SourceType, "presentation", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(mediaInfo.SourceType, "canva", StringComparison.OrdinalIgnoreCase)) &&
+            if (string.Equals(mediaInfo.SourceType, "presentation", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl))
             {
                 return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
