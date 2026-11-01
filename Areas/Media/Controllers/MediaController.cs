@@ -1,4 +1,4 @@
-﻿using Microlearning.Areas.Media.DTOs;
+using Microlearning.Areas.Media.DTOs;
 using Microlearning.Areas.Media.Interfaces;
 using Microlearning.Infrastructure.Factory;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +8,6 @@ namespace Microlearning.Areas.Media.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
     public class MediaController : ControllerBase
     {
         private readonly IMediaService _mediaService;
@@ -32,6 +31,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Stream Video bài giảng hỗ trợ tua video (HTTP 206 Partial Content).
         /// </summary>
         [HttpGet("{id}/stream")]
+        [AllowAnonymous]
         public async Task<IActionResult> StreamVideo(int id)
         {
             var (stream, contentType, _, _) = await _mediaService.GetVideoStreamAsync(id);
@@ -42,17 +42,22 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Stream Video bài giảng theo LessonId (Tự động lấy video mới nhất của bài học, nếu chưa có sẽ phát test.mp4).
         /// </summary>
         [HttpGet("lesson/{lessonId}/stream")]
+        [AllowAnonymous]
         public async Task<IActionResult> StreamLessonVideo(int lessonId)
         {
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var mediaInfo = await _mediaService.GetLessonMediaInfoAsync(lessonId, baseUrl);
-            if (mediaInfo.SourceType == "youtube" || mediaInfo.SourceType == "vimeo" || mediaInfo.SourceType == "direct_url")
+            if (string.Equals(mediaInfo.SourceType, "youtube", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(mediaInfo.SourceType, "vimeo", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(mediaInfo.SourceType, "direct_url", StringComparison.OrdinalIgnoreCase))
             {
                 return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
             }
-            if ((mediaInfo.SourceType == "presentation" || mediaInfo.SourceType == "Canva") && !string.IsNullOrWhiteSpace(mediaInfo.ExternalUrl))
+            if ((string.Equals(mediaInfo.SourceType, "presentation", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(mediaInfo.SourceType, "canva", StringComparison.OrdinalIgnoreCase)) &&
+                !string.IsNullOrWhiteSpace(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl))
             {
-                return Redirect(mediaInfo.ExternalUrl);
+                return Redirect(mediaInfo.ExternalUrl ?? mediaInfo.StreamUrl);
             }
 
             var (stream, contentType, _, _) = await _mediaService.GetLessonVideoStreamAsync(lessonId);
@@ -63,6 +68,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Lấy thông tin tệp tải về và mã Checksum SHA256 phục vụ kiểm tra toàn vẹn khi tải Offline.
         /// </summary>
         [HttpGet("{id}/download-info")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetDownloadInfo(int id)
         {
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
@@ -74,6 +80,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Tải tệp tin video bài giảng về máy (Download file đính kèm).
         /// </summary>
         [HttpGet("{id}/download")]
+        [AllowAnonymous]
         public async Task<IActionResult> DownloadVideo(int id)
         {
             var (stream, contentType, _, fileName) = await _mediaService.GetVideoStreamAsync(id);
@@ -84,6 +91,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Đăng tải tệp video bài giảng mới (MP4, WebM, MOV) và liên kết bài học
         /// </summary>
         [HttpPost("upload")]
+        [Authorize(Roles = "Admin,Teacher")]
         [RequestSizeLimit(500 * 1024 * 1024)] // 500 MB
         public async Task<IActionResult> UploadVideo(
             [FromForm] IFormFile file,
@@ -99,6 +107,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Gắn liên kết video bên ngoài (YouTube, Vimeo, hoặc URL video trực tiếp) cho bài học.
         /// </summary>
         [HttpPost("link-external")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> LinkExternalMedia(
             [FromBody] LinkExternalMediaRequest request,
             CancellationToken cancellationToken)
@@ -112,6 +121,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Lấy thông tin nguồn phát video chi tiết của bài học (xác định Azure, YouTube, Vimeo, hay Direct URL).
         /// </summary>
         [HttpGet("lesson/{lessonId}/info")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetLessonMediaInfo(int lessonId)
         {
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
@@ -123,6 +133,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Thử nghiệm sinh giọng đọc AI (Text-To-Speech) từ văn bản tiếng Việt.
         /// </summary>
         [HttpPost("tts/test")]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> TestTts(
             [FromBody] TtsSynthesizeTestRequest request,
             CancellationToken cancellationToken)
@@ -165,7 +176,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Kích hoạt tổng hợp giọng đọc AI cho một kịch bản NarrationScript đã có trong CSDL.
         /// </summary>
         [HttpPost("tts/narration/{scriptId}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> SynthesizeNarrationScript(
             int scriptId,
             CancellationToken cancellationToken)
@@ -187,7 +198,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Xếp hàng một tác vụ xử lý media chạy ngầm (HTTP 202 Accepted).
         /// </summary>
         [HttpPost("jobs/enqueue")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Teacher")]
         public async Task<IActionResult> EnqueueJob(
             [FromBody] EnqueueMediaJobRequest request,
             CancellationToken cancellationToken)
@@ -200,6 +211,7 @@ namespace Microlearning.Areas.Media.Controllers
         /// API Tra cứu trạng thái tiến độ của MediaJob (Queued, Processing, Completed, Failed).
         /// </summary>
         [HttpGet("jobs/{id}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetJobStatus(int id, CancellationToken cancellationToken)
         {
             var response = await _mediaService.GetJobStatusAsync(id, cancellationToken);
