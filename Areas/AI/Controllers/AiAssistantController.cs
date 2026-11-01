@@ -12,7 +12,7 @@ namespace Microlearning.Areas.AI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [AllowAnonymous]
+    [Authorize]
     public class AiAssistantController : ControllerBase
     {
         private readonly ApplicationDbContext _context;

@@ -12,6 +12,7 @@ namespace Microlearning.Areas.Sync.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [EnableRateLimiting("SyncPolicy")]
+    [Authorize]
     public class SyncController : ControllerBase
     {
         private readonly IContentChangeTracker _changeTracker;

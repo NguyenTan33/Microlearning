@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Microlearning.Areas.Catalog.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/lessons/{lessonId:int}/attachments")]
     public class LessonAttachmentsController : ControllerBase
     {
@@ -19,7 +20,6 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// Lấy danh sách các tệp tài liệu đính kèm (Word/PDF) của bài học
         /// </summary>
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetAttachments(int lessonId, CancellationToken cancellationToken)
         {
             var attachments = await _attachmentService.GetAttachmentsByLessonIdAsync(lessonId, cancellationToken);
@@ -30,7 +30,6 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// Lấy toàn bộ tài liệu đính kèm (Word/PDF) thuộc mọi bài học của một khóa học
         /// </summary>
         [HttpGet("/api/courses/{courseId:int}/attachments")]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCourseAttachments(int courseId, CancellationToken cancellationToken)
         {
             var attachments = await _attachmentService.GetAttachmentsByCourseIdAsync(courseId, cancellationToken);

@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Microlearning.Areas.Catalog.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/[controller]")]
     public class CoursesController : ControllerBase
     {
@@ -37,7 +38,6 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// Lấy danh sách toàn bộ các khóa học (hỗ trợ includeUnpublished cho Studio Quản lý)
         /// </summary>
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetAllCourses([FromQuery] bool includeUnpublished = false)
         {
             Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
@@ -50,7 +50,6 @@ namespace Microlearning.Areas.Catalog.Controllers
         /// Lấy chi tiết khóa học kèm danh sách môn học và bài học bên trong
         /// </summary>
         [HttpGet("{id}")]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCourseById(int id, [FromQuery] bool includeUnpublished = false)
         {
             Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microlearning.Areas.Media.DTOs;
@@ -546,19 +546,19 @@ namespace Microlearning.Areas.Media.Services
 
             if (mediaAsset == null)
             {
-                var demoUrl = $"{baseUrl.TrimEnd('/')}/videos/test.mp4";
-                var hasSlide = lesson != null && !string.IsNullOrWhiteSpace(lesson.SlideUrl);
-                return new LessonMediaInfoResponse(
-                    lessonId,
-                    null,
-                    hasSlide ? (lesson!.SlideType ?? "presentation") : "demo",
-                    demoUrl,
-                    lesson?.SlideUrl,
-                    lesson?.SlideUrl,
-                    "video/mp4",
-                    17979812,
-                    lesson?.SlideUrl,
-                    lesson?.SlideType
+                var hasSlide = lesson != null && !string.IsNullOrWhiteSpace(lesson.SlideUrl);
+                var streamUrl = hasSlide ? (lesson!.SlideUrl ?? "") : $"{baseUrl.TrimEnd('/')}/videos/test.mp4";
+                return new LessonMediaInfoResponse(
+                    lessonId,
+                    null,
+                    hasSlide ? (lesson!.SlideType ?? "presentation") : "demo",
+                    streamUrl,
+                    lesson?.SlideUrl,
+                    lesson?.SlideUrl,
+                    hasSlide ? "application/presentation" : "video/mp4",
+                    0,
+                    lesson?.SlideUrl,
+                    lesson?.SlideType
                 );
             }
 

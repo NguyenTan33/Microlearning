@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Microlearning.Areas.Quiz.Controllers
 {
     [ApiController]
+    [Authorize]
     [Route("api/[controller]")]
     public class QuizzesController : ControllerBase
     {
@@ -65,7 +66,6 @@ namespace Microlearning.Areas.Quiz.Controllers
         /// Lấy toàn bộ danh sách các đề thi trắc nghiệm của bài học kèm trạng thái đã hoàn thành (nếu có Token)
         /// </summary>
         [HttpGet("lesson/{lessonId}/all")]
-        [AllowAnonymous]
         public async Task<IActionResult> GetQuizzesByLessonId(int lessonId)
         {
             var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -77,7 +77,6 @@ namespace Microlearning.Areas.Quiz.Controllers
         /// Lấy đề thi trắc nghiệm đầu tiên của một bài học (Tương thích ngược)
         /// </summary>
         [HttpGet("lesson/{lessonId}")]
-        [AllowAnonymous]
         public async Task<IActionResult> GetQuizByLessonId(int lessonId)
         {
             var quiz = await _quizService.GetQuizByLessonIdAsync(lessonId);
@@ -88,7 +87,6 @@ namespace Microlearning.Areas.Quiz.Controllers
         /// Lấy thông tin chi tiết một bài quiz theo ID
         /// </summary>
         [HttpGet("{id:int}")]
-        [AllowAnonymous]
         public async Task<IActionResult> GetQuizById(int id)
         {
             var quiz = await _quizService.GetQuizByIdAsync(id);
