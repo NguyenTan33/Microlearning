@@ -24,6 +24,12 @@ async function runSchemaMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
     if (!columnNames.has('mediaAssetCount')) {
       await db.execAsync('ALTER TABLE LocalLessons ADD COLUMN mediaAssetCount INTEGER DEFAULT 0;');
     }
+    if (!columnNames.has('slideUrl')) {
+      await db.execAsync('ALTER TABLE LocalLessons ADD COLUMN slideUrl TEXT;');
+    }
+    if (!columnNames.has('slideType')) {
+      await db.execAsync('ALTER TABLE LocalLessons ADD COLUMN slideType TEXT;');
+    }
 
     // 2. Kiểm tra bảng LocalCourses
     const courseColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(LocalCourses)');

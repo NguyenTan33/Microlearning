@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -277,6 +277,23 @@ export default function LessonScreen() {
       (lessonMediaInfo?.sourceType === 'youtube')
   );
 
+  const isExternalVideo = Boolean(
+    isYoutubeVideo ||
+      (lesson?.videoUrl && parseVideoUrl(lesson.videoUrl).sourceType === 'vimeo') ||
+      lessonMediaInfo?.sourceType === 'vimeo'
+  );
+
+  const effectiveSlideUrl = isExternalVideo
+    ? null
+    : (lesson?.slideUrl ||
+       lessonMediaInfo?.slideUrl ||
+       (lesson?.videoUrl && (lesson.videoUrl.endsWith('.ppt') || lesson.videoUrl.endsWith('.pptx') || lesson.videoUrl.endsWith('.pdf'))
+         ? lesson.videoUrl
+         : null) ||
+       ((lessonMediaInfo?.sourceType as string)?.toLowerCase() === 'presentation'
+         ? (lessonMediaInfo?.externalUrl || lessonMediaInfo?.streamUrl)
+         : null));
+
   const handleDownload = async () => {
     if (!lesson) return;
 
@@ -370,20 +387,36 @@ export default function LessonScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Trình phát Video Hybrid kết nối Azure Media Stream */}
-        <HybridVideoPlayer
-          lessonId={lessonId}
-          onlineStreamUrl={
-            lesson.videoUrl ||
-            lessonMediaInfo?.externalUrl ||
-            lessonMediaInfo?.embedUrl ||
-            lessonMediaInfo?.streamUrl
-          }
-          mediaInfo={lessonMediaInfo}
-          durationSeconds={lesson.durationSeconds}
-          seekTimestamp={seekTimestamp ? Number(seekTimestamp) : undefined}
-          onCompleted={handleCompleteLesson}
-        />
+        {/* Nếu là bài học có Slide thì hiển thị trình chiếu PowerPoint */}
+        {effectiveSlideUrl ? (
+          <SlidePresentationViewer
+            slideUrl={effectiveSlideUrl}
+            slideType={lesson.slideType || lessonMediaInfo?.slideType || 'PowerPoint'}
+            lessonTitle={lesson.title}
+            onCompleted={handleCompleteLesson}
+            onProgress={(pct) => setWatchedPercent((prev) => Math.max(prev, pct))}
+          />
+        ) : (
+          /* Trình phát Video Hybrid kết nối YouTube hoặc Azure Media Stream */
+          <HybridVideoPlayer
+            lessonId={lessonId}
+            onlineStreamUrl={
+              lesson.videoUrl ||
+              lessonMediaInfo?.externalUrl ||
+              lessonMediaInfo?.embedUrl ||
+              lessonMediaInfo?.streamUrl
+            }
+            mediaInfo={lessonMediaInfo}
+            durationSeconds={lesson.durationSeconds}
+            seekTimestamp={seekTimestamp ? Number(seekTimestamp) : undefined}
+            onCompleted={handleCompleteLesson}
+            onProgress={(cur, dur) => {
+              if (dur > 0) {
+                setWatchedPercent((prev) => Math.max(prev, (cur / dur) * 100));
+              }
+            }}
+          />
+        )}
 
         {/* Thanh Điều Hướng: Nút Bài Trước & Bài Tiếp Theo */}
         <View style={styles.navRow}>
@@ -479,8 +512,8 @@ export default function LessonScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Nút tải về bài học - ẨN HOÀN TOÀN NẾU LÀ VIDEO YOUTUBE */}
-            {!isYoutubeVideo && (
+            {/* Nút tải về bài học - ẨN NẾU LÀ VIDEO YOUTUBE HOẶC SLIDE */}
+            {!isYoutubeVideo && !effectiveSlideUrl && (
               <TouchableOpacity
                 style={[
                   styles.downloadActionBtn,

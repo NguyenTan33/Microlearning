@@ -7,6 +7,8 @@ export interface LessonMediaInfo {
   embedUrl?: string | null;
   contentType: string;
   fileSizeBytes: number;
+  slideUrl?: string | null;
+  slideType?: string | null;
 }
 
 export interface LinkExternalMediaRequest {

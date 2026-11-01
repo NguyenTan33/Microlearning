@@ -30,7 +30,7 @@ interface SlidePresentationViewerProps {
 
 export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = ({
   slideUrl,
-  slideType = 'Canva',
+  slideType = 'PowerPoint',
   lessonTitle,
   onCompleted,
   onProgress,
@@ -43,19 +43,18 @@ export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = (
 
   const autoPlayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Chuẩn hóa URL hiển thị (Canva embed hoặc Office Online Viewer cho PPT)
+  // Chuẩn hóa URL hiển thị (Office Online Viewer cho PPT/PPTX hoặc Google Viewer cho PDF)
   const getEmbedUrl = (rawUrl: string): string => {
     if (!rawUrl) return '';
     const trimmed = rawUrl.trim();
-    if (trimmed.includes('canva.com')) {
-      if (trimmed.includes('/view?embed')) return trimmed;
-      if (trimmed.includes('?')) return `${trimmed}&embed`;
-      return `${trimmed}/view?embed`;
+    const full = trimmed.startsWith('http')
+      ? trimmed
+      : `https://microlearning-backend-ezbafhfneja8gjfj.eastasia-01.azurewebsites.net${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+
+    if (trimmed.toLowerCase().endsWith('.pdf')) {
+      return `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(full)}`;
     }
-    if (trimmed.endsWith('.ppt') || trimmed.endsWith('.pptx') || trimmed.endsWith('.pdf')) {
-      return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(trimmed)}`;
-    }
-    return trimmed;
+    return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(full)}`;
   };
 
   const finalUrl = getEmbedUrl(slideUrl);
@@ -135,7 +134,7 @@ export const SlidePresentationViewer: React.FC<SlidePresentationViewerProps> = (
         <View style={styles.badgeBox}>
           <Presentation size={14} color="#A78BFA" />
           <Text style={styles.badgeText}>
-            {slideType === 'Canva' ? 'Slide Canva Trình Chiếu' : 'Slide PowerPoint (.PPT)'}
+            Slide Trình Chiếu PowerPoint
           </Text>
         </View>
 

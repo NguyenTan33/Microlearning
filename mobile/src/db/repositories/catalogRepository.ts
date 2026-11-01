@@ -121,8 +121,8 @@ export const catalogRepository = {
             if (s.lessons) {
               for (const l of s.lessons) {
                 await db.runAsync(
-                  `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl, slideUrl, slideType)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   [
                     l.id,
                     s.id,
@@ -133,6 +133,8 @@ export const catalogRepository = {
                     l.hasQuiz ? 1 : 0,
                     l.videoUrl || '',
                     l.audioTtsUrl || '',
+                    l.slideUrl || '',
+                    l.slideType || '',
                   ]
                 );
               }
@@ -163,6 +165,8 @@ export const catalogRepository = {
       sub.lessons = rawLessons.map((l) => ({
         ...l,
         videoUrl: l.videoUrl || l.videoRemoteUrl || undefined,
+        slideUrl: l.slideUrl || undefined,
+        slideType: l.slideType || undefined,
         hasQuiz: Boolean(l.hasQuiz),
         isPublished: Boolean(l.isPublished),
       }));
@@ -179,8 +183,8 @@ export const catalogRepository = {
     try {
       const db = await getSQLiteDatabase();
       await db.runAsync(
-        `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO LocalLessons (id, subjectId, title, description, durationSeconds, sortOrder, hasQuiz, videoRemoteUrl, audioTtsUrl, slideUrl, slideType)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           lesson.id,
           lesson.subjectId || 0,
@@ -191,6 +195,8 @@ export const catalogRepository = {
           lesson.hasQuiz ? 1 : 0,
           lesson.videoUrl || '',
           lesson.audioTtsUrl || '',
+          lesson.slideUrl || '',
+          lesson.slideType || '',
         ]
       );
     } catch (err) {
@@ -205,6 +211,8 @@ export const catalogRepository = {
       return {
         ...lesson,
         videoUrl: lesson.videoUrl || lesson.videoRemoteUrl || undefined,
+        slideUrl: lesson.slideUrl || undefined,
+        slideType: lesson.slideType || undefined,
         hasQuiz: Boolean(lesson.hasQuiz),
         isPublished: Boolean(lesson.isPublished),
       };

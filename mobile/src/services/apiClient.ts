@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '../utils/constants';
 import { secureStorage } from '../utils/secureStorage';
 import { isTokenExpired } from '../utils/tokenHelper';
@@ -113,11 +113,13 @@ apiClient.interceptors.request.use(
         try {
           const currentBase = getApiBaseUrl();
           const res = await axios.post(`${currentBase}/api/Auth/refresh`, { refreshToken });
-          if (res.data?.accessToken) {
-            token = res.data.accessToken as string;
-            await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token as string);
-            if (res.data.refreshToken) {
-              await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, res.data.refreshToken);
+          const newTok = res.data?.accessToken || res.data?.AccessToken;
+          const newRef = res.data?.refreshToken || res.data?.RefreshToken;
+          if (newTok) {
+            token = newTok as string;
+            await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+            if (newRef) {
+              await secureStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRef);
             }
             apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
           }
@@ -172,8 +174,12 @@ apiClient.interceptors.response.use(
             refreshToken,
           });
 
-          const newAccessToken = res.data.accessToken;
-          const newRefreshToken = res.data.refreshToken;
+          const newAccessToken = res.data?.accessToken || res.data?.AccessToken;
+          const newRefreshToken = res.data?.refreshToken || res.data?.RefreshToken;
+
+          if (!newAccessToken) {
+            throw new Error('Refresh token response missing access token');
+          }
 
           await secureStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken);
           if (newRefreshToken) {
@@ -203,6 +209,10 @@ apiClient.interceptors.response.use(
         notifySessionExpired();
         return Promise.reject(new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'));
       }
+    }
+
+    if (error.response?.status === 403) {
+      return Promise.reject(new Error(error.response?.data?.message || 'Bạn không có quyền thực hiện thao tác này.'));
     }
 
     return Promise.reject(error);
