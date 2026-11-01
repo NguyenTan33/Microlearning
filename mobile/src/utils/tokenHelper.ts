@@ -1,4 +1,4 @@
-export interface UserTokenPayload {
+﻿export interface UserTokenPayload {
   userId: string;
   phoneNumber?: string;
   fullName?: string;
@@ -150,4 +150,14 @@ export function getCurrentUserFromToken(token: string): UserTokenPayload | null 
     console.warn('[tokenHelper] Parse error:', err);
     return null;
   }
+}
+
+/**
+ * Kiểm tra xem JWT Access Token đã hết hạn hay chưa (kèm dung sai thời gian skewSeconds)
+ */
+export function isTokenExpired(token: string | null, skewSeconds = 10): boolean {
+  if (!token) return true;
+  const data = parseJwtToken(token);
+  if (!data || typeof data['exp'] !== 'number') return false;
+  return (data['exp'] - skewSeconds) * 1000 < Date.now();
 }

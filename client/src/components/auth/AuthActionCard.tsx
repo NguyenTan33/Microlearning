@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import type { AuthMode, LoginRequest, RegisterRequest, ResetPasswordRequest } from '../../types/auth.types';
 import { authApi } from '../../services/authApi';
 import { LoginForm } from './LoginForm';
@@ -12,9 +12,13 @@ import {
   requestGoogleIdToken,
   requestFacebookAccessToken,
 } from '../../services/socialAuth';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 
-export const AuthActionCard: React.FC = () => {
+interface AuthActionCardProps {
+  initialNotice?: string | null;
+}
+
+export const AuthActionCard: React.FC<AuthActionCardProps> = ({ initialNotice }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [resetToken, setResetToken] = useState('');
@@ -23,10 +27,18 @@ export const AuthActionCard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(initialNotice || null);
+
+  useEffect(() => {
+    if (initialNotice) {
+      setSessionNotice(initialNotice);
+    }
+  }, [initialNotice]);
 
   const clearMessages = () => {
     setServerError(null);
     setSuccessNotice(null);
+    setSessionNotice(null);
   };
 
   // 1. Handle Login
@@ -214,7 +226,7 @@ export const AuthActionCard: React.FC = () => {
             {mode === 'RESET_PASSWORD' && 'Đặt lại mật khẩu'}
           </h2>
           <p className="text-xs text-slate-400">
-            {mode === 'LOGIN' && 'Chào mừng bạn quay trở lại MicroLearn!'}
+            {mode === 'LOGIN' && 'Chào mừng bạn quay trở lại EduSync!'}
             {mode === 'REGISTER' && 'Bắt đầu hành trình học tập đa môn ngay hôm nay'}
             {mode === 'FORGOT_PASSWORD' && 'Nhập số điện thoại để nhận mã xác thực'}
             {mode === 'VERIFY_OTP' && 'Bảo mật tài khoản thông qua mã xác nhận'}

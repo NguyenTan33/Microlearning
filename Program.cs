@@ -1,4 +1,4 @@
-using Microlearning.Areas.Admin.Interfaces;
+﻿using Microlearning.Areas.Admin.Interfaces;
 
 using Microlearning.Areas.Admin.Services;
 
@@ -173,9 +173,39 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
 
         ClockSkew = TimeSpan.Zero
-
     };
 
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            if (context.Exception is SecurityTokenExpiredException)
+            {
+                context.Response.Headers.Append("Token-Expired", "true");
+            }
+            return Task.CompletedTask;
+        },
+        OnChallenge = async context =>
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                var isExpired = context.Response.Headers.ContainsKey("Token-Expired");
+                var message = isExpired
+                    ? "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
+                    : "Bạn chưa đăng nhập hoặc không có quyền truy cập tính năng này.";
+                var json = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    message,
+                    code = isExpired ? "TOKEN_EXPIRED" : "UNAUTHORIZED",
+                    statusCode = 401
+                });
+                await context.Response.WriteAsync(json);
+            }
+        }
+    };
 });
 
 
