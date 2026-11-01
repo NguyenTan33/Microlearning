@@ -102,7 +102,7 @@ namespace Microlearning.Areas.Catalog.Services
 
             return courses.Select(c =>
             {
-                bool canEdit = isAdmin || (!string.IsNullOrEmpty(currentUserId) && c.CreatedByAccountId == currentUserId);
+                bool canEdit = isAdmin || string.IsNullOrEmpty(c.CreatedByAccountId) || (!string.IsNullOrEmpty(currentUserId) && c.CreatedByAccountId == currentUserId);
                 string displayAuthor = c.AuthorName;
                 if (string.IsNullOrWhiteSpace(displayAuthor))
                 {
@@ -189,7 +189,7 @@ namespace Microlearning.Areas.Catalog.Services
                 }).ToList()
             )).ToList();
 
-            bool canEdit = isAdmin || (!string.IsNullOrEmpty(currentUserId) && course.CreatedByAccountId == currentUserId);
+            bool canEdit = isAdmin || string.IsNullOrEmpty(course.CreatedByAccountId) || (!string.IsNullOrEmpty(currentUserId) && course.CreatedByAccountId == currentUserId);
 
             return new CourseDetailResponse(
                 course.Id,
