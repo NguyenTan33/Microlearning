@@ -15,6 +15,8 @@ export interface Lesson {
   description?: string;
   durationSeconds: number;
   videoUrl?: string;
+  slideUrl?: string;
+  slideType?: string;
   audioTtsUrl?: string;
   sortOrder: number;
   version: number;
@@ -41,6 +43,8 @@ export interface Course {
   thumbnailUrl?: string;
   category?: string;
   authorName?: string;
+  createdByAccountId?: string;
+  canEdit?: boolean;
   isPublished: boolean;
   isPrivate?: boolean;
   version?: number;
@@ -54,4 +58,3 @@ export interface CourseDetail extends Course {
 }
 
 export type { QuizQuestion, QuizOption } from './quiz.types';
-

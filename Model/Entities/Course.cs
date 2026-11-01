@@ -10,6 +10,10 @@ namespace Microlearning.Model.Entities
 
         public string? ThumbnailUrl { get; set; }
 
+        public string? CreatedByAccountId { get; set; }
+
+        public string? AuthorName { get; set; }
+
         public int Version { get; set; } = 1;
 
         public bool IsPublished { get; set; } = false;

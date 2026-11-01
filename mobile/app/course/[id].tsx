@@ -630,7 +630,7 @@ export default function CourseDetailScreen() {
           <View style={styles.courseHeaderRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.courseTitle}>{course.title}</Text>
-              <Text style={styles.authorText}>Giảng viên: {course.authorName || 'EduSync Master'}</Text>
+              <Text style={styles.authorText}>Cre: {course.authorName || 'EduSync Master'}</Text>
             </View>
             <View style={styles.percentBadge}>
               <Text style={styles.percentBadgeText}>{progressPercent}%</Text>

@@ -1,4 +1,5 @@
 using Microlearning.Areas.Catalog.DTOs;
+using Microsoft.AspNetCore.Http;
 
 namespace Microlearning.Areas.Catalog.Interfaces
 {
@@ -11,5 +12,6 @@ namespace Microlearning.Areas.Catalog.Interfaces
         Task<LessonResponse> UpdateLessonAsync(int lessonId, UpdateLessonRequest request);
         Task<bool> TogglePublishLessonAsync(int lessonId);
         Task<bool> DeleteLessonAsync(int lessonId);
+        Task<string> UploadSlideAsync(IFormFile file, CancellationToken cancellationToken = default);
     }
 }

@@ -10,6 +10,9 @@ export interface Course {
   createdAt: string;
   updatedAt?: string;
   totalSubjects: number;
+  authorName?: string;
+  createdByAccountId?: string;
+  canEdit?: boolean;
 }
 
 export interface CourseDetail extends Course {

@@ -455,8 +455,13 @@ export default function StudyHomeScreen() {
 
               <View style={styles.courseHeroBody}>
                 <View style={styles.courseHeroTopRow}>
-                  <View style={styles.courseCategoryBadge}>
-                    <Text style={styles.courseCategoryText}>{course.category || 'Công nghệ'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={styles.courseCategoryBadge}>
+                      <Text style={styles.courseCategoryText}>{course.category || 'Công nghệ'}</Text>
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#A5B4FC', fontWeight: '600' }}>
+                      Cre: {course.authorName || 'EduSync Master'}
+                    </Text>
                   </View>
                   <Text style={styles.progressPercentText}>{completionRate}%</Text>
                 </View>

@@ -28,7 +28,10 @@ namespace Microlearning.Areas.Catalog.DTOs
         DateTime CreatedAt,
         DateTime? UpdatedAt,
         int TotalSubjects = 0,
-        bool IsPrivate = false
+        bool IsPrivate = false,
+        string? AuthorName = null,
+        string? CreatedByAccountId = null,
+        bool CanEdit = true
     );
 
     public record CourseDetailResponse(
@@ -42,6 +45,9 @@ namespace Microlearning.Areas.Catalog.DTOs
         DateTime? UpdatedAt,
         List<SubjectResponse> Subjects,
         bool IsPrivate = false,
-        bool HasAccess = true
+        bool HasAccess = true,
+        string? AuthorName = null,
+        string? CreatedByAccountId = null,
+        bool CanEdit = true
     );
 }

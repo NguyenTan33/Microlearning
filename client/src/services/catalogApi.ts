@@ -506,6 +506,51 @@ export const catalogApi = {
   },
 
   /**
+   * Tải ảnh thumbnail đại diện cho khóa học (JPG, PNG, WebP)
+   */
+  async uploadCourseThumbnail(file: File): Promise<{ url: string; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('accessToken');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = 'Bearer ' + token;
+    }
+
+    const res = await fetch('/api/courses/upload-thumbnail', {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return await handleResponse<{ url: string; message: string }>(res);
+  },
+
+  /**
+   * Tải tệp Slide trình chiếu (.ppt, .pptx, .pdf) cho bài học (Teacher & Admin)
+   */
+  async uploadLessonSlide(file: File, lessonId?: number): Promise<{ url: string; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('accessToken');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = 'Bearer ' + token;
+    }
+
+    const endpoint = lessonId ? `/api/lessons/upload-slide?lessonId=${lessonId}` : '/api/lessons/upload-slide';
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return await handleResponse<{ url: string; message: string }>(res);
+  },
+
+  /**
    * Tải file video lên hệ thống gắn với bài giảng (Teacher & Admin)
    */
   async uploadLessonVideo(file: File, lessonId?: number): Promise<{

@@ -151,6 +151,8 @@ namespace Microlearning.Model
                 entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
 
                 entity.Property(e => e.ThumbnailUrl).HasMaxLength(500);
+                entity.Property(e => e.AuthorName).HasMaxLength(150);
+                entity.Property(e => e.CreatedByAccountId).HasMaxLength(450);
 
             });
 

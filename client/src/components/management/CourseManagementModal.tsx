@@ -67,6 +67,7 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   // Course Modal
   const [showCourseModal, setShowCourseModal] = useState<boolean>(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState<boolean>(false);
   const [courseForm, setCourseForm] = useState({
     title: '',
     description: '',
@@ -208,6 +209,26 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   }, [videoPreviewUrl]);
 
   // =================== COURSE ACTIONS ===================
+  
+  const handleUploadThumbnail = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('error', 'Kích thước ảnh đại diện không được vượt quá 10MB.');
+      return;
+    }
+    setUploadingThumbnail(true);
+    try {
+      const res = await catalogApi.uploadCourseThumbnail(file);
+      setCourseForm((prev) => ({ ...prev, thumbnailUrl: res.url }));
+      showToast('success', 'Đã tải ảnh đại diện khóa học thành công!');
+    } catch (err: unknown) {
+      showToast('error', err instanceof Error ? err.message : 'Lỗi khi tải ảnh đại diện.');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
+
   const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseForm.title.trim()) {
@@ -1603,67 +1624,6 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               </div>
 
 
-              {/* Đính kèm Slide trình chiếu (PowerPoint / Canva) - Feature 4 */}
-              <div className="space-y-2 pt-1 border-t border-white/5">
-                <label className="block text-slate-300 font-medium">
-                  📊 Slide Trình Chiếu (Canva hoặc PowerPoint .ppt/.pptx)
-                </label>
-                
-                {/* Nhập liên kết Canva */}
-                <div>
-                  <input
-                    type="url"
-                    placeholder="Dán link Canva (vd: https://www.canva.com/design/...)"
-                    value={lessonForm.slideUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setLessonForm({
-                        ...lessonForm,
-                        slideUrl: val,
-                        slideType: val.includes('canva.com') ? 'Canva' : 'Presentation',
-                      });
-                    }}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Hỗ trợ link Canva trình chiếu (tự động nhúng trực quan và tự chạy slide).
-                  </span>
-                </div>
-
-                {/* Hoặc tải file PPT / PPTX */}
-                <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
-                  <input
-                    type="file"
-                    accept=".ppt,.pptx,.pdf"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setLessonSlideFile(file);
-                        setLessonForm((prev) => ({
-                          ...prev,
-                          slideType: 'Presentation',
-                        }));
-                      }
-                    }}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  />
-                  {lessonSlideFile ? (
-                    <div className="flex items-center justify-center gap-2 text-indigo-300 py-1">
-                      <FileText className="w-4 h-4 text-indigo-400" />
-                      <span className="font-semibold text-xs truncate max-w-[200px]">{lessonSlideFile.name}</span>
-                      <span className="text-[10px] text-slate-400">
-                        ({(lessonSlideFile.size / (1024 * 1024)).toFixed(1)} MB)
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
-                      <Upload className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs">Hoặc tải lên tệp PowerPoint (.ppt, .pptx, .pdf)</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -1859,7 +1819,68 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              
+              {/* Đính kèm Slide trình chiếu (PowerPoint / Canva) cho Bài Học */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <label className="block text-slate-300 font-medium">
+                  📊 Slide Trình Chiếu Bài Học (Canva hoặc PowerPoint .ppt/.pptx)
+                </label>
+                
+                {/* Dán link Canva */}
+                <div>
+                  <input
+                    type="url"
+                    placeholder="Dán link Canva trình chiếu (vd: https://www.canva.com/design/...)"
+                    value={lessonForm.slideUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLessonForm({
+                        ...lessonForm,
+                        slideUrl: val,
+                        slideType: val.includes('canva.com') ? 'Canva' : 'Presentation',
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Học viên sẽ được lướt xem slide Canva nhúng trực quan hoặc tự động chạy.
+                  </span>
+                </div>
+
+                {/* Hoặc tải file PPT / PPTX */}
+                <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
+                  <input
+                    type="file"
+                    accept=".ppt,.pptx,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setLessonSlideFile(file);
+                        setLessonForm((prev) => ({
+                          ...prev,
+                          slideType: 'Presentation',
+                        }));
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  {lessonSlideFile ? (
+                    <div className="flex items-center justify-center gap-2 text-indigo-300 py-1">
+                      <FileText className="w-4 h-4 text-indigo-400" />
+                      <span className="font-semibold text-xs truncate max-w-[200px]">{lessonSlideFile.name}</span>
+                      <span className="text-[10px] text-slate-400">
+                        ({(lessonSlideFile.size / (1024 * 1024)).toFixed(1)} MB)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
+                      <Upload className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs">Hoặc tải lên tệp PowerPoint (.ppt, .pptx, .pdf)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+<div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowLessonModal(false)}
