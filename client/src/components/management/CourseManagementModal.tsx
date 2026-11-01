@@ -733,29 +733,16 @@ export const CourseManagementModal: React.FC<CourseManagementModalProps> = ({
   const handleSaveSlideFromVideoModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetLessonForVideo) return;
-    if (!modalSlideUrl.trim() && !modalSlideFile) {
-      showToast('error', 'Vui lòng dán link Canva hoặc tải file PowerPoint (.ppt/.pptx/pdf).');
+    if (!modalSlideFile) {
+      showToast('error', 'Vui lòng chọn file Slide PowerPoint (.pptx, .ppt) hoặc PDF để tải lên.');
       return;
     }
 
     setSavingSlide(true);
     try {
-      if (modalSlideFile) {
-        showToast('success', 'Đang tải file PowerPoint lên hệ thống...');
-        await catalogApi.uploadLessonSlide(modalSlideFile, targetLessonForVideo.id);
-        showToast('success', 'Đã tải lên và chuyển đổi sang Slide bài giảng thành công!');
-      } else if (modalSlideUrl.trim()) {
-        const slideType = modalSlideUrl.includes('canva.com') ? 'Canva' : 'Presentation';
-        await catalogApi.updateLesson(targetLessonForVideo.id, {
-          title: targetLessonForVideo.title,
-          description: targetLessonForVideo.description || '',
-          durationSeconds: targetLessonForVideo.durationSeconds,
-          sortOrder: targetLessonForVideo.sortOrder,
-          slideUrl: modalSlideUrl.trim(),
-          slideType: slideType,
-        });
-        showToast('success', 'Đã liên kết Slide bài giảng thành công!');
-      }
+      showToast('success', 'Đang tải file PowerPoint lên hệ thống...');
+      await catalogApi.uploadLessonSlide(modalSlideFile, targetLessonForVideo.id);
+      showToast('success', 'Đã tải lên và thiết lập Slide PowerPoint thành công!');
 
       setShowVideoModal(false);
       setModalSlideFile(null);
@@ -1964,34 +1951,13 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
               </div>
 
               
-              {/* Đính kèm Slide trình chiếu (PowerPoint / Canva) cho Bài Học */}
+              {/* Đính kèm Slide trình chiếu (PowerPoint / PDF) cho Bài Học */}
               <div className="space-y-2 pt-2 border-t border-white/10">
                 <label className="block text-slate-300 font-medium">
-                  📊 Slide Trình Chiếu Bài Học (Canva hoặc PowerPoint .ppt/.pptx)
+                  📊 Slide Trình Chiếu Bài Học (PowerPoint .ppt/.pptx, .pdf)
                 </label>
                 
-                {/* Dán link Canva */}
-                <div>
-                  <input
-                    type="url"
-                    placeholder="Dán link Canva trình chiếu (vd: https://www.canva.com/design/...)"
-                    value={lessonForm.slideUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setLessonForm({
-                        ...lessonForm,
-                        slideUrl: val,
-                        slideType: val.includes('canva.com') ? 'Canva' : 'Presentation',
-                      });
-                    }}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Học viên sẽ được lướt xem slide Canva nhúng trực quan hoặc tự động chạy.
-                  </span>
-                </div>
-
-                {/* Hoặc tải file PPT / PPTX */}
+                {/* Tải file PPT / PPTX */}
                 <div className="relative border border-dashed border-white/20 hover:border-indigo-500/50 rounded-xl p-3 bg-slate-900/60 text-center transition-colors">
                   <input
                     type="file"
@@ -2019,7 +1985,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   ) : (
                     <div className="flex flex-col items-center justify-center gap-1 text-slate-400 py-1">
                       <Upload className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs">Hoặc tải lên tệp PowerPoint (.ppt, .pptx, .pdf)</span>
+                      <span className="text-xs">Tải lên tệp PowerPoint (.ppt, .pptx, .pdf)</span>
                     </div>
                   )}
                 </div>
@@ -2084,7 +2050,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 {targetLessonForVideo.slideUrl ? (
                   <span className="px-2 py-0.5 rounded-md bg-purple-950 text-purple-300 font-bold border border-purple-500/30 flex items-center gap-1">
                     <FileText className="w-3 h-3" />
-                    <span>Slide ({targetLessonForVideo.slideType || 'Canva/PPT'})</span>
+                    <span>Slide ({targetLessonForVideo.slideType || 'PowerPoint'})</span>
                   </span>
                 ) : targetLessonForVideo.mediaAssetCount > 0 ? (
                   <span className="px-2 py-0.5 rounded-md bg-indigo-950 text-indigo-300 font-bold border border-indigo-500/30 flex items-center gap-1">
@@ -2133,7 +2099,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Slide Canva/PPT</span>
+                <span>Slide PowerPoint (.PPTX)</span>
               </button>
             </div>
 
@@ -2218,7 +2184,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
             </form>
           )}
 
-          {/* TAB 3: SLIDE BÀI GIẢNG (CANVA / POWERPOINT / PDF) */}
+          {/* TAB 3: SLIDE BÀI GIẢNG (POWERPOINT / PDF) */}
           {videoTab === 'slide' && (
             <form onSubmit={handleSaveSlideFromVideoModal} className="space-y-4 text-xs">
               {/* Thông tin slide hiện tại nếu có */}
@@ -2242,42 +2208,14 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 </div>
               )}
 
-              {/* Tùy chọn 1: Dán link Canva */}
+              {/* Tải file PowerPoint / PDF từ máy tính */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                  <span>1. Nhúng bài thuyết trình Canva (Tùy chọn A)</span>
-                  <span className="text-[11px] text-purple-400 font-normal">Hỗ trợ Canva link công khai</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="url"
-                    value={modalSlideUrl}
-                    onChange={(e) => {
-                      setModalSlideUrl(e.target.value);
-                      if (e.target.value) setModalSlideFile(null);
-                    }}
-                    placeholder="Dán link Canva (vd: https://www.canva.com/design/.../view)"
-                    className="w-full bg-slate-900 border border-white/15 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
-                  />
-                  <Globe className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
-                </div>
-              </div>
-
-              {/* Dấu phân cách HOẶC */}
-              <div className="flex items-center gap-3 my-2">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">HOẶC</span>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
-
-              {/* Tùy chọn 2: Tải file PowerPoint / PDF từ máy tính */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                  <span>2. Tải tệp PowerPoint / PDF từ máy (Tùy chọn B)</span>
+                  <span>Tải tệp Slide PowerPoint / PDF từ máy tính</span>
                   <span className="text-[11px] text-indigo-400 font-normal">Hỗ trợ .ppt, .pptx, .pdf (Tối đa 100MB)</span>
                 </label>
                 
-                <div className="relative border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-2xl p-4 bg-slate-900/60 text-center transition-colors">
+                <div className="relative border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-2xl p-6 bg-slate-900/60 text-center transition-colors">
                   <input
                     type="file"
                     accept=".ppt,.pptx,.pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf"
@@ -2290,11 +2228,11 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                   />
-                  <div className="flex flex-col items-center justify-center gap-1.5 text-slate-400">
-                    <Upload className="w-6 h-6 text-purple-400" />
+                  <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <Upload className="w-8 h-8 text-purple-400" />
                     <div>
-                      <p className="text-xs font-semibold text-white">Kéo thả tệp Slide PowerPoint hoặc bấm để chọn tệp</p>
-                      <p className="text-[11px] text-slate-500">Định dạng .ppt, .pptx, .pdf</p>
+                      <p className="text-xs font-semibold text-white">Kéo thả tệp Slide PowerPoint (.pptx) hoặc bấm để chọn tệp</p>
+                      <p className="text-[11px] text-slate-500">Định dạng hỗ trợ: .pptx, .ppt, .pdf</p>
                     </div>
                   </div>
                 </div>
@@ -2312,7 +2250,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                       <button
                         type="button"
                         onClick={() => setModalSlideFile(null)}
-                        className="text-slate-400 hover:text-rose-400 p-1"
+                        className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer"
                         title="Hủy chọn file"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -2347,7 +2285,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                 </button>
                 <button
                   type="submit"
-                  disabled={(!modalSlideUrl.trim() && !modalSlideFile) || savingSlide}
+                  disabled={!modalSlideFile || savingSlide}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg"
                 >
                   {savingSlide ? (
@@ -2358,7 +2296,7 @@ Giải thích: Chuẩn Conventional Commits bắt đầu bằng feat:, fix:, ref
                   ) : (
                     <>
                       <FileCheck className="w-4 h-4" />
-                      <span>Lưu Slide Bài Giảng</span>
+                      <span>Lưu & Thiết lập Slide PowerPoint</span>
                     </>
                   )}
                 </button>

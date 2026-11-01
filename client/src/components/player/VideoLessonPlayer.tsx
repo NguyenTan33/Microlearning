@@ -33,96 +33,6 @@ import { mediaBookmarkService, formatBookmarkTime } from '../../services/mediaBo
 import type { MediaBookmark } from '../../types/mediaBookmark.types';
 import { LessonAttachmentsTab } from './LessonAttachmentsTab';
 
-interface YTPlayerInstance {
-  playVideo: () => void;
-  pauseVideo: () => void;
-  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
-  getCurrentTime: () => number;
-  getDuration: () => number;
-  mute: () => void;
-  unMute: () => void;
-  isMuted: () => boolean;
-  setVolume: (volume: number) => void;
-  getVolume: () => number;
-  setPlaybackRate: (suggestedRate: number) => void;
-  getPlayerState: () => number;
-  destroy: () => void;
-}
-
-interface YTPlayerEvent {
-  target: YTPlayerInstance;
-  data: number;
-}
-
-interface YTPlayerOptions {
-  videoId?: string;
-  width?: string | number;
-  height?: string | number;
-  playerVars?: {
-    enablejsapi?: number;
-    rel?: number;
-    modestbranding?: number;
-    playsinline?: number;
-    origin?: string;
-    autoplay?: number;
-    controls?: number;
-  };
-  events?: {
-    onReady?: (event: { target: YTPlayerInstance }) => void;
-    onStateChange?: (event: YTPlayerEvent) => void;
-    onError?: (event: { target: YTPlayerInstance; data: number }) => void;
-  };
-}
-
-interface YTNamespace {
-  Player: new (
-    elementId: string | HTMLElement,
-    options: YTPlayerOptions
-  ) => YTPlayerInstance;
-  PlayerState: {
-    UNSTARTED: number;
-    ENDED: number;
-    PLAYING: number;
-    PAUSED: number;
-    BUFFERING: number;
-    CUED: number;
-  };
-}
-
-const loadYouTubeIframeApi = (): Promise<YTNamespace> => {
-  return new Promise((resolve) => {
-    const win = window as unknown as { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void };
-    if (win.YT && win.YT.Player) {
-      resolve(win.YT);
-      return;
-    }
-
-    const prevReady = win.onYouTubeIframeAPIReady;
-    win.onYouTubeIframeAPIReady = () => {
-      if (prevReady) {
-        try {
-          prevReady();
-        } catch {}
-      }
-      if (win.YT) {
-        resolve(win.YT);
-      }
-    };
-
-    if (!document.getElementById('yt-iframe-api-script')) {
-      const tag = document.createElement('script');
-      tag.id = 'yt-iframe-api-script';
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      if (firstScriptTag && firstScriptTag.parentNode) {
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      } else {
-        document.head.appendChild(tag);
-      }
-    }
-  });
-};
-
 interface VideoLessonPlayerProps {
   mediaId: number;
   lessonId: number;
@@ -153,10 +63,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   onWatchedPercentChange,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const ytPlayerRef = useRef<YTPlayerInstance | null>(null);
   const pendingSeekTimeRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const youtubeContainerRef = useRef<HTMLDivElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
 
   const sendYoutubeCommand = (func: string, args: unknown[] = []) => {
@@ -187,41 +95,37 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const [flagNoteInput, setFlagNoteInput] = useState<string>('');
   const [flagTimestamp, setFlagTimestamp] = useState<number>(0);
 
-  // Slide Presentation state (Feature 4: Canva & PowerPoint)
-  const effectiveSlideUrl =
-    slideUrl ||
-    mediaInfo?.slideUrl ||
-    ((mediaInfo?.sourceType as string)?.toLowerCase() === 'presentation' ||
-     (mediaInfo?.sourceType as string)?.toLowerCase() === 'canva'
-      ? (mediaInfo?.externalUrl || mediaInfo?.streamUrl)
-      : null);
+  // Slide Presentation state (PowerPoint & PDF)
+  const isExternalVideo = mediaInfo?.sourceType === 'youtube' || mediaInfo?.sourceType === 'vimeo';
+  const effectiveSlideUrl = isExternalVideo
+    ? null
+    : (slideUrl ||
+       mediaInfo?.slideUrl ||
+       ((mediaInfo?.sourceType as string)?.toLowerCase() === 'presentation'
+         ? (mediaInfo?.externalUrl || mediaInfo?.streamUrl)
+         : null));
 
   const effectiveSlideType =
     slideType ||
     mediaInfo?.slideType ||
-    (effectiveSlideUrl?.includes('canva.com') ? 'Canva' : 'Presentation');
+    'Presentation';
 
-  const [contentMode, setContentMode] = useState<'video' | 'slide'>(() => (slideUrl ? 'slide' : 'video'));
+  const [contentMode, setContentMode] = useState<'video' | 'slide'>(() => (slideUrl && !isExternalVideo ? 'slide' : 'video'));
   const [currentSlide, setCurrentSlide] = useState<number>(1);
   const [totalSlides, setTotalSlides] = useState<number>(12);
   const [isAutoPlaySlide, setIsAutoPlaySlide] = useState<boolean>(false);
   const [slideFullscreen, setSlideFullscreen] = useState<boolean>(false);
 
-  // Luôn ưu tiên hiển thị slide nếu bài học có slide
+  // Tự động chuyển sang chế độ Slide nếu bài học có Slide và không phải video
   useEffect(() => {
-    if (slideUrl) {
+    if (isExternalVideo) {
+      setContentMode('video');
+      return;
+    }
+    if (effectiveSlideUrl) {
       setContentMode('slide');
     }
-  }, [slideUrl, lessonId]);
-
-  // Tự động chuyển sang chế độ Slide nếu bài học có Slide và không có video riêng được tải lên
-  useEffect(() => {
-    if (effectiveSlideUrl) {
-      if (!mediaInfo || !mediaInfo.mediaId || mediaInfo.sourceType === 'demo' || mediaInfo.sourceType === 'presentation' || mediaInfo.sourceType === 'canva') {
-        setContentMode('slide');
-      }
-    }
-  }, [effectiveSlideUrl, mediaInfo]);
+  }, [effectiveSlideUrl, isExternalVideo]);
 
   // Auto-play slideshow timer (tu dong chuyen trang sau moi 4 giay)
   useEffect(() => {
@@ -250,13 +154,6 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       isCompletionNotifiedRef.current = true;
       onProgressSaved(true);
     }
-  };
-
-  const getCanvaEmbedUrl = (url: string) => {
-    if (!url) return '';
-    if (url.includes('/view?embed')) return url;
-    if (url.includes('/view')) return url.replace('/view', '/view?embed');
-    return url.includes('?') ? url + '&embed=true' : url + '?embed=true';
   };
 
   const getOfficeViewerUrl = (url: string) => {
@@ -299,16 +196,19 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         if (isCancelled) return;
         setMediaInfo(info);
         if (info.sourceType === 'youtube' || info.sourceType === 'vimeo') {
-          setVideoSrc(''); // Iframe sẽ tự phát
-        } else if (info.sourceType === 'canva' || info.sourceType === 'presentation') {
+          setContentMode('video');
+          setVideoSrc(''); // Iframe ngoài sẽ tự phát
+        } else if (info.sourceType === 'presentation') {
           setVideoSrc('');
           setContentMode('slide');
         } else if (info.sourceType === 'direct_url' && info.externalUrl) {
+          setContentMode('video');
           setVideoSrc(info.externalUrl);
-        } else if (slideUrl || info.slideUrl) {
+        } else if (info.slideUrl) {
           setVideoSrc('');
           setContentMode('slide');
         } else {
+          setContentMode('video');
           setVideoSrc(info.streamUrl || getLessonVideoStreamUrl(streamTargetId));
         }
       })
@@ -449,36 +349,22 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   onWatchedPercentChangeRef.current = onWatchedPercentChange;
 
   const getCurrentPlayerTime = useCallback((): number => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        const t = ytPlayerRef.current.getCurrentTime();
-        if (!isNaN(t) && t >= 0) return t;
-      } catch {}
-    }
     if (videoRef.current) {
-      return videoRef.current.currentTime;
+      return videoRef.current.currentTime || 0;
     }
     return currentTime;
-  }, [mediaInfo, currentTime]);
+  }, [currentTime]);
 
   const togglePlay = () => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        if (isPlaying) {
-          ytPlayerRef.current.pauseVideo();
-          setIsPlaying(false);
-          const cur = ytPlayerRef.current.getCurrentTime();
-          const dur = ytPlayerRef.current.getDuration();
-          handleSaveProgress(cur, dur, true);
-          segmentStartRef.current = null;
-        } else {
-          try {
-            segmentStartRef.current = ytPlayerRef.current.getCurrentTime();
-          } catch {}
-          ytPlayerRef.current.playVideo();
-          setIsPlaying(true);
-        }
-      } catch {}
+    if (mediaInfo?.sourceType === 'youtube') {
+      if (isPlaying) {
+        sendYoutubeCommand('pauseVideo');
+        setIsPlaying(false);
+        handleSaveProgress(currentTime, duration, true);
+      } else {
+        sendYoutubeCommand('playVideo');
+        setIsPlaying(true);
+      }
       return;
     }
 
@@ -501,13 +387,10 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   };
 
   const handleRewind10 = () => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        const cur = ytPlayerRef.current.getCurrentTime();
-        const target = Math.max(0, cur - 10);
-        ytPlayerRef.current.seekTo(target, true);
-        setCurrentTime(target);
-      } catch {}
+    if (mediaInfo?.sourceType === 'youtube') {
+      const target = Math.max(0, currentTime - 10);
+      sendYoutubeCommand('seekTo', [target, true]);
+      setCurrentTime(target);
       return;
     }
     if (videoRef.current) {
@@ -516,14 +399,10 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   };
 
   const handleForward10 = () => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        const cur = ytPlayerRef.current.getCurrentTime();
-        const dur = ytPlayerRef.current.getDuration();
-        const target = Math.min(dur || duration, cur + 10);
-        ytPlayerRef.current.seekTo(target, true);
-        setCurrentTime(target);
-      } catch {}
+    if (mediaInfo?.sourceType === 'youtube') {
+      const target = Math.min(duration || 100, currentTime + 10);
+      sendYoutubeCommand('seekTo', [target, true]);
+      setCurrentTime(target);
       return;
     }
     if (videoRef.current) {
@@ -532,36 +411,33 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   };
 
   const handleToggleMute = () => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        if (isMuted) {
-          ytPlayerRef.current.unMute();
-          const restore = prevVolume > 0 ? prevVolume : 1;
-          ytPlayerRef.current.setVolume(restore * 100);
-          setVolume(restore);
-          setIsMuted(false);
-        } else {
-          setPrevVolume(volume > 0 ? volume : 1);
-          ytPlayerRef.current.mute();
-          setVolume(0);
-          setIsMuted(true);
-        }
-      } catch {}
-      return;
-    }
-    if (videoRef.current) {
+    if (mediaInfo?.sourceType === 'youtube') {
       if (isMuted) {
+        sendYoutubeCommand('unMute');
         const restore = prevVolume > 0 ? prevVolume : 1;
-        videoRef.current.muted = false;
-        videoRef.current.volume = restore;
+        sendYoutubeCommand('setVolume', [restore * 100]);
         setVolume(restore);
         setIsMuted(false);
       } else {
         setPrevVolume(volume > 0 ? volume : 1);
-        videoRef.current.muted = true;
+        sendYoutubeCommand('mute');
         setVolume(0);
         setIsMuted(true);
       }
+      return;
+    }
+    if (!videoRef.current) return;
+    if (isMuted) {
+      videoRef.current.muted = false;
+      videoRef.current.volume = prevVolume || 1;
+      setVolume(prevVolume || 1);
+      setIsMuted(false);
+    } else {
+      setPrevVolume(volume > 0 ? volume : 1);
+      videoRef.current.muted = true;
+      videoRef.current.volume = 0;
+      setVolume(0);
+      setIsMuted(true);
     }
   };
 
@@ -576,15 +452,13 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       setPrevVolume(clamped);
     }
 
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        if (clamped === 0) {
-          ytPlayerRef.current.mute();
-        } else {
-          ytPlayerRef.current.unMute();
-          ytPlayerRef.current.setVolume(clamped * 100);
-        }
-      } catch {}
+    if (mediaInfo?.sourceType === 'youtube') {
+      if (clamped === 0) {
+        sendYoutubeCommand('mute');
+      } else {
+        sendYoutubeCommand('unMute');
+        sendYoutubeCommand('setVolume', [clamped * 100]);
+      }
       return;
     }
 
@@ -621,24 +495,20 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.seekTo(targetTime, true);
-        setCurrentTime(targetTime);
-      } catch {}
+    setCurrentTime(targetTime);
+    if (mediaInfo?.sourceType === 'youtube') {
+      sendYoutubeCommand('seekTo', [targetTime, true]);
       return;
     }
-    if (videoRef.current) {
-      if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
-        watchedIntervalsRef.current.push({
-          start: Math.round(segmentStartRef.current * 10) / 10,
-          end: Math.round(videoRef.current.currentTime * 10) / 10,
-        });
-      }
-      segmentStartRef.current = targetTime;
-      videoRef.current.currentTime = targetTime;
-      setCurrentTime(targetTime);
+    if (!videoRef.current) return;
+    if (segmentStartRef.current !== null && videoRef.current.currentTime > segmentStartRef.current) {
+      watchedIntervalsRef.current.push({
+        start: Math.round(segmentStartRef.current * 10) / 10,
+        end: Math.round(videoRef.current.currentTime * 10) / 10,
+      });
     }
+    segmentStartRef.current = targetTime;
+    videoRef.current.currentTime = targetTime;
   };
 
   const cycleSpeed = () => {
@@ -646,10 +516,8 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     const nextSpeed = speeds[nextIdx];
     setPlaybackSpeed(nextSpeed);
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.setPlaybackRate(nextSpeed);
-      } catch {}
+    if (mediaInfo?.sourceType === 'youtube') {
+      sendYoutubeCommand('setPlaybackRate', [nextSpeed]);
       return;
     }
     if (videoRef.current) {
@@ -690,17 +558,15 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       pendingSeekTimeRef.current = initialSeekTime;
 
       // 1. YouTube Player
-      if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.seekTo(initialSeekTime, true);
-          ytPlayerRef.current.playVideo();
-          setCurrentTime(initialSeekTime);
-          setIsPlaying(true);
-          setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
-          setTimeout(() => setSaveNotice(null), 3000);
-          pendingSeekTimeRef.current = null;
-          initialSeekDoneRef.current = true;
-        } catch {}
+      if (mediaInfo?.sourceType === 'youtube') {
+        sendYoutubeCommand('seekTo', [initialSeekTime, true]);
+        sendYoutubeCommand('playVideo');
+        setCurrentTime(initialSeekTime);
+        setIsPlaying(true);
+        setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(initialSeekTime)}`);
+        setTimeout(() => setSaveNotice(null), 3000);
+        pendingSeekTimeRef.current = null;
+        initialSeekDoneRef.current = true;
         return;
       }
 
@@ -764,164 +630,6 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [lessonId, mediaInfo?.sourceType, onWatchedPercentChange, onProgressSaved]);
 
-  useEffect(() => {
-    if (!mediaInfo || mediaInfo.sourceType !== 'youtube' || !youtubeEmbedUrl) {
-      return;
-    }
-
-    const container = youtubeContainerRef.current;
-    if (!container) return;
-
-    let isCancelled = false;
-    let timerId: number | null = null;
-    let playerInstance: YTPlayerInstance | null = null;
-
-    // Trích xuất videoId từ URL
-    const parsed = parseVideoUrl(youtubeEmbedUrl);
-    const videoId = parsed.videoId;
-
-    // Làm sạch DOM nội bộ của container mà không đụng chạm Virtual DOM của React
-    container.innerHTML = '';
-
-    const mountDiv = document.createElement('div');
-    const mountId = `yt-player-target-${lessonId}-${Date.now()}`;
-    mountDiv.id = mountId;
-    mountDiv.className = 'w-full h-full aspect-video';
-    container.appendChild(mountDiv);
-
-    const initYT = async () => {
-      try {
-        const YT = await loadYouTubeIframeApi();
-        if (isCancelled || !document.getElementById(mountId)) return;
-
-        playerInstance = new YT.Player(mountId, {
-          videoId: videoId || undefined,
-          width: '100%',
-          height: '100%',
-          playerVars: {
-            enablejsapi: 1,
-            rel: 0,
-            modestbranding: 1,
-            playsinline: 1,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: (event) => {
-              if (isCancelled) return;
-              ytPlayerRef.current = event.target;
-              try {
-                const dur = event.target.getDuration();
-                if (dur > 0) setDuration(dur);
-
-                if (pendingSeekTimeRef.current !== null && pendingSeekTimeRef.current > 0) {
-                  const targetTime = Math.min(Math.max(0, dur - 2), pendingSeekTimeRef.current);
-                  event.target.seekTo(targetTime, true);
-                  setCurrentTime(targetTime);
-                  event.target.playVideo();
-                  setIsPlaying(true);
-                  setSaveNotice(`Đã chuyển tới mốc cắm cờ lúc ${formatBookmarkTime(targetTime)}`);
-                  setTimeout(() => setSaveNotice(null), 3000);
-                  pendingSeekTimeRef.current = null;
-                  initialSeekDoneRef.current = true;
-                } else if (!initialSeekDoneRef.current && lastSavedPercentRef.current > 0 && lastSavedPercentRef.current < 90) {
-                  const resumeTime = (lastSavedPercentRef.current / 100) * dur;
-                  if (resumeTime > 2 && resumeTime < dur - 5) {
-                    event.target.seekTo(resumeTime, true);
-                    setCurrentTime(resumeTime);
-                  }
-                  initialSeekDoneRef.current = true;
-                } else {
-                  event.target.seekTo(0, true);
-                  setCurrentTime(0);
-                  initialSeekDoneRef.current = true;
-                }
-              } catch {}
-            },
-            onStateChange: (event) => {
-              if (isCancelled) return;
-              if (event.data === YT.PlayerState.PLAYING) {
-                setIsPlaying(true);
-                try {
-                  segmentStartRef.current = event.target.getCurrentTime();
-                } catch {}
-              } else if (event.data === YT.PlayerState.PAUSED) {
-                setIsPlaying(false);
-                try {
-                  const cur = event.target.getCurrentTime();
-                  const dur = event.target.getDuration();
-                  handleSaveProgressRef.current(cur, dur, true);
-                  segmentStartRef.current = null;
-                } catch {}
-              } else if (event.data === YT.PlayerState.ENDED) {
-                setIsPlaying(false);
-                try {
-                  const dur = event.target.getDuration();
-                  handleSaveProgressRef.current(dur, dur, true);
-                  segmentStartRef.current = null;
-                  if (!isCompletionNotifiedRef.current) {
-                    isCompletionNotifiedRef.current = true;
-                    if (onProgressSavedRef.current) {
-                      onProgressSavedRef.current(true);
-                    }
-                  }
-                } catch {}
-              }
-            },
-          },
-        });
-        ytPlayerRef.current = playerInstance;
-      } catch (err) {
-        console.warn('Lỗi khởi tạo YouTube API, dùng iframe thuần dự phòng:', err);
-        if (!isCancelled && container) {
-          container.innerHTML = '';
-          const fallbackIframe = document.createElement('iframe');
-          fallbackIframe.src = youtubeEmbedUrl;
-          fallbackIframe.className = 'w-full h-full border-0 aspect-video';
-          fallbackIframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
-          fallbackIframe.allowFullscreen = true;
-          container.appendChild(fallbackIframe);
-        }
-      }
-    };
-
-    initYT();
-
-    // Polling định kỳ đồng bộ thời gian và thanh tua khi xem video YouTube
-    timerId = window.setInterval(() => {
-      if (ytPlayerRef.current) {
-        try {
-          const cur = ytPlayerRef.current.getCurrentTime();
-          const dur = ytPlayerRef.current.getDuration();
-          if (!isNaN(cur) && cur >= 0) {
-            setCurrentTime(cur);
-            if (dur > 0) {
-              setDuration(dur);
-              const watchedPct = Math.min(100, (cur / dur) * 100);
-              if (onWatchedPercentChangeRef.current) {
-                onWatchedPercentChangeRef.current(watchedPct);
-              }
-            }
-            handleSaveProgressRef.current(cur, dur, false);
-          }
-        } catch {}
-      }
-    }, 500);
-
-    return () => {
-      isCancelled = true;
-      if (timerId) clearInterval(timerId);
-      try {
-        if (playerInstance) {
-          playerInstance.destroy();
-        }
-      } catch {}
-      ytPlayerRef.current = null;
-      if (container) {
-        container.innerHTML = '';
-      }
-    };
-  }, [lessonId, mediaInfo?.sourceType, youtubeEmbedUrl]);
-
   // 3. Xử lý cắm cờ mốc thời gian (Thêm điểm đánh dấu)
   const handleAddBookmark = useCallback(
     (title: string, note?: string) => {
@@ -970,28 +678,19 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
 
   // 5. Xử lý nhảy tới mốc cắm cờ (Seek to flag)
   const handleSeekToBookmark = useCallback((timestamp: number) => {
-    if (mediaInfo?.sourceType === 'youtube' && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.seekTo(timestamp, true);
-        ytPlayerRef.current.playVideo();
-        setCurrentTime(timestamp);
-        setIsPlaying(true);
-        setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
-        setTimeout(() => setSaveNotice(null), 2500);
-        return;
-      } catch {}
-    }
-
-    if (videoRef.current) {
-      videoRef.current.currentTime = timestamp;
+    if (mediaInfo?.sourceType === 'youtube') {
+      sendYoutubeCommand('seekTo', [timestamp, true]);
+      sendYoutubeCommand('playVideo');
       setCurrentTime(timestamp);
-      videoRef.current.play().catch(() => {});
       setIsPlaying(true);
       setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
       setTimeout(() => setSaveNotice(null), 2500);
-    } else {
-      pendingSeekTimeRef.current = timestamp;
-      setCurrentTime(timestamp);
+      return;
+    }
+    if (videoRef.current) {
+      videoRef.current.currentTime = timestamp;
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
       setSaveNotice(`Đã chuyển tới ${formatBookmarkTime(timestamp)}`);
       setTimeout(() => setSaveNotice(null), 2500);
     }
@@ -1013,46 +712,20 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         </div>
       )}
 
-            {/* Tab Switcher: Slide vs Video (Hiện khi bài học có Slide) */}
+            {/* Thanh tiêu đề Slide Bài Giảng (Khi là slide PPTX, không hiển thị nút Video bài giảng) */}
       {effectiveSlideUrl && (
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-[#060913] border-b border-white/10 z-20">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setContentMode('slide');
-                setIsPlaying(false);
-                if (videoRef.current) videoRef.current.pause();
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                contentMode === 'slide'
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
-                  : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
-              }`}
-            >
+            <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30">
               <Presentation className="w-3.5 h-3.5" />
-              <span>Slide Trình Chiếu ({effectiveSlideType === 'Canva' ? 'Canva' : 'PowerPoint'})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setContentMode('video')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                contentMode === 'video'
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30'
-                  : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white'
-              }`}
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Video Bài Giảng</span>
-            </button>
+              <span>Slide Trình Chiếu PowerPoint</span>
+            </span>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-400">
-            {contentMode === 'slide' ? (
-              <span className="flex items-center gap-1.5 text-indigo-300 font-medium bg-indigo-950/60 border border-indigo-500/30 px-2 py-0.5 rounded-full">
-                <Sparkles className="w-3 h-3 text-cyan-400" />
-                Đạt 60% trang slide để mở bài kiểm tra
-              </span>
-            ) : null}
+          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+            <span className="flex items-center gap-1.5 text-indigo-300 font-medium bg-indigo-950/60 border border-indigo-500/30 px-2 py-0.5 rounded-full">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              Đạt 60% trang slide để mở bài kiểm tra
+            </span>
           </div>
         </div>
       )}
@@ -1060,15 +733,7 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       {/* Slide Screen Area vs Video Screen Area */}
       {contentMode === 'slide' && effectiveSlideUrl ? (
         <div className="relative aspect-video bg-[#050811] flex flex-col items-center justify-center overflow-hidden">
-          {effectiveSlideType === 'Canva' || effectiveSlideUrl.includes('canva.com') ? (
-            <iframe
-              src={getCanvaEmbedUrl(effectiveSlideUrl)}
-              title={lessonTitle}
-              className="w-full h-full border-0 aspect-video"
-              allowFullScreen
-              allow="fullscreen"
-            />
-          ) : effectiveSlideUrl.toLowerCase().endsWith('.pdf') ? (
+          {effectiveSlideUrl.toLowerCase().endsWith('.pdf') ? (
             <iframe
               src={effectiveSlideUrl.startsWith('http') ? effectiveSlideUrl : window.location.origin + effectiveSlideUrl}
               title={lessonTitle}
