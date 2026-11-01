@@ -157,6 +157,18 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
   const pendingSeekTimeRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const youtubeContainerRef = useRef<HTMLDivElement>(null);
+  const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
+
+  const sendYoutubeCommand = (func: string, args: unknown[] = []) => {
+    try {
+      if (youtubeIframeRef.current?.contentWindow) {
+        youtubeIframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func, args }),
+          '*'
+        );
+      }
+    } catch {}
+  };
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
@@ -712,6 +724,46 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
       ? mediaInfo.embedUrl || mediaInfo.externalUrl || mediaInfo.streamUrl || ''
       : null;
 
+  // Lắng nghe sự kiện phát/dừng từ YouTube Iframe (PostMessage API)
+  useEffect(() => {
+    if (!mediaInfo || mediaInfo.sourceType !== 'youtube') return;
+
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (!data) return;
+
+        if (data.event === 'onStateChange') {
+          if (data.info === 1) { // Đang phát
+            setIsPlaying(true);
+            if (onWatchedPercentChange) onWatchedPercentChange(50);
+          } else if (data.info === 2) { // Tạm dừng
+            setIsPlaying(false);
+          } else if (data.info === 0) { // Đã xem hết
+            setIsPlaying(false);
+            if (onWatchedPercentChange) onWatchedPercentChange(100);
+            if (onProgressSaved && !isCompletionNotifiedRef.current) {
+              isCompletionNotifiedRef.current = true;
+              onProgressSaved(true);
+            }
+          }
+        }
+
+        if (data.event === 'infoDelivery' && data.info) {
+          if (typeof data.info.currentTime === 'number') {
+            setCurrentTime(data.info.currentTime);
+          }
+          if (typeof data.info.duration === 'number' && data.info.duration > 0) {
+            setDuration(data.info.duration);
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [lessonId, mediaInfo?.sourceType, onWatchedPercentChange, onProgressSaved]);
+
   useEffect(() => {
     if (!mediaInfo || mediaInfo.sourceType !== 'youtube' || !youtubeEmbedUrl) {
       return;
@@ -1088,11 +1140,17 @@ export const VideoLessonPlayer: React.FC<VideoLessonPlayerProps> = ({
         </div>
       ) : (
       <div className="relative aspect-video bg-black flex items-center justify-center">
-        {mediaInfo && mediaInfo.sourceType === 'youtube' && mediaInfo.embedUrl ? (
+        {mediaInfo && mediaInfo.sourceType === 'youtube' && (mediaInfo.embedUrl || youtubeEmbedUrl) ? (
           <div className="w-full h-full aspect-video bg-black flex items-center justify-center relative">
-            <div
-              ref={youtubeContainerRef}
-              className="w-full h-full aspect-video flex items-center justify-center overflow-hidden"
+            <iframe
+              ref={youtubeIframeRef}
+              key={`yt-${lessonId}-${mediaInfo.embedUrl || youtubeEmbedUrl}`}
+              src={mediaInfo.embedUrl || youtubeEmbedUrl || ''}
+              title={lessonTitle}
+              className="w-full h-full border-0 aspect-video"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
             />
             {/* Badge hiển thị nguồn nhúng ngoài */}
             <div className="absolute top-3 right-3 pointer-events-none z-10">
